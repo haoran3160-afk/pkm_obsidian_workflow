@@ -43,7 +43,7 @@ graph TD
 
 ```bash
 git clone https://github.com/yourusername/obsidian_workflow.git
-cd obsidian_workflow/pkm_workflow
+cd obsidian_workflow
 
 # Install the dependencies
 pip install -r requirements.txt
