@@ -1,0 +1,62 @@
+---
+title: "{{ title }}"
+date: {{ today }}
+tags: {{ tags | tojson }}
+domain: {{ domain }}
+status: {{ status }}
+core_concept: "{{ core_concept }}"
+source: "{{ source }}"
+language: {{ language }}
+type: {{ note_type }}
+related: [{% for r in related %}"[[{{ r }}]]"{% if not loop.last %}, {% endif %}{% endfor %}]
+created: {{ now }}
+---
+
+# {{ title }}
+
+{% if language == 'cn' %}
+## 核心概念
+
+{{ content }}
+
+## 详细说明
+
+> *(待补充)*
+
+## 我的理解 / 反思
+
+> *(待填写)*
+
+## 相关链接
+
+{% if related %}
+{% for r in related %}
+- [[{{ r }}]]
+{% endfor %}
+{% else %}
+- *(暂无)*
+{% endif %}
+
+{% else %}
+## Key Concepts
+
+{{ content }}
+
+## Detailed Notes
+
+> *(to be expanded)*
+
+## My Understanding
+
+> *(to be filled)*
+
+## Related
+
+{% if related %}
+{% for r in related %}
+- [[{{ r }}]]
+{% endfor %}
+{% else %}
+- *(none yet)*
+{% endif %}
+{% endif %}

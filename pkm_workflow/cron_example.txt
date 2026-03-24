@@ -1,0 +1,80 @@
+# PKM Workflow — Cross-platform Scheduling Examples
+# ══════════════════════════════════════════════════════════════════════════════
+# This file contains scheduling examples for Linux and macOS.
+# For Windows, use setup_task_scheduler.ps1 instead.
+
+
+# ── Linux: cron ───────────────────────────────────────────────────────────────
+#
+# 1. Open crontab editor:
+#      crontab -e
+#
+# 2. Add one of the following lines:
+#
+#    Run every day at 07:00 AM (local time):
+#      0 7 * * * /usr/bin/python3 /path/to/pkm_workflow/main.py --raw-only >> /path/to/pkm_workflow/fetch_cron.log 2>&1
+#
+#    Run every day at 07:00 AM using a virtual environment:
+#      0 7 * * * /path/to/pkm_workflow/.venv/bin/python /path/to/pkm_workflow/main.py --raw-only >> /path/to/pkm_workflow/fetch_cron.log 2>&1
+#
+# Notes:
+#   • Ensure the script path uses ABSOLUTE paths (no ~)
+#   • Cron does not inherit your shell environment; source .env manually or
+#     use a wrapper shell script that calls `export $(cat .env | xargs)` first
+
+
+# ── macOS: launchd (recommended for macOS 10.10+) ───────────────────────────
+#
+# 1. Create a plist file at ~/Library/LaunchAgents/com.pkm.daily.plist
+#    with the following content (replace paths accordingly):
+#
+# <?xml version="1.0" encoding="UTF-8"?>
+# <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+# <plist version="1.0">
+# <dict>
+#     <key>Label</key>
+#     <string>com.pkm.daily</string>
+#     <key>ProgramArguments</key>
+#     <array>
+#         <string>/usr/local/bin/python3</string>
+#         <string>/Users/yourname/pkm_workflow/main.py</string>
+#         <string>--raw-only</string>
+#     </array>
+#     <key>StartCalendarInterval</key>
+#     <dict>
+#         <key>Hour</key>
+#         <integer>7</integer>
+#         <key>Minute</key>
+#         <integer>0</integer>
+#     </dict>
+#     <key>StandardOutPath</key>
+#     <string>/Users/yourname/pkm_workflow/fetch_cron.log</string>
+#     <key>StandardErrorPath</key>
+#     <string>/Users/yourname/pkm_workflow/fetch_cron.log</string>
+#     <key>EnvironmentVariables</key>
+#     <dict>
+#         <key>OBSIDIAN_VAULT_PATH</key>
+#         <string>/Users/yourname/Obsidian</string>
+#         <key>OBSIDIAN_API_KEY</key>
+#         <string>your_api_key_here</string>
+#     </dict>
+# </dict>
+# </plist>
+#
+# 2. Load the agent:
+#      launchctl load ~/Library/LaunchAgents/com.pkm.daily.plist
+#
+# 3. Unload when no longer needed:
+#      launchctl unload ~/Library/LaunchAgents/com.pkm.daily.plist
+
+
+# ── Cross-platform: Python built-in scheduler ────────────────────────────────
+#
+# The simplest platform-agnostic option — just run main.py in schedule mode:
+#
+#   python main.py --schedule
+#
+# This uses the `schedule` library to trigger daily at the time set in
+# DAILY_FETCH_TIME (.env) or `daily_fetch_time` (pkm_config.json).
+# Keep the process alive (e.g., in a screen/tmux session or as a background
+# service) for this to work continuously.

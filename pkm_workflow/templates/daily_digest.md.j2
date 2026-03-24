@@ -1,0 +1,22 @@
+---
+title: "AI Daily Digest - {{ today }}"
+date: {{ today }}
+tags: ["AI-News", "Daily", "Digest"]
+type: daily-digest
+status: unreviewed
+created: {{ now }}
+---
+
+# AI 资讯日报 — {{ today }}
+
+{% for source, items in items_by_source.items() %}
+## {{ source }}
+
+{% for item in items %}
+- **[{{ item.title }}]({{ item.link }})**
+{% if item.summary %}
+  > {{ item.summary[:200] }}...
+{% endif %}
+
+{% endfor %}
+{% endfor %}

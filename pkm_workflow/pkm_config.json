@@ -1,0 +1,232 @@
+{
+    "vault_path": "YOUR_VAULT_PATH",
+    "obsidian_api": {
+        "base_url": "http://localhost:27123",
+        "api_key": "YOUR_API_KEY_HERE"
+    },
+    "youtube_channels": [
+        {
+            "name": "Y Combinator",
+            "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg",
+            "domain": "AI-Stack",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "Andrej Karpathy",
+            "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ",
+            "domain": "AI-Stack",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "Yannic Kilcher",
+            "channel_id": "UCZHmQk67mSJgfCCTn7xBfew",
+            "domain": "Research",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "DeepLearning.AI",
+            "channel_id": "UCcIXc5mAz2EqCeAijJCmDCg",
+            "domain": "Data-Science",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "AI Engineer",
+            "channel_id": "UCVit6i7FtFSBqT0OHD8YSYQ",
+            "domain": "AI-Stack",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "Dwarkesh Patel",
+            "channel_id": "UCognitionYT",
+            "domain": "Research",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "3Blue1Brown",
+            "channel_id": "UCYO_jab_esuFRV4b17AJtAw",
+            "domain": "Math-Modeling",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "StatQuest",
+            "channel_id": "UCtYLUTtgS3k1Fg4y5tAhLbw",
+            "domain": "Data-Science",
+            "note_folder": "20-Sources/Videos"
+        },
+        {
+            "name": "Dan Koe",
+            "channel_id": "UCO_CszI-vXN80yB1sD7hHMA",
+            "domain": "AI-Stack",
+            "note_folder": "20-Sources/Videos"
+        }
+    ],
+    "rss_feeds": [
+        {
+            "name": "The Batch (DeepLearning.AI)",
+            "url": "https://www.deeplearning.ai/the-batch/feed/",
+            "domain": "AI-News",
+            "note_folder": "30-Daily/AI-News"
+        },
+        {
+            "name": "HackerNews Best",
+            "url": "https://hnrss.org/best",
+            "domain": "AI-News",
+            "note_folder": "30-Daily/AI-News",
+            "filter_keywords": [
+                "AI",
+                "LLM",
+                "machine learning",
+                "neural",
+                "GPT",
+                "model"
+            ]
+        },
+        {
+            "name": "The Rundown AI",
+            "url": "https://www.therundown.ai/feed",
+            "domain": "AI-News",
+            "note_folder": "30-Daily/AI-News"
+        },
+        {
+            "name": "arXiv cs.AI",
+            "url": "https://arxiv.org/rss/cs.AI",
+            "domain": "Research",
+            "note_folder": "20-Sources/Papers"
+        },
+        {
+            "name": "arXiv cs.LG",
+            "url": "https://arxiv.org/rss/cs.LG",
+            "domain": "Research",
+            "note_folder": "20-Sources/Papers"
+        },
+        {
+            "name": "Papers With Code",
+            "url": "https://paperswithcode.com/rss",
+            "domain": "Research",
+            "note_folder": "20-Sources/Papers"
+        },
+        {
+            "name": "IELTS Podcast",
+            "url": "https://www.ieltspodcast.com/feed/",
+            "domain": "IELTS",
+            "note_folder": "10-Notes/IELTS"
+        },
+        {
+            "name": "IELTSbuddy",
+            "url": "https://www.ieltsbuddy.com/rss.xml",
+            "domain": "IELTS",
+            "note_folder": "10-Notes/IELTS"
+        },
+        {
+            "name": "Sequoia Capital",
+            "url": "https://www.sequoiacap.com/feed/",
+            "domain": "AI-News",
+            "note_folder": "30-Daily/AI-News"
+        },
+        {
+            "name": "Dan Koe Blog",
+            "url": "https://thedankoe.com/feed/",
+            "domain": "AI-News",
+            "note_folder": "30-Daily/AI-News"
+        },
+        {
+            "name": "Ben's Bites (AI Solopreneur)",
+            "url": "https://bensbites.feeder.co/rss",
+            "domain": "Solopreneur",
+            "note_folder": "30-Daily/AI-News"
+        },
+        {
+            "name": "TLDR AI (AI Solopreneur Apps)",
+            "url": "https://tldr.tech/ai/rss",
+            "domain": "Solopreneur",
+            "note_folder": "30-Daily/AI-News"
+        }
+    ],
+    "ielts_resources": {
+        "practice_sites": [
+            {
+                "name": "IELTSonlinetests.com",
+                "url": "https://ieltsonlinetests.com",
+                "skills": [
+                    "Listening",
+                    "Reading"
+                ]
+            },
+            {
+                "name": "IELTS-up.com",
+                "url": "https://ielts-up.com",
+                "skills": [
+                    "Listening",
+                    "Reading"
+                ]
+            },
+            {
+                "name": "IELTSbuddy.com",
+                "url": "https://www.ieltsbuddy.com",
+                "skills": [
+                    "Listening",
+                    "Reading"
+                ]
+            },
+            {
+                "name": "British Council",
+                "url": "https://www.britishcouncil.org/exam/ielts/preparation",
+                "skills": [
+                    "All"
+                ]
+            }
+        ],
+        "youtube_channels": [
+            {
+                "name": "IELTS Liz",
+                "url": "https://www.youtube.com/@ieltsliz",
+                "skills": [
+                    "Listening",
+                    "Reading",
+                    "Writing"
+                ]
+            },
+            {
+                "name": "E2 IELTS",
+                "url": "https://www.youtube.com/@E2IELTS",
+                "skills": [
+                    "All"
+                ]
+            }
+        ],
+        "books": [
+            "Cambridge IELTS 10",
+            "Cambridge IELTS 11",
+            "Cambridge IELTS 12",
+            "Cambridge IELTS 13",
+            "Cambridge IELTS 14",
+            "Cambridge IELTS 15",
+            "Cambridge IELTS 16",
+            "Cambridge IELTS 17",
+            "Cambridge IELTS 18"
+        ]
+    },
+    "domain_mapping": {
+        "python": "10-Notes/Programming/Python",
+        "cpp": "10-Notes/Programming/Cpp",
+        "c++": "10-Notes/Programming/Cpp",
+        "r": "10-Notes/Programming/R",
+        "ai-stack": "10-Notes/Programming/AI-Stack",
+        "llm": "10-Notes/Programming/AI-Stack",
+        "rag": "10-Notes/Programming/AI-Stack",
+        "math-modeling": "10-Notes/Math-Modeling",
+        "data-science": "10-Notes/Data-Science",
+        "statistics": "10-Notes/Data-Science",
+        "research": "10-Notes/Research",
+        "paper": "10-Notes/Research",
+        "ielts": "10-Notes/IELTS",
+        "ielts-listening": "10-Notes/IELTS/Listening",
+        "ielts-reading": "10-Notes/IELTS/Reading",
+        "ielts-writing": "10-Notes/IELTS/Writing",
+        "ielts-speaking": "10-Notes/IELTS/Speaking"
+    },
+    "note_language_default": "cn",
+    "daily_fetch_time": "07:00",
+    "max_papers_per_day": 10,
+    "max_videos_per_channel": 3
+}

@@ -1,0 +1,13 @@
+# RSS Parsing and HTTP Requests
+requests>=2.31.0
+feedparser>=6.0.10
+
+# Environment Configuration
+python-dotenv>=1.0.0
+
+# Workflow Scheduling & Resilience
+schedule>=1.2.1
+tenacity>=8.2.0
+
+# Templating Engine
+Jinja2>=3.1.2

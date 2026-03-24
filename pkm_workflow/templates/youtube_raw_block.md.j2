@@ -1,0 +1,13 @@
+
+## YouTube 最新视频
+
+{% for v in videos %}
+- **Channel**: {{ v.channel_name }}
+  **Title**: {{ v.title }}
+  **URL**: {{ v.link }}
+  **Published**: {{ v.published }}
+{% if v.summary %}
+  **Summary**: {{ v.summary }}
+{% endif %}
+
+{% endfor %}
