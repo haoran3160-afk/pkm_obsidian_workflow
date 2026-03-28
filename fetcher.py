@@ -7,7 +7,7 @@ Includes automatic retry with exponential backoff via tenacity.
 
 import logging
 import re
-from typing import Optional
+from typing import Iterable, Optional
 
 import feedparser
 from tenacity import (
@@ -29,10 +29,20 @@ AI_KEYWORDS = [
 ]
 
 
+def _contains_keywords(text: str, keywords: Iterable[str]) -> bool:
+    """Return True if text contains at least one keyword (case-insensitive)."""
+    text_lower = text.lower()
+    return any(k.lower() in text_lower for k in keywords)
+
+
 def ai_filter(text: str) -> bool:
     """Return True if text contains any AI-related keyword."""
-    text_lower = text.lower()
-    return any(k in text_lower for k in AI_KEYWORDS)
+    return _contains_keywords(text, AI_KEYWORDS)
+
+
+def _clean_summary(raw_text: str, max_len: int) -> str:
+    """Strip HTML and trim long summaries for markdown readability."""
+    return re.sub(r"<[^>]+>", "", raw_text).strip()[:max_len]
 
 
 # ── RSS Fetcher ───────────────────────────────────────────────────────────────
@@ -41,7 +51,7 @@ def ai_filter(text: str) -> bool:
     retry=retry_if_exception_type(Exception),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=False,
+    reraise=True,
 )
 def _parse_feed(url: str) -> Optional[object]:
     """Parse an RSS/Atom feed URL. Retried up to 3 times on network errors."""
@@ -70,26 +80,30 @@ def fetch_rss_feed(
     name = feed_config["name"]
     url = feed_config["url"]
     folder = feed_config["note_folder"]
-    filter_kw = feed_config.get("filter_keywords", [])
+    filter_kw = [kw for kw in feed_config.get("filter_keywords", []) if kw]
 
     log.info(f"[rss] Fetching: {name}")
-    d = _parse_feed(url)
-    if d is None:
-        log.error(f"[rss-fail] {name}: failed after retries")
+    try:
+        d = _parse_feed(url)
+    except Exception as exc:
+        log.error(f"[rss-fail] {name}: failed after retries ({exc})")
         return []
 
     is_paper_feed = "arxiv" in url.lower() or "paperswithcode" in url.lower()
     entries = d.entries[:max_papers] if is_paper_feed else d.entries[:20]
+    if not entries:
+        log.info("  → 0 items")
+        return []
 
     results = []
     skipped = 0
 
     for entry in entries:
-        title   = entry.get("title", "Untitled")
-        link    = entry.get("link", "")
-        guid    = entry.get("id", link).strip()
-        summary = entry.get("summary", entry.get("description", ""))
-        summary = re.sub(r"<[^>]+>", "", summary).strip()[:500]
+        title   = entry.get("title") or "Untitled"
+        link    = (entry.get("link") or "").strip()
+        guid    = (entry.get("id") or entry.get("guid") or link or "").strip()
+        summary = entry.get("summary", entry.get("description", "")) or ""
+        summary = _clean_summary(summary, max_len=500)
 
         # Cache dedup — only in full mode (not raw_only)
         if not raw_only and guid and guid in feed_cache:
@@ -97,7 +111,7 @@ def fetch_rss_feed(
             continue
 
         # HackerNews AI keyword gate (applies in all modes)
-        if filter_kw and not ai_filter(title + " " + summary):
+        if filter_kw and not _contains_keywords(f"{title} {summary}", filter_kw):
             continue
 
         results.append({
@@ -122,7 +136,7 @@ def fetch_rss_feed(
     retry=retry_if_exception_type(Exception),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=False,
+    reraise=True,
 )
 def _parse_youtube_feed(channel_id: str) -> Optional[object]:
     """Fetch a YouTube channel RSS feed. Retried up to 3 times."""
@@ -148,19 +162,20 @@ def fetch_youtube_channel(
     domain     = channel["domain"]
 
     log.info(f"[YouTube] Fetching: {name}")
-    d = _parse_youtube_feed(channel_id)
-    if d is None:
-        log.error(f"[yt-fail] {name}: failed after retries")
+    try:
+        d = _parse_youtube_feed(channel_id)
+    except Exception as exc:
+        log.error(f"[yt-fail] {name}: failed after retries ({exc})")
         return []
 
     results = []
     for entry in d.entries[:max_videos]:
-        title     = entry.get("title", "Untitled")
-        link      = entry.get("link", "")
-        guid      = entry.get("id", link).strip()
-        published = entry.get("published", today)[:10]
-        summary   = entry.get("summary", "")
-        summary   = re.sub(r"<[^>]+>", "", summary).strip()[:400]
+        title     = entry.get("title") or "Untitled"
+        link      = (entry.get("link") or "").strip()
+        guid      = (entry.get("id") or entry.get("guid") or link or "").strip()
+        published = (entry.get("published") or today)[:10]
+        summary   = entry.get("summary", "") or ""
+        summary   = _clean_summary(summary, max_len=400)
 
         if guid and guid in feed_cache:
             log.info(f"  [yt-cached] {title[:50]}")
@@ -191,18 +206,19 @@ def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
     name       = channel["name"]
     channel_id = channel["channel_id"]
 
-    d = _parse_youtube_feed(channel_id)
-    if d is None:
-        log.error(f"[yt-fail] {name}: failed after retries (raw mode)")
+    try:
+        d = _parse_youtube_feed(channel_id)
+    except Exception as exc:
+        log.error(f"[yt-fail] {name}: failed after retries (raw mode) ({exc})")
         return []
 
     results = []
     for entry in d.entries[:max_videos]:
-        title     = entry.get("title", "Untitled")
-        link      = entry.get("link", "")
-        published = entry.get("published", "")[:10]
-        summary   = entry.get("summary", "")
-        summary   = re.sub(r"<[^>]+>", "", summary).strip()[:300]
+        title     = entry.get("title") or "Untitled"
+        link      = (entry.get("link") or "").strip()
+        published = (entry.get("published") or "")[:10]
+        summary   = entry.get("summary", "") or ""
+        summary   = _clean_summary(summary, max_len=300)
         results.append({
             "channel_name": name,
             "title":        title,

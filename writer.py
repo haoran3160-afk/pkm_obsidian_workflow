@@ -6,8 +6,8 @@ Includes retry logic for API calls.
 """
 
 import logging
-import os
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 from tenacity import (
@@ -18,6 +18,7 @@ from tenacity import (
 )
 
 log = logging.getLogger("pkm.writer")
+SESSION = requests.Session()
 
 
 class ObsidianAPIError(Exception):
@@ -29,11 +30,10 @@ class ObsidianAPIError(Exception):
 
 def write_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> bool:
     """Writes directly to the local Obsidian Vault via the filesystem."""
-    full_path = os.path.join(vault_path, filepath)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    full_path = Path(vault_path) / Path(filepath)
+    full_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        full_path.write_text(content, encoding="utf-8")
         log.info(f"[write] {filepath}")
         return True
     except Exception as e:
@@ -43,10 +43,10 @@ def write_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> bool
 
 def append_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> bool:
     """Appends to a file in the local Obsidian Vault via the filesystem."""
-    full_path = os.path.join(vault_path, filepath)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    full_path = Path(vault_path) / Path(filepath)
+    full_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(full_path, "a", encoding="utf-8") as f:
+        with full_path.open("a", encoding="utf-8") as f:
             f.write(content)
         log.info(f"[append] {filepath}")
         return True
@@ -57,6 +57,18 @@ def append_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> boo
 
 # ── Obsidian REST API ─────────────────────────────────────────────────────────
 
+def _build_api_url(api_base: str, endpoint: str) -> str:
+    base = api_base.rstrip("/")
+    normalized_endpoint = endpoint if endpoint.startswith("/") else f"/{endpoint}"
+    return f"{base}{normalized_endpoint}"
+
+
+def _vault_endpoint(filepath: str) -> str:
+    normalized_path = filepath.replace("\\", "/")
+    encoded_path = quote(normalized_path, safe="/-_.~")
+    return f"/vault/{encoded_path}"
+
+
 @retry(
     retry=retry_if_exception_type((requests.exceptions.RequestException, ObsidianAPIError)),
     stop=stop_after_attempt(3),
@@ -65,7 +77,7 @@ def append_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> boo
 )
 def _api_get(api_base: str, endpoint: str, headers: dict) -> requests.Response:
     """Make an API GET request with retry logic."""
-    r = requests.get(f"{api_base}{endpoint}", headers=headers, timeout=5)
+    r = SESSION.get(_build_api_url(api_base, endpoint), headers=headers, timeout=5)
     r.raise_for_status()
     return r
 
@@ -78,7 +90,7 @@ def _api_get(api_base: str, endpoint: str, headers: dict) -> requests.Response:
 )
 def _api_put(api_base: str, endpoint: str, headers: dict, data: bytes) -> requests.Response:
     """Make an API PUT request with retry logic."""
-    r = requests.put(f"{api_base}{endpoint}", headers=headers, data=data, timeout=10)
+    r = SESSION.put(_build_api_url(api_base, endpoint), headers=headers, data=data, timeout=10)
     if r.status_code not in (200, 204):
         raise ObsidianAPIError(f"HTTP {r.status_code}: {r.text}")
     return r
@@ -92,7 +104,7 @@ def _api_put(api_base: str, endpoint: str, headers: dict, data: bytes) -> reques
 )
 def _api_post(api_base: str, endpoint: str, headers: dict, data: bytes) -> requests.Response:
     """Make an API POST (append) request with retry logic."""
-    r = requests.post(f"{api_base}{endpoint}", headers=headers, data=data, timeout=10)
+    r = SESSION.post(_build_api_url(api_base, endpoint), headers=headers, data=data, timeout=10)
     if r.status_code not in (200, 204):
         raise ObsidianAPIError(f"HTTP {r.status_code}: {r.text}")
     return r
@@ -111,10 +123,15 @@ def check_api_connection(api_base: str, headers: dict) -> bool:
 def note_exists_api(api_base: str, filepath: str, headers: dict) -> bool:
     """Check if a note exists via API."""
     try:
-        r = requests.get(f"{api_base}/vault/{filepath}", headers=headers, timeout=5)
+        endpoint = _vault_endpoint(filepath)
+        r = SESSION.get(_build_api_url(api_base, endpoint), headers=headers, timeout=5)
+        if r.status_code in (401, 403, 500):
+            raise ObsidianAPIError(f"HTTP {r.status_code}: {r.text}")
+        if r.status_code == 404:
+            return False
         return r.status_code == 200
-    except requests.exceptions.ConnectionError:
-        raise ObsidianAPIError("Cannot connect to Obsidian Local REST API.")
+    except requests.exceptions.RequestException as exc:
+        raise ObsidianAPIError(f"Cannot connect to Obsidian Local REST API: {exc}") from exc
 
 
 def write_via_api(api_base: str, filepath: str, content: str, headers: dict, overwrite: bool = False) -> bool:
@@ -124,7 +141,7 @@ def write_via_api(api_base: str, filepath: str, content: str, headers: dict, ove
         return False
 
     try:
-        _api_put(api_base, f"/vault/{filepath}", headers, content.encode("utf-8"))
+        _api_put(api_base, _vault_endpoint(filepath), headers, content.encode("utf-8"))
         log.info(f"[✓] API write ok: {filepath}")
         return True
     except Exception as e:
@@ -135,7 +152,7 @@ def write_via_api(api_base: str, filepath: str, content: str, headers: dict, ove
 def append_via_api(api_base: str, filepath: str, content: str, headers: dict) -> bool:
     """Append to note via API."""
     try:
-        _api_post(api_base, f"/vault/{filepath}", headers, content.encode("utf-8"))
+        _api_post(api_base, _vault_endpoint(filepath), headers, content.encode("utf-8"))
         log.info(f"[✓] API append ok: {filepath}")
         return True
     except Exception as e:

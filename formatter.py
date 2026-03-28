@@ -31,7 +31,8 @@ def slugify(text: str) -> str:
     """Convert a title string to a safe filename slug."""
     text = re.sub(r"[^\w\s\-\u4e00-\u9fff]", "", text)
     text = re.sub(r"\s+", "-", text.strip())
-    return text[:80]
+    text = text.strip("-_")[:80]
+    return text or "untitled"
 
 
 # ── Note Formatters ───────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ def format_daily_digest(items_by_source: dict, raw_only: bool = False) -> tuple[
     today = today_str()
 
     if raw_only:
-        filepath = "00-Inbox/Raw-Daily-Feeds.md"
+        filepath = f"00-Inbox/Raw-Feeds/Raw-Daily-Feeds-{today}.md"
         lines = [
             f"# Raw Daily Feeds - {today}\n\n"
             "*此文件由 PKM Workflow 生成，供 AI Agent 策展过滤高价值资讯。*\n"

@@ -7,7 +7,7 @@ We love your input! We want to make contributing to this project as easy and tra
 1. **Fork the repo** and create your branch from `main`.
 2. **Install dependencies**: `pip install -r requirements.txt`.
 3. **Make your changes**. If you add a new feed parser, ensure it integrates seamlessly with `fetcher.py`.
-4. **Test your code**. Run `python main.py --test` to ensure your feeds fetch successfully without crashing the orchestrator.
+4. **Test your code**. Run `pytest` for unit tests and `python main.py --test` for a workflow smoke test.
 5. **Issue that pull request!**
 
 ## Code Structure Rules

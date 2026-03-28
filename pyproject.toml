@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "obsidian-pkm-workflow"
+version = "2.1.0"
+description = "AI-ready PKM pipeline that streams RSS feeds, arXiv papers, and YouTube videos directly into your Obsidian Vault."
+authors = [{ name = "obsidian-pkm contributors" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["obsidian", "pkm", "rss", "knowledge-management", "automation", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Scheduling",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+dependencies = [
+    "requests>=2.32.3",
+    "feedparser>=6.0.11",
+    "python-dotenv>=1.0.1",
+    "schedule>=1.2.2",
+    "tenacity>=8.5.0",
+    "Jinja2>=3.1.4",
+    "pydantic>=2.7.0",
+    "rich>=13.7.0",
+    "structlog>=24.1.0",
+]
+
+[project.scripts]
+pkm = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/obsidian_workflow_open"
+Repository = "https://github.com/yourusername/obsidian_workflow_open"
+Issues = "https://github.com/yourusername/obsidian_workflow_open/issues"
+
+# ── Tool Configurations ────────────────────────────────────────────────────────
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pkm_workflow*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --tb=short"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", ".venv/*", "daily_fetch_v1.py", "setup.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 70
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in default args
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fetcher", "formatter", "writer", "config_schema"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = false
+warn_unused_ignores = true

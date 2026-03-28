@@ -1,0 +1,65 @@
+﻿commit b5f2f58849ff0988c5c713725f1770ef49fcb768
+Author: haoran3160-afk <haoran3160@gmail.com>
+Date:   Tue Mar 24 15:39:52 2026 +0800
+
+    chore: flatten project directory
+
+R100	pkm_workflow/.env.example	.env.example
+R100	pkm_workflow/.gitignore	.gitignore
+R100	pkm_workflow/CONTRIBUTING.md	CONTRIBUTING.md
+R099	pkm_workflow/README.md	README.md
+R100	pkm_workflow/cron_example.txt	cron_example.txt
+R100	pkm_workflow/daily_fetch_v1.py	daily_fetch_v1.py
+R100	pkm_workflow/fetcher.py	fetcher.py
+R100	pkm_workflow/formatter.py	formatter.py
+R100	pkm_workflow/main.py	main.py
+R100	pkm_workflow/pkm_bridge.py	pkm_bridge.py
+R100	pkm_workflow/pkm_config.json	pkm_config.json
+R100	pkm_workflow/prompt_language.md	prompt_language.md
+R100	pkm_workflow/prompt_news.md	prompt_news.md
+R100	pkm_workflow/prompt_tech.md	prompt_tech.md
+R100	pkm_workflow/requirements.txt	requirements.txt
+R100	pkm_workflow/run_daily_automation.bat	run_daily_automation.bat
+R100	pkm_workflow/setup_task_scheduler.ps1	setup_task_scheduler.ps1
+R100	pkm_workflow/templates/daily_digest.md.j2	templates/daily_digest.md.j2
+R100	pkm_workflow/templates/generic_note.md.j2	templates/generic_note.md.j2
+R100	pkm_workflow/templates/paper_note.md.j2	templates/paper_note.md.j2
+R100	pkm_workflow/templates/study_log.md.j2	templates/study_log.md.j2
+R100	pkm_workflow/templates/video_note.md.j2	templates/video_note.md.j2
+R100	pkm_workflow/templates/youtube_raw_block.md.j2	templates/youtube_raw_block.md.j2
+R100	pkm_workflow/writer.py	writer.py
+
+commit 2e500329eb4f4a1571ec73bc4e92750e8330d0bd
+Author: haoran3160-afk <haoran3160@gmail.com>
+Date:   Tue Mar 24 15:20:09 2026 +0800
+
+    feat: complete open source refactor (V2 ETL Architecture)
+
+A	.agent/workflows/pkm-add-note.md
+A	.agent/workflows/pkm-commit-daily.md
+A	.agent/workflows/pkm-daily-digest.md
+A	.agent/workflows/pkm-weekly-digest.md
+A	pkm_workflow/.env.example
+A	pkm_workflow/.gitignore
+A	pkm_workflow/CONTRIBUTING.md
+A	pkm_workflow/README.md
+A	pkm_workflow/cron_example.txt
+A	pkm_workflow/daily_fetch_v1.py
+A	pkm_workflow/fetcher.py
+A	pkm_workflow/formatter.py
+A	pkm_workflow/main.py
+A	pkm_workflow/pkm_bridge.py
+A	pkm_workflow/pkm_config.json
+A	pkm_workflow/prompt_language.md
+A	pkm_workflow/prompt_news.md
+A	pkm_workflow/prompt_tech.md
+A	pkm_workflow/requirements.txt
+A	pkm_workflow/run_daily_automation.bat
+A	pkm_workflow/setup_task_scheduler.ps1
+A	pkm_workflow/templates/daily_digest.md.j2
+A	pkm_workflow/templates/generic_note.md.j2
+A	pkm_workflow/templates/paper_note.md.j2
+A	pkm_workflow/templates/study_log.md.j2
+A	pkm_workflow/templates/video_note.md.j2
+A	pkm_workflow/templates/youtube_raw_block.md.j2
+A	pkm_workflow/writer.py

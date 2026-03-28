@@ -1,13 +1,22 @@
 # RSS Parsing and HTTP Requests
-requests>=2.31.0
-feedparser>=6.0.10
+requests>=2.32.3
+feedparser>=6.0.11
 
 # Environment Configuration
-python-dotenv>=1.0.0
+python-dotenv>=1.0.1
 
 # Workflow Scheduling & Resilience
-schedule>=1.2.1
-tenacity>=8.2.0
+schedule>=1.2.2
+tenacity>=8.5.0
 
 # Templating Engine
-Jinja2>=3.1.2
+Jinja2>=3.1.4
+
+# Configuration Validation
+pydantic>=2.7.0
+
+# Rich Terminal Output
+rich>=13.7.0
+
+# Structured Logging
+structlog>=24.1.0
