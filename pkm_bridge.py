@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import json
-import logging
 import os
 import sys
 from pathlib import Path
@@ -29,7 +28,7 @@ CONFIG_PATH = SCRIPT_DIR / "pkm_config.json"
 load_dotenv(SCRIPT_DIR / ".env")
 
 try:
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         CONFIG = json.load(f)
 except FileNotFoundError:
     print("[Error] pkm_config.json not found.")
@@ -102,7 +101,7 @@ def process_note(title: str, content: str, domain: str, tags: list,
 
 
 def process_json_file(json_path: str):
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, list):
         for item in data:

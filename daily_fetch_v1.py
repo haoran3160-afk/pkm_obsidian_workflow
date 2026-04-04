@@ -13,19 +13,18 @@ daily_fetch.py — 每日自动拉取脚本
   python daily_fetch.py --schedule  # 每日定时运行
 """
 
+import argparse
 import json
 import logging
 import os
 import re
 import sys
 import time
-import argparse
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from collections import defaultdict
 
 import feedparser
-import requests
 
 # ── 环境配置（.env + pkm_config.json）──────────────────────────────────────
 SCRIPT_DIR  = Path(__file__).parent
@@ -58,7 +57,7 @@ logging.basicConfig(
 log = logging.getLogger("pkm")
 
 def load_config():
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 CONFIG = load_config()
@@ -174,7 +173,7 @@ def fetch_rss_feed(feed_config: dict, test_mode: bool = False, raw_only: bool = 
 def write_daily_digest(items_by_source: dict, test_mode: bool = False, raw_only: bool = False):
     """生成每日 AI 资讯摘要笔记，若 raw_only 则生成原始数据供 Agent 策展"""
     today = today_str()
-    
+
     if raw_only:
         filepath = "00-Inbox/Raw-Daily-Feeds.md"
         lines = [f"# Raw Daily Feeds - {today}\n\n*此文件由 daily_fetch.py 生成，供 PKM Agent 提取高价值资讯使用。*\n"]
@@ -429,7 +428,7 @@ def run_daily_fetch(test_mode: bool = False, raw_only: bool = False):
     # 3. 拉取 YouTube 视频并追加到 Raw Feeds（raw_only 模式）
     if raw_only:
         log.info("\n[YouTube] 收集最新视频...")
-        yt_lines = [f"\n## YouTube 最新视频\n"]
+        yt_lines = ["\n## YouTube 最新视频\n"]
         for channel in CONFIG["youtube_channels"]:
             name = channel["name"]
             channel_id = channel["channel_id"]

@@ -52,6 +52,7 @@ include = ["pkm_workflow*"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q --tb=short"
+pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["."]
@@ -65,6 +66,11 @@ fail_under = 70
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = [
+    "daily_fetch_v1.py",   # legacy reference, not part of the package
+    "parse_ruff.py",       # temp helper script
+    "git_log.txt",
+]
 
 [tool.ruff.lint]
 select = [

@@ -152,7 +152,7 @@ def build_note(
 ) -> str:
     """Build a complete Markdown PKM note string via Generic Template."""
     related = related or []
-    
+
     template = env.get_template("generic_note.md.j2")
     return template.render(
         title=title,

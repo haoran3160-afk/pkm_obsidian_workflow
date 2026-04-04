@@ -11,10 +11,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
-
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ── Sub-models ────────────────────────────────────────────────────────────────
 
@@ -113,13 +112,13 @@ class PKMConfig(BaseModel):
     def time_format_is_valid(cls, v: str) -> str:
         try:
             h, m = v.split(":")
-            assert 0 <= int(h) <= 23 and 0 <= int(m) <= 59
-        except Exception:
-            raise ValueError(f"daily_fetch_time must be HH:MM format. Got: {v!r}")
+            assert 0 <= int(h) <= 23 and 0 <= int(m) <= 59  # noqa: S101
+        except Exception as exc:
+            raise ValueError(f"daily_fetch_time must be HH:MM format. Got: {v!r}") from exc
         return v
 
     @model_validator(mode="after")
-    def at_least_one_source(self) -> "PKMConfig":
+    def at_least_one_source(self) -> PKMConfig:
         if not self.rss_feeds and not self.youtube_channels:
             raise ValueError(
                 "pkm_config.json must define at least one rss_feeds or youtube_channels entry."

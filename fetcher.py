@@ -7,14 +7,14 @@ Includes automatic retry with exponential backoff via tenacity.
 
 import logging
 import re
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 import feedparser
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 log = logging.getLogger("pkm.fetcher")
@@ -53,7 +53,7 @@ def _clean_summary(raw_text: str, max_len: int) -> str:
     wait=wait_exponential(multiplier=1, min=2, max=10),
     reraise=True,
 )
-def _parse_feed(url: str) -> Optional[object]:
+def _parse_feed(url: str) -> object | None:
     """Parse an RSS/Atom feed URL. Retried up to 3 times on network errors."""
     return feedparser.parse(url)
 
@@ -138,7 +138,7 @@ def fetch_rss_feed(
     wait=wait_exponential(multiplier=1, min=2, max=10),
     reraise=True,
 )
-def _parse_youtube_feed(channel_id: str) -> Optional[object]:
+def _parse_youtube_feed(channel_id: str) -> object | None:
     """Fetch a YouTube channel RSS feed. Retried up to 3 times."""
     url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
     return feedparser.parse(url)
