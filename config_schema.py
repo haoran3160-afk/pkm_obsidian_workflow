@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-config_schema.py — Pydantic v2 schema for pkm_config.json.
+config_schema.py - Pydantic v2 schema for pkm_config.json.
 
-Validates the configuration at startup and provides typed access to all
-settings. Any missing required field or wrong type will raise a clear,
-human-readable error instead of a runtime KeyError or AttributeError.
+Validates configuration at startup and provides typed access to settings.
 """
 
 from __future__ import annotations
@@ -15,7 +13,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-# ── Sub-models ────────────────────────────────────────────────────────────────
 
 class RssFeed(BaseModel):
     """A single RSS/Atom feed source."""
@@ -25,13 +22,15 @@ class RssFeed(BaseModel):
     domain: str = ""
     note_folder: str = Field(..., min_length=1)
     filter_keywords: list[str] = Field(default_factory=list)
+    enabled: bool = True
 
     @field_validator("url")
     @classmethod
     def url_must_be_http(cls, v: str) -> str:
-        if not v.startswith(("http://", "https://")):
+        value = v.strip()
+        if not value.startswith(("http://", "https://")):
             raise ValueError(f"RSS feed URL must start with http:// or https://. Got: {v!r}")
-        return v.strip()
+        return value
 
 
 class YouTubeChannel(BaseModel):
@@ -41,15 +40,12 @@ class YouTubeChannel(BaseModel):
     channel_id: str = Field(..., min_length=1)
     domain: str = ""
     note_folder: str = Field(..., min_length=1)
+    enabled: bool = True
 
     @field_validator("channel_id")
     @classmethod
     def channel_id_looks_valid(cls, v: str) -> str:
-        v = v.strip()
-        if not v.startswith("UC") or len(v) != 24:
-            # Soft warning — don't block, just note.
-            pass
-        return v
+        return v.strip()
 
 
 class ObsidianAPIConfig(BaseModel):
@@ -71,40 +67,38 @@ class IELTSResources(BaseModel):
     books: list[str] = Field(default_factory=list)
 
 
-# ── Root Config ───────────────────────────────────────────────────────────────
-
 class PKMConfig(BaseModel):
-    """
-    Root configuration schema for pkm_config.json.
+    """Root configuration schema for pkm_config.json."""
 
-    All fields have sensible defaults so that a minimal config
-    (just rss_feeds and vault-related settings) still works.
-    """
-
-    # Sources
     rss_feeds: list[RssFeed] = Field(default_factory=list)
     youtube_channels: list[YouTubeChannel] = Field(default_factory=list)
 
-    # Optional Obsidian REST API
     obsidian_api: ObsidianAPIConfig = Field(default_factory=ObsidianAPIConfig)
-
-    # Write mode: "disk" writes directly to vault, "api" uses REST API
     write_mode: Literal["disk", "api", "both"] = "disk"
 
-    # Caps
     max_papers_per_day: int = Field(default=10, ge=1, le=100)
     max_videos_per_channel: int = Field(default=3, ge=1, le=20)
 
-    # Scheduling
+    # AI content quality controls
+    max_ai_items_per_feed: int = Field(default=8, ge=1, le=50)
+    min_ai_interest_score: int = Field(default=4, ge=0, le=30)
+    ai_interest_topics: list[str] = Field(default_factory=list)
+    ai_priority_topics: list[str] = Field(default_factory=list)
+    ai_exclude_keywords: list[str] = Field(default_factory=list)
+
+    # IELTS accessibility controls
+    validate_ielts_urls: bool = True
+    ielts_request_timeout_sec: int = Field(default=8, ge=2, le=30)
+    ielts_accessible_domains: list[str] = Field(default_factory=list)
+
+    # Retention and health tracking controls
+    used_articles_retention_days: int = Field(default=30, ge=1, le=365)
+    source_health_keep_runs: int = Field(default=30, ge=1, le=365)
+    raw_archive_folder: str = "01-Raw/daily-feeds"
+
     daily_fetch_time: str = "07:00"
-
-    # Domain mapping (lowercase domain → Vault sub-folder)
     domain_mapping: dict[str, str] = Field(default_factory=dict)
-
-    # Optional IELTS resources block
     ielts_resources: IELTSResources | None = None
-
-    # Legacy vault_path key (ignored — path comes from .env)
     vault_path: str | None = None
 
     @field_validator("daily_fetch_time")
@@ -117,6 +111,16 @@ class PKMConfig(BaseModel):
             raise ValueError(f"daily_fetch_time must be HH:MM format. Got: {v!r}") from exc
         return v
 
+    @field_validator(
+        "ai_interest_topics",
+        "ai_priority_topics",
+        "ai_exclude_keywords",
+        "ielts_accessible_domains",
+    )
+    @classmethod
+    def normalize_string_lists(cls, values: list[str]) -> list[str]:
+        return [v.strip() for v in values if v and v.strip()]
+
     @model_validator(mode="after")
     def at_least_one_source(self) -> PKMConfig:
         if not self.rss_feeds and not self.youtube_channels:
@@ -126,16 +130,8 @@ class PKMConfig(BaseModel):
         return self
 
 
-# ── Loader ────────────────────────────────────────────────────────────────────
-
 def load_and_validate(config_path: Path) -> PKMConfig:
-    """
-    Load pkm_config.json and validate it against PKMConfig schema.
-
-    Raises:
-        FileNotFoundError: if the config file doesn't exist.
-        ValueError: if the config is invalid, with a clear human-readable message.
-    """
+    """Load and validate pkm_config.json."""
     if not config_path.exists():
         raise FileNotFoundError(
             f"Configuration file not found: {config_path}\n"
@@ -146,8 +142,7 @@ def load_and_validate(config_path: Path) -> PKMConfig:
 
     try:
         return PKMConfig.model_validate(raw)
-    except Exception as exc:
-        # Re-raise with a friendlier prefix
+    except Exception as exc:  # pragma: no cover - validation path
         raise ValueError(
             f"Invalid pkm_config.json:\n{exc}\n\n"
             "Run `python main.py --doctor` for a guided diagnosis."

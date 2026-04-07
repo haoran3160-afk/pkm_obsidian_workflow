@@ -294,3 +294,22 @@ Remove-Item "D:\personal\Obsidian\00-Inbox\Raw-Daily-Feeds.md"
 - IELTS 预览（听力 + 阅读）已暂存至 `30-Daily/IELTS-Preview/IELTS-Preview-{date}.md`
 - ⚠️ 两份文件均**不含 wikilinks，不会出现在 Graph View** 中
 - 学习完成后，说「**提交今日日报**」或运行 `/pkm-commit-daily` 正式收录
+
+## Source Preference Override (2026-04-07)
+
+### AI news curation focus (must prioritize)
+- Skill building for AI workflows and coding agents
+- Harness engineering, context engineering, and evaluation design
+- Vibe coding patterns, prompt-to-code workflows, and real-world implementation
+- Production practices: tool calling, memory strategy, observability, deployment
+
+### AI items to de-prioritize
+- Pure funding/PR/newswire items without transferable practice
+- Hiring/event announcements and shallow recap posts
+- Product launch snippets without methods, benchmarks, or implementation details
+
+### IELTS link quality gate
+- Listening/Reading links must be directly accessible (HTTP 2xx/3xx), not landing pages.
+- Prefer: bbc.com, bbc.co.uk, ted.com, theguardian.com, scientificamerican.com, nationalgeographic.com, sciencefocus.com.
+- Allowed exam-prep fallback: ieltspodcast.com, ieltsbuddy.com, britishcouncil.org, ielts.org.
+- If a selected link is inaccessible, replace it immediately before writing output.

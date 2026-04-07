@@ -3,9 +3,15 @@ title: "{{ title }}"
 date: {{ today }}
 tags: {{ tags | tojson }}
 domain: {{ domain }}
+entity_type: {{ entity_type }}
 status: {{ status }}
 core_concept: "{{ core_concept }}"
 source: "{{ source }}"
+source_count: {{ source_count }}
+sources:
+{% for item in sources %}
+  - "{{ item }}"
+{% endfor %}
 language: {{ language }}
 type: {{ note_type }}
 related: [{% for r in related %}"[[{{ r }}]]"{% if not loop.last %}, {% endif %}{% endfor %}]

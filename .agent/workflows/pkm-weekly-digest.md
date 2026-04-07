@@ -135,6 +135,16 @@ aliases: ["Weekly Digest YYYY-MM-DD"]
 
 ---
 
+## Step 5: 知识库健康检查（自动联动）
+
+// turbo
+```powershell
+cd d:\personal\obsidian_workflow\pkm_workflow
+D:\anacoda\python.exe knowledge_health_check.py
+```
+
+---
+
 ## Step 5: 清理并报告
 
 // turbo
@@ -145,4 +155,5 @@ Remove-Item "D:\personal\Obsidian\00-Inbox\Raw-Daily-Feeds.md"
 告知用户：
 - 周报已暂存至 `30-Daily/Weekly/AI-Weekly-{date}.md`
 - 包含：科研论文 2-3 篇 + AI 周报 + 3Blue1Brown 视频
+- 🩺 知识库健康检查已完成（报告位于 `40-MOC/lint-report-{date}.md`）
 - ⚠️ 不含 wikilinks，学习后运行 `/pkm-commit-daily` 收录

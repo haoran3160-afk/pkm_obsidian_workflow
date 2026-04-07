@@ -80,6 +80,15 @@ OBSIDIAN_VAULT_PATH=D:/path/to/your/Obsidian
 
 Customize `pkm_config.json` to define RSS feeds, YouTube channels, and write mode.
 
+For advanced personalization, tune these quality gates in `pkm_config.json`:
+- `min_ai_interest_score`
+- `max_ai_items_per_feed`
+- `ai_interest_topics`
+- `ai_priority_topics`
+- `ai_exclude_keywords`
+- `validate_ielts_urls`
+- `ielts_accessible_domains`
+
 ### 3. Preflight Check
 
 ```bash
@@ -96,6 +105,7 @@ python main.py --doctor
 | `python main.py --test` | Test mode — no Vault writes |
 | `python main.py --schedule` | Run as a daily daemon |
 | `python main.py --doctor` | Config and connectivity diagnostics |
+| `python main.py --health-check` | Run Obsidian knowledge health report |
 
 Raw files are written to `00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md` and auto-archived after `RAW_FEED_KEEP_DAYS` days.
 

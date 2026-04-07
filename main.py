@@ -38,15 +38,13 @@ LOG_PATH = SCRIPT_DIR / "fetch.log"
 console = Console()
 
 # Force UTF-8 stdout
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-except AttributeError:
-    pass
+stdout_reconfigure = getattr(sys.stdout, "reconfigure", None)
+if callable(stdout_reconfigure):
+    stdout_reconfigure(encoding="utf-8", errors="replace")
 
 structlog.configure(
     processors=[
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.dev.ConsoleRenderer(),
     ],
@@ -64,6 +62,9 @@ load_dotenv(SCRIPT_DIR / ".env")
 
 CONFIG_PATH = SCRIPT_DIR / "pkm_config.json"
 CACHE_PATH = SCRIPT_DIR / "feed_cache.json"
+USED_ARTICLES_PATH = SCRIPT_DIR / "used_articles.json"
+SOURCE_ROTATION_PATH = SCRIPT_DIR / "source_rotation.json"
+SOURCE_HEALTH_PATH = SCRIPT_DIR / "source_health.json"
 
 # Load and validate config via Pydantic schema
 try:
@@ -79,8 +80,21 @@ MAX_PAPERS = CONFIG.max_papers_per_day
 MAX_VIDEOS = CONFIG.max_videos_per_channel
 WRITE_MODE = os.getenv("PKM_WRITE_MODE", CONFIG.write_mode)
 
+QUALITY_CONFIG = {
+    "max_ai_items_per_feed": CONFIG.max_ai_items_per_feed,
+    "min_ai_interest_score": CONFIG.min_ai_interest_score,
+    "validate_ielts_urls": CONFIG.validate_ielts_urls,
+    "ielts_request_timeout_sec": CONFIG.ielts_request_timeout_sec,
+    "ai_interest_topics": CONFIG.ai_interest_topics,
+    "ai_priority_topics": CONFIG.ai_priority_topics,
+    "ai_exclude_keywords": CONFIG.ai_exclude_keywords,
+    "ielts_accessible_domains": CONFIG.ielts_accessible_domains,
+}
+
 if VAULT_PATH == "YOUR_VAULT_PATH":
-    log.warning("event", message="OBSIDIAN_VAULT_PATH not set in .env. Files won't be saved correctly!")
+    log.warning(
+        "event", message="OBSIDIAN_VAULT_PATH not set in .env. Files won't be saved correctly!"
+    )
 
 # ── Cache Management ──────────────────────────────────────────────────────────
 
@@ -104,7 +118,88 @@ def save_feed_cache(cache: dict) -> None:
         log.warning("cache.save.fail", error=str(e))
 
 
+def _load_json_file(path: Path, default: dict) -> dict:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def _write_json_file(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _compact_used_articles(path: Path, retention_days: int) -> None:
+    payload = _load_json_file(path, {"articles": []})
+    articles = payload.get("articles", [])
+    cutoff = (datetime.now() - timedelta(days=retention_days)).date()
+
+    normalized_latest: dict[str, dict] = {}
+    for item in articles:
+        raw_url = (item.get("url") or "").strip()
+        date_str = item.get("date") or ""
+        if not raw_url or not date_str:
+            continue
+        try:
+            item_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if item_date < cutoff:
+            continue
+
+        norm = fetcher.normalize_url(raw_url)
+        prev = normalized_latest.get(norm)
+        if prev is None or prev["date"] < date_str:
+            normalized_latest[norm] = {"date": date_str, "url": raw_url}
+
+    compacted = sorted(normalized_latest.values(), key=lambda x: (x["date"], x["url"]))
+    payload["articles"] = compacted
+    _write_json_file(path, payload)
+    log.info("used_articles.compacted", size=len(compacted), retention_days=retention_days)
+
+
+def _refresh_source_rotation_week(path: Path) -> None:
+    payload = _load_json_file(path, {"weekly_summary": {}})
+    weekly = payload.setdefault("weekly_summary", {})
+    current_monday = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
+    if weekly.get("week_start") != current_monday:
+        weekly["week_start"] = current_monday
+        weekly["3blue1brown_used_this_week"] = False
+        _write_json_file(path, payload)
+        log.info("source_rotation.week_reset", week_start=current_monday)
+
+
+def _record_source_health(report: dict[str, Any], source: str, kind: str, status: str, item_count: int, detail: str = "") -> None:
+    report["source_health_entries"].append(
+        {
+            "timestamp": formatter.now_str(),
+            "source": source,
+            "kind": kind,
+            "status": status,
+            "item_count": item_count,
+            "detail": detail[:200],
+        }
+    )
+
+
+def _save_source_health(report: dict[str, Any]) -> None:
+    payload = _load_json_file(SOURCE_HEALTH_PATH, {"runs": []})
+    payload.setdefault("runs", []).append(
+        {
+            "run_date": formatter.today_str(),
+            "run_at": formatter.now_str(),
+            "entries": report.get("source_health_entries", []),
+        }
+    )
+    payload["runs"] = payload["runs"][-CONFIG.source_health_keep_runs :]
+    _write_json_file(SOURCE_HEALTH_PATH, payload)
+    log.info("source_health.saved", entries=len(report.get("source_health_entries", [])))
+
+
 # ── Writer Dispatch ───────────────────────────────────────────────────────────
+
 
 def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
     """
@@ -137,6 +232,7 @@ def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
 
 
 # ── Utility Helpers ───────────────────────────────────────────────────────────
+
 
 def _is_paper_feed(url: str) -> bool:
     url_lower = url.lower()
@@ -196,16 +292,18 @@ def _archive_old_raw_feeds(vault_path: str, keep_days: int = 7) -> int:
 
 # ── Run Report ────────────────────────────────────────────────────────────────
 
+
 def _build_run_report(test_mode: bool, raw_only: bool, dry_run: bool) -> dict[str, Any]:
     return {
         "mode": "TEST" if test_mode else ("DRY-RUN" if dry_run else "LIVE"),
         "raw_only": raw_only,
-        "rss_sources": [],     # list of {name, items, ok, elapsed}
-        "yt_sources": [],      # list of {name, items, ok, elapsed}
+        "rss_sources": [],  # list of {name, items, ok, elapsed}
+        "yt_sources": [],  # list of {name, items, ok, elapsed}
         "writes_ok": 0,
         "writes_failed": 0,
         "written_files": [],
         "archived_raw_files": 0,
+        "source_health_entries": [],
         "start_time": time.monotonic(),
     }
 
@@ -259,11 +357,14 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
+
 def _validate_runtime_or_raise(test_mode: bool, dry_run: bool) -> None:
     if test_mode or dry_run:
         return
     if VAULT_PATH == "YOUR_VAULT_PATH":
-        raise RuntimeError("OBSIDIAN_VAULT_PATH is not configured. Run `python main.py --doctor` first.")
+        raise RuntimeError(
+            "OBSIDIAN_VAULT_PATH is not configured. Run `python main.py --doctor` first."
+        )
     vault_dir = Path(VAULT_PATH)
     if not vault_dir.exists():
         raise RuntimeError(f"OBSIDIAN_VAULT_PATH does not exist: {vault_dir}")
@@ -274,6 +375,7 @@ def _validate_runtime_or_raise(test_mode: bool, dry_run: bool) -> None:
 
 
 # ── Doctor ────────────────────────────────────────────────────────────────────
+
 
 def run_doctor(check_network: bool = True) -> bool:
     errors: list[str] = []
@@ -339,6 +441,7 @@ def run_doctor(check_network: bool = True) -> bool:
 
 # ── Core Workflow ─────────────────────────────────────────────────────────────
 
+
 def run_daily_fetch(
     test_mode: bool = False,
     raw_only: bool = False,
@@ -353,15 +456,26 @@ def run_daily_fetch(
 
     feed_cache = load_feed_cache()
     log.info("cache.loaded", guid_count=len(feed_cache))
+    _refresh_source_rotation_week(SOURCE_ROTATION_PATH)
+    _compact_used_articles(USED_ARTICLES_PATH, CONFIG.used_articles_retention_days)
     today = formatter.today_str()
     news_items: dict[str, list[dict]] = defaultdict(list)
 
     # ── 1. RSS Feeds ──────────────────────────────────────────────────────────
     for feed in CONFIG.rss_feeds:
+        if not feed.enabled:
+            log.info("rss.skipped", feed=feed.name, reason="enabled=false")
+            continue
+
         t0 = time.monotonic()
         try:
             items = fetcher.fetch_rss_feed(
-                feed.model_dump(), feed_cache, today, MAX_PAPERS, raw_only
+                feed.model_dump(),
+                feed_cache,
+                today,
+                MAX_PAPERS,
+                raw_only,
+                quality_config=QUALITY_CONFIG,
             )
             ok = True
         except Exception as exc:
@@ -369,11 +483,13 @@ def run_daily_fetch(
             report["rss_sources"].append(
                 {"name": feed.name, "items": 0, "ok": False, "elapsed": time.monotonic() - t0}
             )
+            _record_source_health(report, feed.name, "rss", "error", 0, str(exc))
             continue
 
         report["rss_sources"].append(
             {"name": feed.name, "items": len(items), "ok": ok, "elapsed": time.monotonic() - t0}
         )
+        _record_source_health(report, feed.name, "rss", "ok", len(items))
 
         if _is_paper_feed(feed.url):
             if raw_only:
@@ -389,6 +505,10 @@ def run_daily_fetch(
     if raw_only:
         yt_raw_list: list[dict] = []
         for channel in CONFIG.youtube_channels:
+            if not channel.enabled:
+                log.info("youtube.skipped", channel=channel.name, reason="enabled=false")
+                continue
+
             t0 = time.monotonic()
             try:
                 videos = fetcher.fetch_youtube_channel_raw(channel.model_dump())
@@ -396,12 +516,24 @@ def run_daily_fetch(
             except Exception as exc:
                 log.error("yt.fail", channel=channel.name, error=str(exc))
                 report["yt_sources"].append(
-                    {"name": channel.name, "items": 0, "ok": False, "elapsed": time.monotonic() - t0}
+                    {
+                        "name": channel.name,
+                        "items": 0,
+                        "ok": False,
+                        "elapsed": time.monotonic() - t0,
+                    }
                 )
+                _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
                 continue
             report["yt_sources"].append(
-                {"name": channel.name, "items": len(videos), "ok": ok, "elapsed": time.monotonic() - t0}
+                {
+                    "name": channel.name,
+                    "items": len(videos),
+                    "ok": ok,
+                    "elapsed": time.monotonic() - t0,
+                }
             )
+            _record_source_health(report, channel.name, "youtube", "ok", len(videos))
             yt_raw_list.extend(videos)
 
         if yt_raw_list:
@@ -418,9 +550,15 @@ def run_daily_fetch(
                 ok_write = _write(path, content, dry_run)
                 _record_write(report, path, ok_write)
                 if ok_write and not dry_run:
-                    report["archived_raw_files"] = _archive_old_raw_feeds(VAULT_PATH, RAW_FEED_KEEP_DAYS)
+                    report["archived_raw_files"] = _archive_old_raw_feeds(
+                        VAULT_PATH, RAW_FEED_KEEP_DAYS
+                    )
     else:
         for channel in CONFIG.youtube_channels:
+            if not channel.enabled:
+                log.info("youtube.skipped", channel=channel.name, reason="enabled=false")
+                continue
+
             t0 = time.monotonic()
             try:
                 videos = fetcher.fetch_youtube_channel(
@@ -430,12 +568,24 @@ def run_daily_fetch(
             except Exception as exc:
                 log.error("yt.fail", channel=channel.name, error=str(exc))
                 report["yt_sources"].append(
-                    {"name": channel.name, "items": 0, "ok": False, "elapsed": time.monotonic() - t0}
+                    {
+                        "name": channel.name,
+                        "items": 0,
+                        "ok": False,
+                        "elapsed": time.monotonic() - t0,
+                    }
                 )
+                _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
                 continue
             report["yt_sources"].append(
-                {"name": channel.name, "items": len(videos), "ok": ok, "elapsed": time.monotonic() - t0}
+                {
+                    "name": channel.name,
+                    "items": len(videos),
+                    "ok": ok,
+                    "elapsed": time.monotonic() - t0,
+                }
             )
+            _record_source_health(report, channel.name, "youtube", "ok", len(videos))
             if not test_mode:
                 for v in videos:
                     path, content = formatter.format_video_note(v)
@@ -463,12 +613,14 @@ def run_daily_fetch(
     if not dry_run:
         save_feed_cache(feed_cache)
         log.info("cache.saved", guid_count=len(feed_cache))
+        _save_source_health(report)
 
     _print_rich_summary(report)
     return report
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -497,11 +649,28 @@ def main() -> None:
         action="store_true",
         help="Doctor mode without remote connectivity checks",
     )
+    parser.add_argument(
+        "--health-check",
+        action="store_true",
+        help="Run knowledge base lint report generation (10-Notes -> 40-MOC)",
+    )
     args = parser.parse_args()
 
     if args.doctor:
         ok = run_doctor(check_network=not args.doctor_skip_network)
         raise SystemExit(0 if ok else 1)
+
+    if args.health_check:
+        import knowledge_health_check as khc
+
+        report_path, summary = khc.generate_report(Path(VAULT_PATH), max_items=30, write_log=True)
+        console.print(
+            f"[green]Health check done:[/] score={summary['score']}/100 "
+            f"critical={summary['critical']} warning={summary['warning']} "
+            f"suggestion={summary['suggestion']}"
+        )
+        console.print(f"[green]Report:[/] {report_path}")
+        raise SystemExit(0)
 
     if args.schedule:
         fetch_time = os.getenv("DAILY_FETCH_TIME", CONFIG.daily_fetch_time)

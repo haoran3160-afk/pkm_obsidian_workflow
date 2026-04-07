@@ -1,19 +1,21 @@
-# PKM Workflow — .gitignore
-# ──────────────────────────────────────────────────────────────────────────────
+﻿# PKM Workflow .gitignore
 
-# Secrets — NEVER commit
+# Secrets
 .env
 
-# Runtime state (auto-generated, user-specific)
+# Runtime state and logs
 fetch.log
 fetch_cron.log
 feed_cache.json
 source_rotation.json
+source_health.json
 used_articles.json
 
-# Python cache
+# Python artifacts
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -21,6 +23,9 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+site/
+.coverage
+coverage.xml
 
 # Virtual environments
 venv/
@@ -28,8 +33,8 @@ venv/
 env/
 .env.local
 
-# IDE / OS artifacts
+# IDE and OS
 .vscode/
 .idea/
-*.DS_Store
+.DS_Store
 Thumbs.db
