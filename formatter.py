@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 formatter.py - Markdown Note Formatting Layer
 Uses Jinja2 templates to generate markdown content.
@@ -35,7 +35,9 @@ def slugify(text: str) -> str:
     return text or "untitled"
 
 
-def _build_ai_bucket_view(items_by_source: dict[str, list[dict]]) -> dict[str, list[tuple[str, dict]]]:
+def _build_ai_bucket_view(
+    items_by_source: dict[str, list[dict]],
+) -> dict[str, list[tuple[str, dict]]]:
     buckets: dict[str, list[tuple[str, dict]]] = {k: [] for k in AI_BUCKET_ORDER}
 
     for source, items in items_by_source.items():
@@ -55,7 +57,9 @@ def _build_ai_bucket_view(items_by_source: dict[str, list[dict]]) -> dict[str, l
     return buckets
 
 
-def _render_ai_bucket_section(lines: list[str], ai_buckets: dict[str, list[tuple[str, dict]]]) -> None:
+def _render_ai_bucket_section(
+    lines: list[str], ai_buckets: dict[str, list[tuple[str, dict]]]
+) -> None:
     lines.append("## AI-News Curated Buckets\n")
     lines.append("*Fixed sections for fast curation: 前沿技巧 / 工程实践 / 工具链更新*\n")
 

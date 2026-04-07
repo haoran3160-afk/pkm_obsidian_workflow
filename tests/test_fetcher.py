@@ -112,3 +112,102 @@ def test_fetch_youtube_channel_raw_returns_empty_when_parser_fails(monkeypatch):
     videos = fetcher.fetch_youtube_channel_raw(channel)
 
     assert videos == []
+
+
+def test_fetch_rss_feed_ai_scoring_threshold_bucket_and_cap(monkeypatch):
+    feed_config = {
+        "name": "AI Daily",
+        "url": "https://example.com/ai.xml",
+        "note_folder": "30-Daily/AI-News",
+        "domain": "ai-news",
+    }
+    entries = [
+        {
+            "title": "Context Engineering playbook for coding agent eval",
+            "link": "https://a.example/post",
+            "id": "g1",
+            "summary": "Implementation guide and benchmark notes.",
+        },
+        {
+            "title": "Simple funding round update",
+            "link": "https://b.example/post",
+            "id": "g2",
+            "summary": "press release only",
+        },
+        {
+            "title": "Tool calling production checklist",
+            "link": "https://c.example/post",
+            "id": "g3",
+            "summary": "workflow guide",
+        },
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda url: _feed(entries))
+
+    quality = {
+        "min_ai_interest_score": 7,
+        "max_ai_items_per_feed": 1,
+        "ai_interest_topics": ["workflow", "guide", "eval"],
+        "ai_priority_topics": ["context engineering", "tool calling", "coding agent"],
+        "ai_exclude_keywords": ["funding round", "press release"],
+    }
+    items = fetcher.fetch_rss_feed(
+        feed_config, {}, "2026-04-07", raw_only=True, quality_config=quality
+    )
+
+    assert len(items) == 1
+    assert items[0]["guid"] in {"g1", "g3"}
+    assert items[0]["score"] >= 7
+    assert "score_reasons" in items[0]
+    assert items[0]["ai_bucket"] in {
+        "\u524d\u6cbf\u6280\u5de7",
+        "\u5de5\u7a0b\u5b9e\u8df5",
+        "\u5de5\u5177\u94fe\u66f4\u65b0",
+    }
+
+
+def test_fetch_rss_feed_ielts_domain_and_access_filters(monkeypatch):
+    feed_config = {
+        "name": "IELTS Podcast",
+        "url": "https://example.com/ielts.xml",
+        "note_folder": "30-Daily/IELTS-Preview",
+        "domain": "IELTS",
+    }
+    entries = [
+        {"title": "Bad domain", "link": "https://foo.example/a", "id": "i1", "summary": "x"},
+        {"title": "Blocked url", "link": "https://bbc.com/b", "id": "i2", "summary": "x"},
+        {"title": "Allowed", "link": "https://www.bbc.com/c", "id": "i3", "summary": "x"},
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda url: _feed(entries))
+
+    def _fake_access(url, timeout_sec):
+        if url.endswith("/b"):
+            return False, "GET 403"
+        return True, "GET 200"
+
+    monkeypatch.setattr(fetcher, "_is_url_accessible_cached", _fake_access)
+
+    quality = {
+        "validate_ielts_urls": True,
+        "ielts_accessible_domains": ["bbc.com"],
+        "ielts_request_timeout_sec": 3,
+    }
+    items = fetcher.fetch_rss_feed(
+        feed_config, {}, "2026-04-07", raw_only=True, quality_config=quality
+    )
+
+    assert [item["guid"] for item in items] == ["i3"]
+
+
+def test_score_ai_interest_includes_show_hn_and_exclude_penalty():
+    score, reasons = fetcher._score_ai_interest(
+        title="Show HN: agent workflow tutorial",
+        summary="practical guide for evaluation",
+        source_name="HackerNews Best",
+        ai_interest_topics=["workflow", "evaluation"],
+        ai_priority_topics=["agent engineering"],
+        ai_exclude_keywords=["coupon"],
+    )
+
+    assert score >= 4
+    assert "base-ai" in reasons
+    assert "show-hn" in reasons

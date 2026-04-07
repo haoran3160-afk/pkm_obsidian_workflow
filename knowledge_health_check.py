@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 knowledge_health_check.py - PKM knowledge base health check.
 
@@ -21,7 +21,7 @@ import argparse
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 REQUIRED_FIELDS = {"title", "domain", "status", "tags", "source_count"}
@@ -78,7 +78,9 @@ def parse_frontmatter(md_text: str) -> tuple[dict, str]:
 
         if value.startswith("[") and value.endswith("]"):
             inner = value[1:-1].strip()
-            data[key] = [x.strip().strip('"') for x in inner.split(",") if x.strip()] if inner else []
+            data[key] = (
+                [x.strip().strip('"') for x in inner.split(",") if x.strip()] if inner else []
+            )
             continue
 
         clean_value = value.strip('"')
@@ -143,7 +145,9 @@ def build_records(vault_path: Path) -> list[NoteRecord]:
     return records
 
 
-def generate_report(vault_path: Path, max_items: int = 30, write_log: bool = True) -> tuple[Path, dict]:
+def generate_report(
+    vault_path: Path, max_items: int = 30, write_log: bool = True
+) -> tuple[Path, dict]:
     records = build_records(vault_path)
     now = datetime.now()
 
@@ -202,7 +206,9 @@ def generate_report(vault_path: Path, max_items: int = 30, write_log: bool = Tru
         return "\n".join(f"- [[{p.stem}]]" for p in paths[:limit])
 
     stale_lines = (
-        "\n".join(f"- [[{p.stem}]] - updated {days} days ago" for p, days in stale_pages[:max_items])
+        "\n".join(
+            f"- [[{p.stem}]] - updated {days} days ago" for p, days in stale_pages[:max_items]
+        )
         if stale_pages
         else "- *(none)*"
     )

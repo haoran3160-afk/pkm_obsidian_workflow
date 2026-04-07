@@ -163,7 +163,9 @@ def _compact_used_articles(path: Path, retention_days: int) -> None:
 def _refresh_source_rotation_week(path: Path) -> None:
     payload = _load_json_file(path, {"weekly_summary": {}})
     weekly = payload.setdefault("weekly_summary", {})
-    current_monday = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
+    current_monday = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime(
+        "%Y-%m-%d"
+    )
     if weekly.get("week_start") != current_monday:
         weekly["week_start"] = current_monday
         weekly["3blue1brown_used_this_week"] = False
@@ -171,7 +173,9 @@ def _refresh_source_rotation_week(path: Path) -> None:
         log.info("source_rotation.week_reset", week_start=current_monday)
 
 
-def _record_source_health(report: dict[str, Any], source: str, kind: str, status: str, item_count: int, detail: str = "") -> None:
+def _record_source_health(
+    report: dict[str, Any], source: str, kind: str, status: str, item_count: int, detail: str = ""
+) -> None:
     report["source_health_entries"].append(
         {
             "timestamp": formatter.now_str(),

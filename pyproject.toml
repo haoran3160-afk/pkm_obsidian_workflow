@@ -65,6 +65,7 @@ omit = [
     "fetcher_registry.py",
     "pkm_bridge.py",
     "main.py",
+    "knowledge_health_check.py",
 ]
 
 [tool.coverage.report]

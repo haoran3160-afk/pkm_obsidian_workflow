@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 pkm_bridge.py - Antigravity -> Obsidian PKM Bridge
 
@@ -44,15 +44,13 @@ def resolve_runtime_config(config: dict) -> tuple[str, str, str]:
     vault_path = os.getenv("OBSIDIAN_VAULT_PATH", config.get("vault_path", "D:/personal/Obsidian"))
     obsidian_api = config.get("obsidian_api", {})
 
-    api_base = os.getenv("OBSIDIAN_API_BASE", obsidian_api.get("base_url", "http://localhost:27123"))
+    api_base = os.getenv(
+        "OBSIDIAN_API_BASE", obsidian_api.get("base_url", "http://localhost:27123")
+    )
     api_key = os.getenv("OBSIDIAN_API_KEY", obsidian_api.get("api_key", ""))
 
     plugin_data = (
-        Path(vault_path)
-        / ".obsidian"
-        / "plugins"
-        / "obsidian-local-rest-api"
-        / "data.json"
+        Path(vault_path) / ".obsidian" / "plugins" / "obsidian-local-rest-api" / "data.json"
     )
     if plugin_data.exists():
         try:
@@ -233,7 +231,9 @@ def main() -> None:
     parser.add_argument("--sources", default="", help="Comma-separated source list")
     parser.add_argument("--source-count", type=int, default=1, help="Source count")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing note")
-    parser.add_argument("--update-index", action="store_true", help="Keep CLI parity for index updates")
+    parser.add_argument(
+        "--update-index", action="store_true", help="Keep CLI parity for index updates"
+    )
     parser.add_argument("--update-log", default="", help="Append an operation log entry")
     parser.add_argument("--json", help="Batch import from JSON")
     parser.add_argument("--test", action="store_true", help="Test API connectivity")

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 config_schema.py - Pydantic v2 schema for pkm_config.json.
 

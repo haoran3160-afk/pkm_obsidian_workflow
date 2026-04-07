@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 fetcher.py - Feed Fetching Layer
 Handles all data retrieval: RSS feeds and YouTube channels.
@@ -150,7 +150,9 @@ def _is_url_accessible(url: str, timeout_sec: int = 8) -> tuple[bool, str]:
         pass
 
     try:
-        resp = requests.get(url, allow_redirects=True, timeout=timeout_sec, headers=headers, stream=True)
+        resp = requests.get(
+            url, allow_redirects=True, timeout=timeout_sec, headers=headers, stream=True
+        )
         status = resp.status_code
         resp.close()
         if 200 <= status < 400:
@@ -333,9 +335,7 @@ def fetch_rss_feed(
     ai_exclude_keywords = [
         x.lower() for x in quality.get("ai_exclude_keywords", DEFAULT_AI_EXCLUDE_KEYWORDS)
     ]
-    ielts_accessible_domains = [
-        x.lower() for x in quality.get("ielts_accessible_domains", [])
-    ]
+    ielts_accessible_domains = [x.lower() for x in quality.get("ielts_accessible_domains", [])]
 
     name = feed_config["name"]
     url = feed_config["url"]
