@@ -1,4 +1,4 @@
-name: Deploy Docs
+﻿name: Deploy Docs
 
 on:
   push:
@@ -7,6 +7,9 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "*.py"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: write   # mkdocs gh-deploy needs write to push gh-pages branch
