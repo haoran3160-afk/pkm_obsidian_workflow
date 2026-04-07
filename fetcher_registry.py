@@ -38,12 +38,14 @@ def register_fetcher(source_type: str) -> Callable:
         def fetch_rss(config, cache, today, **kwargs) -> list[dict]:
             ...
     """
+
     def decorator(fn: Callable[..., list[dict]]) -> Callable[..., list[dict]]:
         if source_type in _FETCHERS:
             log.warning("Fetcher already registered for '%s', overwriting.", source_type)
         _FETCHERS[source_type] = fn
         log.debug("Registered fetcher for source type: '%s'", source_type)
         return fn
+
     return decorator
 
 
@@ -71,6 +73,7 @@ def list_registered() -> list[str]:
 
 # ── Register Built-in Fetchers ────────────────────────────────────────────────
 
+
 def _register_builtins() -> None:
     """Lazy import and register the built-in fetcher functions."""
     import fetcher as _fetcher  # avoid circular import
@@ -78,7 +81,9 @@ def _register_builtins() -> None:
     @register_fetcher("rss")
     def _fetch_rss(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
         return _fetcher.fetch_rss_feed(
-            config, cache, today,
+            config,
+            cache,
+            today,
             max_papers=kwargs.get("max_papers", 10),
             raw_only=kwargs.get("raw_only", False),
         )
@@ -86,7 +91,9 @@ def _register_builtins() -> None:
     @register_fetcher("youtube")
     def _fetch_youtube(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
         return _fetcher.fetch_youtube_channel(
-            config, cache, today,
+            config,
+            cache,
+            today,
             max_videos=kwargs.get("max_videos", 3),
         )
 

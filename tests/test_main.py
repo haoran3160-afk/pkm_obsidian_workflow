@@ -52,7 +52,9 @@ def test_run_doctor_passes_without_network_when_config_and_vault_are_valid(monke
             RssFeed(name="RSS", url="https://example.com/feed.xml", note_folder="30-Daily/AI-News"),
         ],
         youtube_channels=[
-            YouTubeChannel(name="YT", channel_id="UC1234567890123456789012", note_folder="20-Sources/Videos"),
+            YouTubeChannel(
+                name="YT", channel_id="UC1234567890123456789012", note_folder="20-Sources/Videos"
+            ),
         ],
     )
 

@@ -23,7 +23,12 @@ def test_fetch_rss_feed_respects_cache_and_custom_keywords(monkeypatch):
     entries = [
         {"title": "GPT cached item", "link": "https://a", "id": "seen-guid", "summary": "cached"},
         {"title": "Database update", "link": "https://b", "id": "no-ai", "summary": "unrelated"},
-        {"title": "Tooling", "link": "https://c", "id": "fresh-guid", "summary": "Great GPT workflow"},
+        {
+            "title": "Tooling",
+            "link": "https://c",
+            "id": "fresh-guid",
+            "summary": "Great GPT workflow",
+        },
     ]
     monkeypatch.setattr(fetcher, "_parse_feed", lambda url: _feed(entries))
 
@@ -44,7 +49,9 @@ def test_fetch_rss_feed_raw_mode_ignores_cache(monkeypatch):
     monkeypatch.setattr(
         fetcher,
         "_parse_feed",
-        lambda url: _feed([{"title": "Same item", "link": "https://x", "id": "guid-1", "summary": "text"}]),
+        lambda url: _feed(
+            [{"title": "Same item", "link": "https://x", "id": "guid-1", "summary": "text"}]
+        ),
     )
 
     items = fetcher.fetch_rss_feed(feed_config, feed_cache, "2026-03-26", raw_only=True)
@@ -60,7 +67,9 @@ def test_fetch_rss_feed_returns_empty_when_parser_fails(monkeypatch):
         "url": "https://broken-feed.example",
         "note_folder": "30-Daily/AI-News",
     }
-    monkeypatch.setattr(fetcher, "_parse_feed", lambda url: (_ for _ in ()).throw(RuntimeError("network down")))
+    monkeypatch.setattr(
+        fetcher, "_parse_feed", lambda url: (_ for _ in ()).throw(RuntimeError("network down"))
+    )
 
     items = fetcher.fetch_rss_feed(feed_config, {}, "2026-03-26")
 
@@ -77,7 +86,12 @@ def test_fetch_youtube_channel_skips_cached_and_cleans_html(monkeypatch):
     feed_cache = {"old-guid": "2026-03-25"}
     entries = [
         {"title": "Old", "link": "https://yt/1", "id": "old-guid", "summary": "<p>old</p>"},
-        {"title": "New", "link": "https://yt/2", "id": "new-guid", "summary": "<p>fresh <b>video</b></p>"},
+        {
+            "title": "New",
+            "link": "https://yt/2",
+            "id": "new-guid",
+            "summary": "<p>fresh <b>video</b></p>",
+        },
     ]
     monkeypatch.setattr(fetcher, "_parse_youtube_feed", lambda cid: _feed(entries))
 
@@ -91,7 +105,9 @@ def test_fetch_youtube_channel_skips_cached_and_cleans_html(monkeypatch):
 
 def test_fetch_youtube_channel_raw_returns_empty_when_parser_fails(monkeypatch):
     channel = {"name": "Broken", "channel_id": "id"}
-    monkeypatch.setattr(fetcher, "_parse_youtube_feed", lambda cid: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        fetcher, "_parse_youtube_feed", lambda cid: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
 
     videos = fetcher.fetch_youtube_channel_raw(channel)
 

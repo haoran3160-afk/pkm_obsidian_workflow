@@ -30,7 +30,9 @@ def test_vault_endpoint_encodes_unicode_and_spaces():
 
 
 def test_note_exists_api_returns_false_on_404(monkeypatch):
-    monkeypatch.setattr(writer.SESSION, "get", lambda *args, **kwargs: DummyResponse(status_code=404))
+    monkeypatch.setattr(
+        writer.SESSION, "get", lambda *args, **kwargs: DummyResponse(status_code=404)
+    )
     assert writer.note_exists_api("http://localhost:27123", "test.md", {}) is False
 
 

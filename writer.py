@@ -23,10 +23,12 @@ SESSION = requests.Session()
 
 class ObsidianAPIError(Exception):
     """Custom exception raised when Obsidian REST API calls fail."""
+
     pass
 
 
 # ── Local File System ─────────────────────────────────────────────────────────
+
 
 def write_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> bool:
     """Writes directly to the local Obsidian Vault via the filesystem."""
@@ -56,6 +58,7 @@ def append_to_obsidian_disk(vault_path: str, filepath: str, content: str) -> boo
 
 
 # ── Obsidian REST API ─────────────────────────────────────────────────────────
+
 
 def _build_api_url(api_base: str, endpoint: str) -> str:
     base = api_base.rstrip("/")
@@ -134,7 +137,9 @@ def note_exists_api(api_base: str, filepath: str, headers: dict) -> bool:
         raise ObsidianAPIError(f"Cannot connect to Obsidian Local REST API: {exc}") from exc
 
 
-def write_via_api(api_base: str, filepath: str, content: str, headers: dict, overwrite: bool = False) -> bool:
+def write_via_api(
+    api_base: str, filepath: str, content: str, headers: dict, overwrite: bool = False
+) -> bool:
     """Write note via API."""
     if note_exists_api(api_base, filepath, headers) and not overwrite:
         log.info(f"[skip] Note exists: {filepath}")

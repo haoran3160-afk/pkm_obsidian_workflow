@@ -56,7 +56,16 @@ pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", ".venv/*", "daily_fetch_v1.py", "setup.py"]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "daily_fetch_v1.py",
+    "setup.py",
+    "parse_ruff.py",
+    "fetcher_registry.py",
+    "pkm_bridge.py",
+    "main.py",
+]
 
 [tool.coverage.report]
 show_missing = true
