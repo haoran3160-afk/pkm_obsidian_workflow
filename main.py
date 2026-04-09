@@ -429,7 +429,9 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
             f"{report['video_candidates']} (deferred {report['video_deferred']})"
         )
         if DAILY_DIGEST_ONLY_OUTPUT:
-            console.print("[dim]Output mode:[/] single core AI Daily (paper/video merged into digest)")
+            console.print(
+                "[dim]Output mode:[/] single core AI Daily (paper/video merged into digest)"
+            )
 
     if report["written_files"]:
         preview = report["written_files"][:5]
@@ -643,7 +645,9 @@ def run_daily_fetch(
                 ok_write = _write(path, content, dry_run)
                 _record_write(report, path, ok_write)
                 if ok_write and not dry_run:
-                    report["archived_raw_files"] = _archive_old_raw_feeds(VAULT_PATH, RAW_FEED_KEEP_DAYS)
+                    report["archived_raw_files"] = _archive_old_raw_feeds(
+                        VAULT_PATH, RAW_FEED_KEEP_DAYS
+                    )
 
     else:
         for channel in CONFIG.youtube_channels:
@@ -702,7 +706,9 @@ def run_daily_fetch(
 
         for paper in selected_papers:
             source_name = str(paper.get("_source_name") or "paper-feed")
-            news_items[source_name].append({**paper, "content_type": paper.get("content_type", "paper")})
+            news_items[source_name].append(
+                {**paper, "content_type": paper.get("content_type", "paper")}
+            )
             if DAILY_DIGEST_ONLY_OUTPUT:
                 paper_written_refs.append(
                     {
@@ -731,7 +737,9 @@ def run_daily_fetch(
 
         for video in selected_videos:
             source_name = str(video.get("channel_name") or "YouTube")
-            news_items[source_name].append({**video, "content_type": video.get("content_type", "video")})
+            news_items[source_name].append(
+                {**video, "content_type": video.get("content_type", "video")}
+            )
             if DAILY_DIGEST_ONLY_OUTPUT:
                 video_written_refs.append(
                     {
@@ -893,4 +901,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

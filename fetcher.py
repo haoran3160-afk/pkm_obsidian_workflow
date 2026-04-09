@@ -102,7 +102,9 @@ def infer_content_type(source_name: str, url: str, domain: str, fallback: str = 
         return "paper"
     if "youtube.com" in url_lower or "youtu.be" in url_lower:
         return "video"
-    if any(token in url_lower for token in ("twitter.com", "x.com", "nitter.net", "rsshub.app/twitter")):
+    if any(
+        token in url_lower for token in ("twitter.com", "x.com", "nitter.net", "rsshub.app/twitter")
+    ):
         return "tweet"
     if any(
         token in source_lower
@@ -264,6 +266,7 @@ def classify_ai_bucket(item: dict) -> str:
     if any(k in text or k in signals for k in tooling_keywords):
         return AI_BUCKET_TOOLING
     return AI_BUCKET_PRACTICE
+
 
 @retry(
     retry=retry_if_exception_type(Exception),
@@ -497,5 +500,3 @@ def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
 
     log.info(f"  [ok] {name}: {len(results)} videos (raw)")
     return results
-
-

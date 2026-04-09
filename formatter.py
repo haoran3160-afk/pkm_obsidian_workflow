@@ -154,7 +154,10 @@ def _infer_content_type(item: dict, source: str) -> str:
         return "video"
     if any(token in link for token in ("twitter.com", "x.com", "nitter.net", "rsshub.app/twitter")):
         return "tweet"
-    if any(token in source_lower for token in ("hackernews", "hacker news", "github", "engineering", "dev")):
+    if any(
+        token in source_lower
+        for token in ("hackernews", "hacker news", "github", "engineering", "dev")
+    ):
         return "engineering"
     if any(token in summary for token in ("implementation", "playbook", "benchmark", "deployment")):
         return "engineering"

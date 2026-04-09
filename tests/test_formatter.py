@@ -1,4 +1,4 @@
-﻿import formatter
+import formatter
 
 
 def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
