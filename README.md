@@ -203,6 +203,8 @@ python main.py --health-check
 | `daily_digest_max_items_per_source` | 每来源展示上限 |
 | `daily_digest_action_items` | 提炼任务数量 |
 | `daily_digest_include_mindmap` | 是否输出 Mermaid 思维导图 |
+| `daily_digest_include_cognitive_lenses` | 是否输出 Karpathy 视角的“认知增量”区块 |
+| `daily_digest_cognitive_questions` | 认知评估问题列表（可按你的策略自定义） |
 | `min_ai_interest_score` | AI 内容最低保留分 |
 | `max_ai_items_per_feed` | 单来源占比限制 |
 | `max_paper_notes_per_day` | 每日纳入论文条目上限 |

@@ -86,6 +86,8 @@ DAILY_DIGEST_MAX_ITEMS_PER_SOURCE = CONFIG.daily_digest_max_items_per_source
 DAILY_DIGEST_ACTION_ITEMS = CONFIG.daily_digest_action_items
 DAILY_DIGEST_MAX_DEFERRED_ITEMS = CONFIG.daily_digest_max_deferred_items
 DAILY_DIGEST_INCLUDE_MINDMAP = CONFIG.daily_digest_include_mindmap
+DAILY_DIGEST_INCLUDE_COGNITIVE_LENSES = CONFIG.daily_digest_include_cognitive_lenses
+DAILY_DIGEST_COGNITIVE_QUESTIONS = CONFIG.daily_digest_cognitive_questions
 WRITE_MODE = os.getenv("PKM_WRITE_MODE", CONFIG.write_mode)
 
 QUALITY_CONFIG = {
@@ -801,6 +803,8 @@ def run_daily_fetch(
                 action_items=DAILY_DIGEST_ACTION_ITEMS,
                 max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
                 include_mindmap=DAILY_DIGEST_INCLUDE_MINDMAP,
+                include_cognitive_lenses=DAILY_DIGEST_INCLUDE_COGNITIVE_LENSES,
+                cognitive_questions=DAILY_DIGEST_COGNITIVE_QUESTIONS,
                 paper_written=paper_written_refs,
                 video_written=video_written_refs,
                 paper_queue=paper_queue_refs,

@@ -45,6 +45,8 @@ def test_format_daily_digest_final_mode_includes_frontmatter_and_links():
     assert path.startswith("30-Daily/AI-News/AI-Daily-")
     assert "type: daily-digest" in content
     assert "> [!summary] 60 秒快读" in content
+    assert "## Karpathy 视角：今日认知增量" in content
+    assert "> [!tip] 认知评估框架" in content
     assert "## 今日精选" in content
     assert "## 统一雷达" in content
     assert "## 提炼任务（可执行）" in content
@@ -82,6 +84,28 @@ def test_format_daily_digest_unified_radar_supports_tweets_and_engineering():
     assert "Agent eval thread" in content
     assert "### 工程实践" in content
     assert "Production harness playbook" in content
+
+
+def test_format_daily_digest_supports_disabling_cognitive_lenses():
+    items = {
+        "OpenAI News": [
+            {
+                "title": "Agent runtime notes",
+                "link": "https://example.com/agent-runtime",
+                "summary": "System notes.",
+                "score": 8,
+                "ai_bucket": "practice",
+            }
+        ]
+    }
+
+    _, content = formatter.format_daily_digest(
+        items,
+        raw_only=False,
+        include_cognitive_lenses=False,
+    )
+
+    assert "## Karpathy 视角：今日认知增量" not in content
 
 
 def test_format_note_templates_cover_paper_and_video():

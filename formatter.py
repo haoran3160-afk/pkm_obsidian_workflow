@@ -45,6 +45,14 @@ CONTENT_TYPE_LABELS = {
     "other": "其他",
 }
 
+DEFAULT_COGNITIVE_QUESTIONS = [
+    "能力边界是否实质前移（不仅是榜单数字）？",
+    "架构范式是否变化（例如主模型+子代理）？",
+    "成本-延迟-质量前沿是否改写？",
+    "评测与治理是否可复现、可审计？",
+    "能否沉淀为长期杠杆（SOP/模板/基线）？",
+]
+
 
 def today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
@@ -77,6 +85,53 @@ def _first_sentence(text: str, max_len: int = 140) -> str:
     if match:
         plain = plain[: match.end()]
     return _clean_text(plain, max_len=max_len)
+
+
+def _multi_sentence_summary(text: str, max_len: int = 220, max_sentences: int = 2) -> str:
+    plain = _clean_text(text, max_len=1200)
+    if not plain:
+        return ""
+
+    segments = re.split(r"(?<=[.!?。！？])\s+", plain)
+    picked: list[str] = []
+    for segment in segments:
+        normalized = segment.strip()
+        if not normalized:
+            continue
+        picked.append(normalized)
+        if len(picked) >= max_sentences:
+            break
+
+    merged = " ".join(picked) if picked else plain
+    return _clean_text(merged, max_len=max_len)
+
+
+def _karpathy_lens(item: dict, source: str) -> str:
+    bucket = str(item.get("ai_bucket") or "practice")
+    content_type = _infer_content_type(item, source)
+
+    if content_type == "paper" or bucket == "frontier":
+        return "能力边界与研究方向"
+    if content_type in {"engineering", "tooling"} or bucket == "tooling":
+        return "工程杠杆与系统设计"
+    if content_type == "tweet":
+        return "生态信号与叙事拐点"
+    if content_type == "video":
+        return "心智模型与学习路径"
+    return "产品化节奏与落地窗口"
+
+
+def _daily_one_thing(item: dict, source: str) -> str:
+    content_type = _infer_content_type(item, source)
+    bucket = str(item.get("ai_bucket") or "practice")
+
+    if content_type == "paper" or bucket == "frontier":
+        return "把其中 1 个新能力做成最小复现实验，记录失败边界与可迁移条件。"
+    if content_type in {"engineering", "tooling"} or bucket == "tooling":
+        return "把文中方案映射到你现有链路，列出替换成本、收益与回滚条件。"
+    if content_type == "tweet":
+        return "把该观点与 1 个反例对照，避免只凭社区热度做判断。"
+    return "提炼 1 条本周可验证动作，写入任务清单并设定完成标准。"
 
 
 def _why_it_matters(item: dict) -> str:
@@ -223,11 +278,14 @@ def _build_mindmap_block(
             bucket = "practice"
         bucket_items[bucket].append(item)
 
+    existing_branches: set[str] = set()
     for bucket in AI_BUCKET_ORDER:
         items = bucket_items[bucket]
         if not items:
             continue
-        lines.append(f'    "{_bucket_label(bucket)}"')
+        bucket_name = _bucket_label(bucket)
+        existing_branches.add(bucket_name)
+        lines.append(f'    "{bucket_name}"')
         for item in items[:max_items_per_branch]:
             lines.append(f'      "{_sanitize_mermaid_label(item.get("title", "未命名"))}"')
 
@@ -235,7 +293,10 @@ def _build_mindmap_block(
         entries = content_groups.get(content_type, [])
         if not entries:
             continue
-        lines.append(f'    "{CONTENT_TYPE_LABELS[content_type]}"')
+        branch_name = CONTENT_TYPE_LABELS[content_type]
+        if branch_name in existing_branches:
+            continue
+        lines.append(f'    "{branch_name}"')
         for _, item in entries[:max_items_per_branch]:
             lines.append(f'      "{_sanitize_mermaid_label(item.get("title", "未命名"))}"')
 
@@ -261,6 +322,8 @@ def format_daily_digest(
     action_items: int = 3,
     max_deferred_items: int = 8,
     include_mindmap: bool = True,
+    include_cognitive_lenses: bool = True,
+    cognitive_questions: list[str] | None = None,
     paper_written: list[dict] | None = None,
     video_written: list[dict] | None = None,
     paper_queue: list[dict] | None = None,
@@ -276,6 +339,10 @@ def format_daily_digest(
     paper_queue = (paper_queue or [])[:max_deferred_items]
     video_queue = (video_queue or [])[:max_deferred_items]
     stats = stats or {}
+    question_pool = cognitive_questions or DEFAULT_COGNITIVE_QUESTIONS
+    normalized_questions = [q.strip() for q in question_pool if q and q.strip()]
+    if not normalized_questions:
+        normalized_questions = DEFAULT_COGNITIVE_QUESTIONS
 
     if raw_only:
         filepath = f"00-Inbox/Raw-Feeds/Raw-Daily-Feeds-{today}.md"
@@ -373,6 +440,40 @@ def format_daily_digest(
             ]
         )
 
+    if include_cognitive_lenses:
+        lines.extend(
+            [
+                "## Karpathy 视角：今日认知增量",
+                "",
+                "> [!tip] 认知评估框架",
+            ]
+        )
+        for question in normalized_questions[:8]:
+            lines.append(f"> - {question}")
+        lines.append("")
+
+        if not picks:
+            lines.append("- *(今日暂无达标精选，暂不生成认知增量判断。)*")
+            lines.append("")
+        else:
+            for idx, (source, item) in enumerate(picks[:3], start=1):
+                lens = _karpathy_lens(item, source)
+                content_type = _infer_content_type(item, source)
+                content_type_label = CONTENT_TYPE_LABELS.get(content_type, "其他")
+                summary = _multi_sentence_summary(
+                    item.get("summary", ""), max_len=240, max_sentences=2
+                )
+
+                lines.append(f"### 判断 {idx}：{lens}")
+                lines.append(
+                    f"- 证据：[{item['title']}]({item['link']})（{source} / {content_type_label}）"
+                )
+                if summary:
+                    lines.append(f"- 发生了什么：{summary}")
+                lines.append(f"- 为什么重要：{_why_it_matters(item)}")
+                lines.append(f"- 今日动作：{_daily_one_thing(item, source)}")
+                lines.append("")
+
     lines.extend(
         [
             "## 今日精选",
@@ -385,24 +486,34 @@ def format_daily_digest(
         lines.append("")
     else:
         for idx, (source, item) in enumerate(picks, start=1):
-            summary = _first_sentence(item.get("summary", ""), max_len=150)
+            summary = _multi_sentence_summary(item.get("summary", ""), max_len=220, max_sentences=2)
             bucket_label = _bucket_label(str(item.get("ai_bucket") or "practice"))
+            content_type = _infer_content_type(item, source)
+            content_type_label = CONTENT_TYPE_LABELS.get(content_type, "其他")
+            published = str(item.get("published", "")).strip()
+
             lines.append(f"### {idx}. [{item['title']}]({item['link']})")
-            lines.append(
-                f"`来源: {source}` | `分桶: {bucket_label}` | `兴趣分: {item.get('score', 0)}`"
-            )
-            lines.append(f"- 为什么值得看：{_why_it_matters(item)}")
+            meta = [
+                f"来源: {source}",
+                f"类型: {content_type_label}",
+                f"分桶: {bucket_label}",
+                f"兴趣分: {item.get('score', 0)}",
+            ]
+            if published:
+                meta.append(f"发布时间: {published}")
+            lines.append(" | ".join(f"`{part}`" for part in meta))
             if summary:
-                lines.append(f"- 摘要：{summary}")
+                lines.append(f"- 事实快照：{summary}")
+            lines.append(f"- 为什么值得看：{_why_it_matters(item)}")
+            lines.append(f"- 今天怎么用：{_capture_prompt(item)}")
             score_reasons = item.get("score_reasons", [])
             if score_reasons:
-                lines.append(f"- 信号：{', '.join(score_reasons[:3])}")
-            lines.append(f"- 提炼提示：{_capture_prompt(item)}")
+                lines.append(f"- 关键证据信号：{', '.join(score_reasons[:4])}")
             lines.append("")
 
     lines.append("## 统一雷达")
     lines.append("")
-    radar_limit = max(2, max_items_per_source + 1)
+    radar_limit = max(1, max_items_per_source)
     radar_types = [t for t in CONTENT_TYPE_ORDER if content_groups.get(t)]
     if not radar_types:
         lines.append("- *(今日暂无条目。)*")
@@ -494,8 +605,8 @@ def format_daily_digest(
                 parts.append(f"兴趣分 {item.get('score')}")
             if item.get("ai_bucket"):
                 parts.append(_bucket_label(str(item.get("ai_bucket"))))
-            meta = f" ({'; '.join(parts)})" if parts else ""
-            line = f"- [{title}]({link}){meta}"
+            meta_suffix = f" ({'; '.join(parts)})" if parts else ""
+            line = f"- [{title}]({link}){meta_suffix}"
             if summary:
                 line += f" - {summary}"
             lines.append(line)

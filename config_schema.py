@@ -86,6 +86,16 @@ class PKMConfig(BaseModel):
     daily_digest_action_items: int = Field(default=3, ge=1, le=10)
     daily_digest_max_deferred_items: int = Field(default=8, ge=1, le=30)
     daily_digest_include_mindmap: bool = True
+    daily_digest_include_cognitive_lenses: bool = True
+    daily_digest_cognitive_questions: list[str] = Field(
+        default_factory=lambda: [
+            "能力边界是否实质前移（不仅是榜单数字）？",
+            "架构范式是否变化（例如主模型+子代理）？",
+            "成本-延迟-质量前沿是否改写？",
+            "评测与治理是否可复现、可审计？",
+            "能否沉淀为长期杠杆（SOP/模板/基线）？",
+        ]
+    )
 
     # AI content quality controls
     max_ai_items_per_feed: int = Field(default=8, ge=1, le=50)
@@ -117,6 +127,7 @@ class PKMConfig(BaseModel):
         "ai_interest_topics",
         "ai_priority_topics",
         "ai_exclude_keywords",
+        "daily_digest_cognitive_questions",
     )
     @classmethod
     def normalize_string_lists(cls, values: list[str]) -> list[str]:

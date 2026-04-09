@@ -250,6 +250,14 @@
     "daily_digest_action_items": 3,
     "daily_digest_max_deferred_items": 6,
     "daily_digest_include_mindmap": true,
+    "daily_digest_include_cognitive_lenses": true,
+    "daily_digest_cognitive_questions": [
+        "能力边界是否实质前移（不仅是榜单数字）？",
+        "架构范式是否变化（例如主模型+子代理）？",
+        "成本-延迟-质量前沿是否改写？",
+        "评测与治理是否可复现、可审计？",
+        "能否沉淀为长期杠杆（SOP/模板/基线）？"
+    ],
     "max_ai_items_per_feed": 8,
     "min_ai_interest_score": 7,
     "ai_interest_topics": [
