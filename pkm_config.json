@@ -121,20 +121,6 @@
             "enabled": true
         },
         {
-            "name": "IELTS Podcast",
-            "url": "https://www.ieltspodcast.com/feed/",
-            "domain": "IELTS",
-            "note_folder": "10-Notes/IELTS",
-            "enabled": true
-        },
-        {
-            "name": "IELTSbuddy",
-            "url": "https://www.ieltsbuddy.com/rss.xml",
-            "domain": "IELTS",
-            "note_folder": "10-Notes/IELTS",
-            "enabled": true
-        },
-        {
             "name": "Sequoia Capital",
             "url": "https://www.sequoiacap.com/feed/",
             "domain": "AI-News",
@@ -201,74 +187,43 @@
             "name": "LangChain Blog (Optional)",
             "url": "https://blog.langchain.dev/rss/",
             "domain": "AI-News",
+            "content_type": "engineering",
+            "note_folder": "30-Daily/AI-News",
+            "enabled": true
+        },
+        {
+            "name": "OpenAI X (RSSHub Optional)",
+            "url": "https://rsshub.app/twitter/user/OpenAI",
+            "domain": "Tweet",
+            "content_type": "tweet",
+            "note_folder": "30-Daily/AI-News",
+            "enabled": false
+        },
+        {
+            "name": "Anthropic X (RSSHub Optional)",
+            "url": "https://rsshub.app/twitter/user/AnthropicAI",
+            "domain": "Tweet",
+            "content_type": "tweet",
+            "note_folder": "30-Daily/AI-News",
+            "enabled": false
+        },
+        {
+            "name": "Simon Willison (Engineering Practice Optional)",
+            "url": "https://simonwillison.net/atom/everything/",
+            "domain": "Engineering",
+            "content_type": "engineering",
+            "note_folder": "30-Daily/AI-News",
+            "enabled": true
+        },
+        {
+            "name": "GitHub Changelog AI (Optional)",
+            "url": "https://github.blog/changelog/label/ai/feed/",
+            "domain": "Tooling",
+            "content_type": "tooling",
             "note_folder": "30-Daily/AI-News",
             "enabled": true
         }
     ],
-    "ielts_resources": {
-        "practice_sites": [
-            {
-                "name": "IELTSonlinetests.com",
-                "url": "https://ieltsonlinetests.com",
-                "skills": [
-                    "Listening",
-                    "Reading"
-                ]
-            },
-            {
-                "name": "IELTS-up.com",
-                "url": "https://ielts-up.com",
-                "skills": [
-                    "Listening",
-                    "Reading"
-                ]
-            },
-            {
-                "name": "IELTSbuddy.com",
-                "url": "https://www.ieltsbuddy.com",
-                "skills": [
-                    "Listening",
-                    "Reading"
-                ]
-            },
-            {
-                "name": "British Council",
-                "url": "https://www.britishcouncil.org/exam/ielts/preparation",
-                "skills": [
-                    "All"
-                ]
-            }
-        ],
-        "youtube_channels": [
-            {
-                "name": "IELTS Liz",
-                "url": "https://www.youtube.com/@ieltsliz",
-                "skills": [
-                    "Listening",
-                    "Reading",
-                    "Writing"
-                ]
-            },
-            {
-                "name": "E2 IELTS",
-                "url": "https://www.youtube.com/@E2IELTS",
-                "skills": [
-                    "All"
-                ]
-            }
-        ],
-        "books": [
-            "Cambridge IELTS 10",
-            "Cambridge IELTS 11",
-            "Cambridge IELTS 12",
-            "Cambridge IELTS 13",
-            "Cambridge IELTS 14",
-            "Cambridge IELTS 15",
-            "Cambridge IELTS 16",
-            "Cambridge IELTS 17",
-            "Cambridge IELTS 18"
-        ]
-    },
     "domain_mapping": {
         "python": "10-Notes/Programming/Python",
         "cpp": "10-Notes/Programming/Cpp",
@@ -281,21 +236,22 @@
         "data-science": "10-Notes/Data-Science",
         "statistics": "10-Notes/Data-Science",
         "research": "10-Notes/Research",
-        "paper": "10-Notes/Research",
-        "ielts": "10-Notes/IELTS",
-        "ielts-listening": "10-Notes/IELTS/Listening",
-        "ielts-reading": "10-Notes/IELTS/Reading",
-        "ielts-writing": "10-Notes/IELTS/Writing",
-        "ielts-speaking": "10-Notes/IELTS/Speaking"
+        "paper": "10-Notes/Research"
     },
     "note_language_default": "cn",
     "daily_fetch_time": "07:00",
     "max_papers_per_day": 10,
     "max_videos_per_channel": 3,
+    "max_paper_notes_per_day": 4,
+    "max_video_notes_per_day": 3,
+    "daily_digest_only_output": true,
+    "daily_digest_top_picks": 6,
+    "daily_digest_max_items_per_source": 2,
+    "daily_digest_action_items": 3,
+    "daily_digest_max_deferred_items": 6,
+    "daily_digest_include_mindmap": true,
     "max_ai_items_per_feed": 8,
     "min_ai_interest_score": 7,
-    "validate_ielts_urls": true,
-    "ielts_request_timeout_sec": 8,
     "ai_interest_topics": [
         "skill",
         "skills",
@@ -339,19 +295,6 @@
         "event recap",
         "conference tickets",
         "coupon"
-    ],
-    "ielts_accessible_domains": [
-        "ieltspodcast.com",
-        "ieltsbuddy.com",
-        "britishcouncil.org",
-        "ielts.org",
-        "bbc.com",
-        "bbc.co.uk",
-        "ted.com",
-        "theguardian.com",
-        "scientificamerican.com",
-        "nationalgeographic.com",
-        "sciencefocus.com"
     ],
     "used_articles_retention_days": 30,
     "source_health_keep_runs": 30,

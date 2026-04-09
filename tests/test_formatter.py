@@ -1,4 +1,4 @@
-import formatter
+﻿import formatter
 
 
 def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
@@ -10,7 +10,7 @@ def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
                 "summary": "Deep implementation notes.",
                 "score": 10,
                 "score_reasons": ["priority:context engineering"],
-                "ai_bucket": "\u524d\u6cbf\u6280\u5de7",
+                "ai_bucket": "frontier",
             }
         ],
         "General Feed": [
@@ -21,10 +21,10 @@ def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
     path, content = formatter.format_daily_digest(items, raw_only=True)
 
     assert path.startswith("00-Inbox/Raw-Feeds/Raw-Daily-Feeds-")
-    assert "## AI-News Curated Buckets" in content
-    assert "### \u524d\u6cbf\u6280\u5de7" in content
-    assert "**InterestScore**: 10" in content
-    assert "## Source Buckets (Full Raw by Feed)" in content
+    assert "## AI 资讯分桶（快速分拣）" in content
+    assert "### 前沿技巧" in content
+    assert "**兴趣分**: 10" in content
+    assert "## 按来源展开（完整原始项）" in content
 
 
 def test_format_daily_digest_final_mode_includes_frontmatter_and_links():
@@ -35,7 +35,7 @@ def test_format_daily_digest_final_mode_includes_frontmatter_and_links():
                 "link": "https://example.com/c",
                 "summary": "A practical post.",
                 "score": 8,
-                "ai_bucket": "\u5de5\u7a0b\u5b9e\u8df5",
+                "ai_bucket": "practice",
             }
         ]
     }
@@ -44,12 +44,47 @@ def test_format_daily_digest_final_mode_includes_frontmatter_and_links():
 
     assert path.startswith("30-Daily/AI-News/AI-Daily-")
     assert "type: daily-digest" in content
-    assert "## AI-News Curated Buckets" in content
-    assert "- **[How we monitor internal coding agents](https://example.com/c)**" in content
-    assert "## Source Buckets (All)" in content
+    assert "> [!summary] 60 秒快读" in content
+    assert "## 今日精选" in content
+    assert "## 统一雷达" in content
+    assert "## 提炼任务（可执行）" in content
+    assert "## 知识图谱" in content
+    assert "```mermaid" in content
+    assert "## 按来源快扫" in content
+    assert "How we monitor internal coding agents" in content
 
 
-def test_format_note_templates_cover_paper_video_and_ielts():
+def test_format_daily_digest_unified_radar_supports_tweets_and_engineering():
+    items = {
+        "OpenAI X": [
+            {
+                "title": "Agent eval thread",
+                "link": "https://x.com/openai/status/1",
+                "summary": "Tweet summary.",
+                "content_type": "tweet",
+            }
+        ],
+        "Engineering Blog": [
+            {
+                "title": "Production harness playbook",
+                "link": "https://example.com/engineering",
+                "summary": "How to deploy and evaluate.",
+                "content_type": "engineering",
+                "score": 9,
+                "ai_bucket": "practice",
+            }
+        ],
+    }
+
+    _, content = formatter.format_daily_digest(items, raw_only=False)
+
+    assert "### 推文速览" in content
+    assert "Agent eval thread" in content
+    assert "### 工程实践" in content
+    assert "Production harness playbook" in content
+
+
+def test_format_note_templates_cover_paper_and_video():
     paper_path, paper_content = formatter.format_paper_note(
         {"title": "Paper: LLM Eval", "link": "https://arxiv.org/abs/1234", "summary": "summary"},
         source_name="arXiv",
@@ -70,10 +105,7 @@ def test_format_note_templates_cover_paper_video_and_ielts():
     )
     assert video_path.startswith("20-Sources/Videos/2026-04-07-Andrej-Karpathy-")
     assert "How I use LLMs" in video_content
-
-    ielts_path, ielts_content = formatter.format_ielts_reminder()
-    assert ielts_path.startswith("10-Notes/IELTS/IELTS-Study-")
-    assert "IELTS" in ielts_content
+    assert "## 概念图" in video_content
 
 
 def test_build_note_includes_entity_type_and_sources():

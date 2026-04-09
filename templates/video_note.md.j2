@@ -1,33 +1,53 @@
 ---
 title: "{{ title }}"
 date: {{ published }}
-tags: ["YouTube", "{{ channel_name }}", "{{ domain }}"]
+tags: ["视频", "{{ channel_name }}", "{{ domain }}"]
 domain: {{ domain }}
-source: "YouTube / {{ channel_name }}"
-language: en
+source: "视频 / {{ channel_name }}"
+language: cn
 type: video-note
 status: unreviewed
+watch_stage: inbox
 url: "{{ link }}"
 created: {{ now }}
 ---
 
 # {{ title }}
 
-> 📺 **{{ channel_name }}** | {{ published }}
-> [→ Watch Video]({{ link }})
+> [!info] 来源
+> 频道：**{{ channel_name }}** | 日期：{{ published }}  
+> [观看视频]({{ link }})
 
-## Video Summary
+> [!summary] 一句话摘要
+> {{ summary }}
 
-{{ summary }}
+## 观看目标
 
-## Key Takeaways
+- [ ] 主方法框架是什么？
+- [ ] 今天能落地到我的流程的是哪一点？
+- [ ] 哪个观点值得转成永久笔记？
 
-> *(fill in after watching)*
+## 概念图
 
-## Study Notes
+```mermaid
+mindmap
+  root(("视频洞察"))
+    问题
+    流程
+    工具
+    指标
+    下一步动作
+```
 
-> *(to be filled)*
+## 关键收获
 
-## Related Concepts
+> *(看完后补充)*
 
-> *(to be filled)*
+## 提炼笔记
+
+> *(待补充)*
+
+## 行动项
+
+- [ ] 新增 1 条永久笔记
+- [ ] 把本笔记关联到 1 个 MOC / 项目页

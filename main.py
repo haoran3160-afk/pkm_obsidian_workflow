@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — Obsidian PKM Workflow Orchestrator
+main.py 鈥?Obsidian PKM Workflow Orchestrator
 Coordinates fetching, formatting, and writing of daily digests and feeds.
 Usage:
   python main.py
@@ -31,7 +31,7 @@ import formatter
 import writer
 from config_schema import PKMConfig, load_and_validate
 
-# ── Console / Logging Setup ───────────────────────────────────────────────────
+# 鈹€鈹€ Console / Logging Setup 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 SCRIPT_DIR = Path(__file__).parent
 LOG_PATH = SCRIPT_DIR / "fetch.log"
@@ -56,7 +56,7 @@ structlog.configure(
 )
 log = structlog.get_logger("pkm")
 
-# ── Load Config + Environment ─────────────────────────────────────────────────
+# 鈹€鈹€ Load Config + Environment 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 load_dotenv(SCRIPT_DIR / ".env")
 
@@ -78,17 +78,22 @@ CACHE_EXPIRY_DAYS = int(os.getenv("FEED_CACHE_EXPIRY_DAYS", "7"))
 RAW_FEED_KEEP_DAYS = int(os.getenv("RAW_FEED_KEEP_DAYS", "7"))
 MAX_PAPERS = CONFIG.max_papers_per_day
 MAX_VIDEOS = CONFIG.max_videos_per_channel
+MAX_PAPER_NOTES_PER_DAY = CONFIG.max_paper_notes_per_day
+MAX_VIDEO_NOTES_PER_DAY = CONFIG.max_video_notes_per_day
+DAILY_DIGEST_ONLY_OUTPUT = CONFIG.daily_digest_only_output
+DAILY_DIGEST_TOP_PICKS = CONFIG.daily_digest_top_picks
+DAILY_DIGEST_MAX_ITEMS_PER_SOURCE = CONFIG.daily_digest_max_items_per_source
+DAILY_DIGEST_ACTION_ITEMS = CONFIG.daily_digest_action_items
+DAILY_DIGEST_MAX_DEFERRED_ITEMS = CONFIG.daily_digest_max_deferred_items
+DAILY_DIGEST_INCLUDE_MINDMAP = CONFIG.daily_digest_include_mindmap
 WRITE_MODE = os.getenv("PKM_WRITE_MODE", CONFIG.write_mode)
 
 QUALITY_CONFIG = {
     "max_ai_items_per_feed": CONFIG.max_ai_items_per_feed,
     "min_ai_interest_score": CONFIG.min_ai_interest_score,
-    "validate_ielts_urls": CONFIG.validate_ielts_urls,
-    "ielts_request_timeout_sec": CONFIG.ielts_request_timeout_sec,
     "ai_interest_topics": CONFIG.ai_interest_topics,
     "ai_priority_topics": CONFIG.ai_priority_topics,
     "ai_exclude_keywords": CONFIG.ai_exclude_keywords,
-    "ielts_accessible_domains": CONFIG.ielts_accessible_domains,
 }
 
 if VAULT_PATH == "YOUR_VAULT_PATH":
@@ -96,7 +101,7 @@ if VAULT_PATH == "YOUR_VAULT_PATH":
         "event", message="OBSIDIAN_VAULT_PATH not set in .env. Files won't be saved correctly!"
     )
 
-# ── Cache Management ──────────────────────────────────────────────────────────
+# 鈹€鈹€ Cache Management 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def load_feed_cache() -> dict:
@@ -202,16 +207,16 @@ def _save_source_health(report: dict[str, Any]) -> None:
     log.info("source_health.saved", entries=len(report.get("source_health_entries", [])))
 
 
-# ── Writer Dispatch ───────────────────────────────────────────────────────────
+# 鈹€鈹€ Writer Dispatch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
     """
     Dispatch a write operation based on WRITE_MODE config.
-    In dry_run mode, only print the target path — no actual I/O.
+    In dry_run mode, only print the target path 鈥?no actual I/O.
     """
     if dry_run:
-        console.print(f"  [dim cyan][dry-run][/] would write → [bold]{filepath}[/]")
+        console.print(f"  [dim cyan][dry-run][/] would write 鈫?[bold]{filepath}[/]")
         return True
 
     if WRITE_MODE == "disk":
@@ -235,7 +240,7 @@ def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
     return False
 
 
-# ── Utility Helpers ───────────────────────────────────────────────────────────
+# 鈹€鈹€ Utility Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _is_paper_feed(url: str) -> bool:
@@ -267,6 +272,64 @@ def _dedupe_items(items: list[dict]) -> list[dict]:
     return deduped
 
 
+def _select_with_global_limit(
+    items: list[dict],
+    source_key: str,
+    limit: int,
+) -> tuple[list[dict], list[dict]]:
+    """
+    Select up to `limit` items globally while keeping source diversity.
+
+    Uses a round-robin pass across sources to avoid one source dominating
+    the daily write set.
+    """
+    if limit <= 0:
+        return [], list(items)
+    if len(items) <= limit:
+        return list(items), []
+
+    grouped: dict[str, list[dict]] = {}
+    source_order: list[str] = []
+    for item in items:
+        source = str(item.get(source_key) or "unknown")
+        if source not in grouped:
+            grouped[source] = []
+            source_order.append(source)
+        grouped[source].append(item)
+
+    selected: list[dict] = []
+    while len(selected) < limit:
+        progressed = False
+        for source in source_order:
+            queue = grouped.get(source, [])
+            if not queue:
+                continue
+            selected.append(queue.pop(0))
+            progressed = True
+            if len(selected) >= limit:
+                break
+        if not progressed:
+            break
+
+    deferred: list[dict] = []
+    for source in source_order:
+        deferred.extend(grouped.get(source, []))
+    return selected, deferred
+
+
+def _remove_deferred_from_cache(feed_cache: dict, deferred_items: list[dict], today: str) -> None:
+    """
+    Deferred items should remain eligible in a future run.
+    Remove today's cache marks for deferred GUIDs.
+    """
+    for item in deferred_items:
+        guid = (item.get("guid") or "").strip()
+        if not guid:
+            continue
+        if feed_cache.get(guid) == today:
+            feed_cache.pop(guid, None)
+
+
 def _archive_old_raw_feeds(vault_path: str, keep_days: int = 7) -> int:
     if keep_days < 1:
         return 0
@@ -294,7 +357,7 @@ def _archive_old_raw_feeds(vault_path: str, keep_days: int = 7) -> int:
     return archived_count
 
 
-# ── Run Report ────────────────────────────────────────────────────────────────
+# 鈹€鈹€ Run Report 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _build_run_report(test_mode: bool, raw_only: bool, dry_run: bool) -> dict[str, Any]:
@@ -306,6 +369,12 @@ def _build_run_report(test_mode: bool, raw_only: bool, dry_run: bool) -> dict[st
         "writes_ok": 0,
         "writes_failed": 0,
         "written_files": [],
+        "paper_candidates": 0,
+        "paper_written": 0,
+        "paper_deferred": 0,
+        "video_candidates": 0,
+        "video_written": 0,
+        "video_deferred": 0,
         "archived_raw_files": 0,
         "source_health_entries": [],
         "start_time": time.monotonic(),
@@ -325,7 +394,7 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
     duration = time.monotonic() - report["start_time"]
     mode_label = report["mode"]
 
-    console.rule(f"[bold green]PKM Run Summary — {mode_label}[/]")
+    console.rule(f"[bold green]PKM Run Summary 鈥?{mode_label}[/]")
 
     # Sources table
     table = Table(title="Feed Sources", border_style="dim", show_lines=True)
@@ -336,11 +405,11 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
     table.add_column("Time (s)", justify="right")
 
     for src in report["rss_sources"]:
-        status = "[green]✅ OK[/]" if src["ok"] else "[red]❌ Fail[/]"
+        status = "[green]鉁?OK[/]" if src["ok"] else "[red]鉂?Fail[/]"
         table.add_row(src["name"], "RSS", str(src["items"]), status, f"{src['elapsed']:.1f}")
 
     for src in report["yt_sources"]:
-        status = "[green]✅ OK[/]" if src["ok"] else "[red]❌ Fail[/]"
+        status = "[green]鉁?OK[/]" if src["ok"] else "[red]鉂?Fail[/]"
         table.add_row(src["name"], "YouTube", str(src["items"]), status, f"{src['elapsed']:.1f}")
 
     console.print(table)
@@ -352,6 +421,15 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
         f"[dim]Archived raw files:[/] {report['archived_raw_files']}  "
         f"[dim]Duration:[/] {duration:.1f}s"
     )
+    if not report.get("raw_only", False):
+        action_label = "included" if DAILY_DIGEST_ONLY_OUTPUT else "written"
+        console.print(
+            f"[dim]Curation:[/] papers {action_label} {report['paper_written']}/{report['paper_candidates']} "
+            f"(deferred {report['paper_deferred']}), videos {report['video_written']}/"
+            f"{report['video_candidates']} (deferred {report['video_deferred']})"
+        )
+        if DAILY_DIGEST_ONLY_OUTPUT:
+            console.print("[dim]Output mode:[/] single core AI Daily (paper/video merged into digest)")
 
     if report["written_files"]:
         preview = report["written_files"][:5]
@@ -359,7 +437,7 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
         console.print(f"[dim]Output:[/] {', '.join(preview)}{suffix}")
 
 
-# ── Validation ────────────────────────────────────────────────────────────────
+# 鈹€鈹€ Validation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _validate_runtime_or_raise(test_mode: bool, dry_run: bool) -> None:
@@ -378,7 +456,7 @@ def _validate_runtime_or_raise(test_mode: bool, dry_run: bool) -> None:
         raise RuntimeError(f"OBSIDIAN_VAULT_PATH is not writable: {vault_dir}")
 
 
-# ── Doctor ────────────────────────────────────────────────────────────────────
+# 鈹€鈹€ Doctor 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def run_doctor(check_network: bool = True) -> bool:
@@ -430,20 +508,20 @@ def run_doctor(check_network: bool = True) -> bool:
     if warnings:
         console.print("\n[yellow]Warnings:[/]")
         for item in warnings:
-            console.print(f"  [yellow]⚠[/]  {item}")
+            console.print(f"  [yellow]鈿燵/]  {item}")
 
     if errors:
         console.print("\n[red]Errors:[/]")
         for item in errors:
-            console.print(f"  [red]✗[/]  {item}")
+            console.print(f"  [red]鉁梉/]  {item}")
         console.print("\n[bold red]Doctor result: FAILED[/]")
         return False
 
-    console.print("\n[bold green]Doctor result: OK ✅[/]")
+    console.print("\n[bold green]Doctor result: OK 鉁匸/]")
     return True
 
 
-# ── Core Workflow ─────────────────────────────────────────────────────────────
+# 鈹€鈹€ Core Workflow 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def run_daily_fetch(
@@ -463,9 +541,17 @@ def run_daily_fetch(
     _refresh_source_rotation_week(SOURCE_ROTATION_PATH)
     _compact_used_articles(USED_ARTICLES_PATH, CONFIG.used_articles_retention_days)
     today = formatter.today_str()
-    news_items: dict[str, list[dict]] = defaultdict(list)
 
-    # ── 1. RSS Feeds ──────────────────────────────────────────────────────────
+    news_items: dict[str, list[dict]] = defaultdict(list)
+    paper_candidates: list[dict] = []
+    video_candidates: list[dict] = []
+
+    paper_written_refs: list[dict] = []
+    video_written_refs: list[dict] = []
+    paper_queue_refs: list[dict] = []
+    video_queue_refs: list[dict] = []
+
+    # 1) RSS
     for feed in CONFIG.rss_feeds:
         if not feed.enabled:
             log.info("rss.skipped", feed=feed.name, reason="enabled=false")
@@ -498,14 +584,13 @@ def run_daily_fetch(
         if _is_paper_feed(feed.url):
             if raw_only:
                 news_items[feed.name].extend(items)
-            elif not test_mode:
+            else:
                 for paper in items:
-                    path, content = formatter.format_paper_note(paper, feed.name)
-                    _record_write(report, path, _write(path, content, dry_run))
+                    paper_candidates.append({**paper, "_source_name": feed.name})
         else:
             news_items[feed.name].extend(items)
 
-    # ── 2. YouTube ────────────────────────────────────────────────────────────
+    # 2) YouTube
     if raw_only:
         yt_raw_list: list[dict] = []
         for channel in CONFIG.youtube_channels:
@@ -529,6 +614,7 @@ def run_daily_fetch(
                 )
                 _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
                 continue
+
             report["yt_sources"].append(
                 {
                     "name": channel.name,
@@ -543,9 +629,12 @@ def run_daily_fetch(
         if yt_raw_list:
             news_items["YouTube"].extend(yt_raw_list)
 
-        deduped: dict[str, list[dict]] = {
-            src: _dedupe_items(itms) for src, itms in news_items.items() if _dedupe_items(itms)
-        }
+        deduped: dict[str, list[dict]] = {}
+        for src, items in news_items.items():
+            dedup = _dedupe_items(items)
+            if dedup:
+                deduped[src] = dedup
+
         if deduped:
             path, content = formatter.format_daily_digest(deduped, raw_only=True)
             if test_mode:
@@ -554,9 +643,8 @@ def run_daily_fetch(
                 ok_write = _write(path, content, dry_run)
                 _record_write(report, path, ok_write)
                 if ok_write and not dry_run:
-                    report["archived_raw_files"] = _archive_old_raw_feeds(
-                        VAULT_PATH, RAW_FEED_KEEP_DAYS
-                    )
+                    report["archived_raw_files"] = _archive_old_raw_feeds(VAULT_PATH, RAW_FEED_KEEP_DAYS)
+
     else:
         for channel in CONFIG.youtube_channels:
             if not channel.enabled:
@@ -581,6 +669,7 @@ def run_daily_fetch(
                 )
                 _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
                 continue
+
             report["yt_sources"].append(
                 {
                     "name": channel.name,
@@ -590,30 +679,139 @@ def run_daily_fetch(
                 }
             )
             _record_source_health(report, channel.name, "youtube", "ok", len(videos))
-            if not test_mode:
-                for v in videos:
-                    path, content = formatter.format_video_note(v)
-                    _record_write(report, path, _write(path, content, dry_run))
+            for video in videos:
+                video_candidates.append({**video, "_source_name": channel.name})
 
-        # ── 3. Daily Digest ───────────────────────────────────────────────────
-        if news_items:
-            path, content = formatter.format_daily_digest(dict(news_items), raw_only=False)
+        # 3) Global write limits to avoid Obsidian overload
+        selected_papers, deferred_papers = _select_with_global_limit(
+            paper_candidates, "_source_name", MAX_PAPER_NOTES_PER_DAY
+        )
+        selected_videos, deferred_videos = _select_with_global_limit(
+            video_candidates, "_source_name", MAX_VIDEO_NOTES_PER_DAY
+        )
+
+        _remove_deferred_from_cache(feed_cache, deferred_papers, today)
+        _remove_deferred_from_cache(feed_cache, deferred_videos, today)
+
+        report["paper_candidates"] = len(paper_candidates)
+        report["paper_written"] = len(selected_papers)
+        report["paper_deferred"] = len(deferred_papers)
+        report["video_candidates"] = len(video_candidates)
+        report["video_written"] = len(selected_videos)
+        report["video_deferred"] = len(deferred_videos)
+
+        for paper in selected_papers:
+            source_name = str(paper.get("_source_name") or "paper-feed")
+            news_items[source_name].append({**paper, "content_type": paper.get("content_type", "paper")})
+            if DAILY_DIGEST_ONLY_OUTPUT:
+                paper_written_refs.append(
+                    {
+                        "title": paper.get("title", "Untitled"),
+                        "link": paper.get("link", ""),
+                        "source": source_name,
+                        "summary": paper.get("summary", ""),
+                    }
+                )
+                continue
+
+            path, content = formatter.format_paper_note(paper, source_name)
+            if test_mode:
+                log.info("test.paper.preview", path=path)
+            else:
+                _record_write(report, path, _write(path, content, dry_run))
+            paper_written_refs.append(
+                {
+                    "title": paper.get("title", "Untitled"),
+                    "link": paper.get("link", ""),
+                    "source": source_name,
+                    "note_path": path,
+                    "summary": paper.get("summary", ""),
+                }
+            )
+
+        for video in selected_videos:
+            source_name = str(video.get("channel_name") or "YouTube")
+            news_items[source_name].append({**video, "content_type": video.get("content_type", "video")})
+            if DAILY_DIGEST_ONLY_OUTPUT:
+                video_written_refs.append(
+                    {
+                        "title": video.get("title", "Untitled"),
+                        "link": video.get("link", ""),
+                        "source": source_name,
+                        "summary": video.get("summary", ""),
+                    }
+                )
+                continue
+
+            path, content = formatter.format_video_note(video)
+            if test_mode:
+                log.info("test.video.preview", path=path)
+            else:
+                _record_write(report, path, _write(path, content, dry_run))
+            video_written_refs.append(
+                {
+                    "title": video.get("title", "Untitled"),
+                    "link": video.get("link", ""),
+                    "source": source_name,
+                    "note_path": path,
+                    "summary": video.get("summary", ""),
+                }
+            )
+
+        paper_queue_refs = [
+            {
+                "title": p.get("title", "Untitled"),
+                "link": p.get("link", ""),
+                "source": p.get("_source_name", "paper-feed"),
+                "summary": p.get("summary", ""),
+            }
+            for p in deferred_papers[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
+        ]
+        video_queue_refs = [
+            {
+                "title": v.get("title", "Untitled"),
+                "link": v.get("link", ""),
+                "source": v.get("channel_name", "YouTube"),
+                "summary": v.get("summary", ""),
+            }
+            for v in deferred_videos[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
+        ]
+
+        # 4) Daily digest
+        if (
+            news_items
+            or paper_written_refs
+            or video_written_refs
+            or paper_queue_refs
+            or video_queue_refs
+        ):
+            path, content = formatter.format_daily_digest(
+                dict(news_items),
+                raw_only=False,
+                top_picks=DAILY_DIGEST_TOP_PICKS,
+                max_items_per_source=DAILY_DIGEST_MAX_ITEMS_PER_SOURCE,
+                action_items=DAILY_DIGEST_ACTION_ITEMS,
+                max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
+                include_mindmap=DAILY_DIGEST_INCLUDE_MINDMAP,
+                paper_written=paper_written_refs,
+                video_written=video_written_refs,
+                paper_queue=paper_queue_refs,
+                video_queue=video_queue_refs,
+                stats={
+                    "sources_scanned": len(report["rss_sources"]) + len(report["yt_sources"]),
+                    "papers_written": len(paper_written_refs),
+                    "papers_deferred": len(deferred_papers),
+                    "videos_written": len(video_written_refs),
+                    "videos_deferred": len(deferred_videos),
+                    "daily_only_output": DAILY_DIGEST_ONLY_OUTPUT,
+                },
+            )
             if test_mode:
                 log.info("test.digest.preview", path=path, preview=content[:200])
             else:
                 _record_write(report, path, _write(path, content, dry_run))
 
-    # ── 4. IELTS ──────────────────────────────────────────────────────────────
-    if not raw_only:
-        path, content = formatter.format_ielts_reminder()
-        if test_mode:
-            log.info("test.ielts.preview", path=path)
-        else:
-            _record_write(report, path, _write(path, content, dry_run))
-    else:
-        log.info("ielts.skipped", reason="raw_only / agent mode")
-
-    # ── Finalize ──────────────────────────────────────────────────────────────
+    # Finalize
     if not dry_run:
         save_feed_cache(feed_cache)
         log.info("cache.saved", guid_count=len(feed_cache))
@@ -623,7 +821,7 @@ def run_daily_fetch(
     return report
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+# 鈹€鈹€ CLI 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def main() -> None:
@@ -695,3 +893,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

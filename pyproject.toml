@@ -59,7 +59,6 @@ source = ["."]
 omit = [
     "tests/*",
     ".venv/*",
-    "daily_fetch_v1.py",
     "setup.py",
     "parse_ruff.py",
     "fetcher_registry.py",
@@ -77,7 +76,6 @@ fail_under = 70
 line-length = 100
 target-version = "py310"
 exclude = [
-    "daily_fetch_v1.py",   # legacy reference, not part of the package
     "parse_ruff.py",       # temp helper script
     "git_log.txt",
 ]

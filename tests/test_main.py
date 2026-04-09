@@ -73,3 +73,126 @@ def test_run_doctor_fails_when_vault_path_missing(monkeypatch):
     monkeypatch.setattr(main, "CONFIG", config)
 
     assert main.run_doctor(check_network=False) is False
+
+
+def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir(parents=True, exist_ok=True)
+
+    config = PKMConfig(
+        rss_feeds=[
+            RssFeed(
+                name="AI News",
+                url="https://example.com/news.xml",
+                note_folder="30-Daily/AI-News",
+                domain="AI-News",
+            ),
+            RssFeed(
+                name="arXiv",
+                url="https://arxiv.org/rss/cs.AI",
+                note_folder="20-Sources/Papers",
+                domain="Research",
+            ),
+        ],
+        youtube_channels=[
+            YouTubeChannel(
+                name="YT",
+                channel_id="UC1234567890123456789012",
+                note_folder="20-Sources/Videos",
+                domain="AI-Stack",
+            ),
+        ],
+    )
+
+    monkeypatch.setattr(main, "CONFIG", config)
+    monkeypatch.setattr(main, "VAULT_PATH", str(vault))
+    monkeypatch.setattr(main, "WRITE_MODE", "disk")
+    monkeypatch.setattr(main, "DAILY_DIGEST_ONLY_OUTPUT", True)
+    monkeypatch.setattr(main, "MAX_PAPERS", 10)
+    monkeypatch.setattr(main, "MAX_VIDEOS", 3)
+    monkeypatch.setattr(main, "MAX_PAPER_NOTES_PER_DAY", 4)
+    monkeypatch.setattr(main, "MAX_VIDEO_NOTES_PER_DAY", 3)
+    monkeypatch.setattr(main, "DAILY_DIGEST_TOP_PICKS", 5)
+    monkeypatch.setattr(main, "DAILY_DIGEST_MAX_ITEMS_PER_SOURCE", 2)
+    monkeypatch.setattr(main, "DAILY_DIGEST_ACTION_ITEMS", 3)
+    monkeypatch.setattr(main, "DAILY_DIGEST_MAX_DEFERRED_ITEMS", 6)
+    monkeypatch.setattr(main, "DAILY_DIGEST_INCLUDE_MINDMAP", True)
+    monkeypatch.setattr(
+        main,
+        "QUALITY_CONFIG",
+        {
+            "max_ai_items_per_feed": 8,
+            "min_ai_interest_score": 2,
+            "ai_interest_topics": ["workflow", "eval"],
+            "ai_priority_topics": ["agent engineering"],
+            "ai_exclude_keywords": [],
+        },
+    )
+
+    monkeypatch.setattr(main, "load_feed_cache", lambda: {})
+    monkeypatch.setattr(main, "save_feed_cache", lambda _cache: None)
+    monkeypatch.setattr(main, "_refresh_source_rotation_week", lambda _path: None)
+    monkeypatch.setattr(main, "_compact_used_articles", lambda _path, _retention: None)
+    monkeypatch.setattr(main, "_save_source_health", lambda _report: None)
+    monkeypatch.setattr(main, "_archive_old_raw_feeds", lambda _vault, keep_days=7: 0)
+
+    def fake_fetch_rss(feed_config, *_args, **_kwargs):
+        if "arxiv" in feed_config["url"]:
+            return [
+                {
+                    "title": "Paper A",
+                    "link": "https://arxiv.org/abs/1234.5678",
+                    "guid": "paper-guid-1",
+                    "summary": "Paper summary",
+                    "content_type": "paper",
+                }
+            ]
+        return [
+            {
+                "title": "Agent eval workflow",
+                "link": "https://example.com/agent-eval",
+                "guid": "news-guid-1",
+                "summary": "Practical guide",
+                "score": 10,
+                "score_reasons": ["priority:agent engineering"],
+                "ai_bucket": "frontier",
+                "content_type": "news",
+            }
+        ]
+
+    monkeypatch.setattr(main.fetcher, "fetch_rss_feed", fake_fetch_rss)
+    monkeypatch.setattr(
+        main.fetcher,
+        "fetch_youtube_channel",
+        lambda *_args, **_kwargs: [
+            {
+                "title": "Video A",
+                "link": "https://youtube.com/watch?v=abc",
+                "guid": "video-guid-1",
+                "published": "2026-04-08",
+                "summary": "Video summary",
+                "channel_name": "YT",
+                "domain": "AI-Stack",
+                "folder": "20-Sources/Videos",
+                "content_type": "video",
+            }
+        ],
+    )
+
+    written_paths: list[str] = []
+
+    def fake_write(path: str, content: str, dry_run: bool = False) -> bool:
+        assert content
+        if not dry_run:
+            written_paths.append(path)
+        return True
+
+    monkeypatch.setattr(main, "_write", fake_write)
+
+    report = main.run_daily_fetch(test_mode=False, raw_only=False, dry_run=False)
+
+    assert report["writes_ok"] == 1
+    assert len(written_paths) == 1
+    assert written_paths[0].startswith("30-Daily/AI-News/AI-Daily-")
+    assert not any(path.startswith("20-Sources/Papers/") for path in written_paths)
+    assert not any(path.startswith("20-Sources/Videos/") for path in written_paths)

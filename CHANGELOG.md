@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Project scope is now AI-focused only. IELTS-specific feeds, templates, and workflow docs were removed.
+
+### Removed
+- Legacy script `daily_fetch_v1.py`.
+
 ## [2.1.0] - 2026-03-28
 
 ### Added
@@ -46,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pkm_bridge.py`**: Obsidian Local REST API bridge.
 
 ### Removed
-- `daily_fetch_v1.py` promoted to legacy reference (kept for comparison).
+- `daily_fetch_v1.py` promoted to legacy reference.
 
 ---
 
@@ -56,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial single-file `daily_fetch_v1.py` implementation.
 - RSS + YouTube feed fetching.
 - Obsidian Vault disk-write output.
-- Basic IELTS study log generation.
+- Basic study log generation.
 
 [Unreleased]: https://github.com/yourusername/obsidian_workflow_open/compare/v2.1.0...HEAD
 [2.1.0]: https://github.com/yourusername/obsidian_workflow_open/compare/v2.0.0...v2.1.0

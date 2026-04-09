@@ -76,6 +76,29 @@ def test_fetch_rss_feed_returns_empty_when_parser_fails(monkeypatch):
     assert items == []
 
 
+def test_fetch_rss_feed_applies_content_type_from_config(monkeypatch):
+    feed_config = {
+        "name": "OpenAI X",
+        "url": "https://rsshub.app/twitter/user/OpenAI",
+        "note_folder": "30-Daily/AI-News",
+        "content_type": "tweet",
+    }
+    entries = [
+        {
+            "title": "Agent eval thread",
+            "link": "https://x.com/openai/status/1",
+            "id": "tweet-1",
+            "summary": "Thread summary",
+        }
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda url: _feed(entries))
+
+    items = fetcher.fetch_rss_feed(feed_config, {}, "2026-04-08", raw_only=True)
+
+    assert len(items) == 1
+    assert items[0]["content_type"] == "tweet"
+
+
 def test_fetch_youtube_channel_skips_cached_and_cleans_html(monkeypatch):
     channel = {
         "name": "Test Channel",
@@ -100,6 +123,7 @@ def test_fetch_youtube_channel_skips_cached_and_cleans_html(monkeypatch):
     assert len(videos) == 1
     assert videos[0]["guid"] == "new-guid"
     assert videos[0]["summary"] == "fresh video"
+    assert videos[0]["content_type"] == "video"
     assert feed_cache["new-guid"] == "2026-03-26"
 
 
@@ -159,43 +183,10 @@ def test_fetch_rss_feed_ai_scoring_threshold_bucket_and_cap(monkeypatch):
     assert items[0]["score"] >= 7
     assert "score_reasons" in items[0]
     assert items[0]["ai_bucket"] in {
-        "\u524d\u6cbf\u6280\u5de7",
-        "\u5de5\u7a0b\u5b9e\u8df5",
-        "\u5de5\u5177\u94fe\u66f4\u65b0",
+        "frontier",
+        "practice",
+        "tooling",
     }
-
-
-def test_fetch_rss_feed_ielts_domain_and_access_filters(monkeypatch):
-    feed_config = {
-        "name": "IELTS Podcast",
-        "url": "https://example.com/ielts.xml",
-        "note_folder": "30-Daily/IELTS-Preview",
-        "domain": "IELTS",
-    }
-    entries = [
-        {"title": "Bad domain", "link": "https://foo.example/a", "id": "i1", "summary": "x"},
-        {"title": "Blocked url", "link": "https://bbc.com/b", "id": "i2", "summary": "x"},
-        {"title": "Allowed", "link": "https://www.bbc.com/c", "id": "i3", "summary": "x"},
-    ]
-    monkeypatch.setattr(fetcher, "_parse_feed", lambda url: _feed(entries))
-
-    def _fake_access(url, timeout_sec):
-        if url.endswith("/b"):
-            return False, "GET 403"
-        return True, "GET 200"
-
-    monkeypatch.setattr(fetcher, "_is_url_accessible_cached", _fake_access)
-
-    quality = {
-        "validate_ielts_urls": True,
-        "ielts_accessible_domains": ["bbc.com"],
-        "ielts_request_timeout_sec": 3,
-    }
-    items = fetcher.fetch_rss_feed(
-        feed_config, {}, "2026-04-07", raw_only=True, quality_config=quality
-    )
-
-    assert [item["guid"] for item in items] == ["i3"]
 
 
 def test_score_ai_interest_includes_show_hn_and_exclude_penalty():

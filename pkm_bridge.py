@@ -98,7 +98,6 @@ def append_to_moc(domain: str, note_title: str, note_path: str) -> None:
         "math-modeling": "40-MOC/MOC-Math-Modeling.md",
         "data-science": "40-MOC/MOC-Data-Science.md",
         "research": "40-MOC/MOC-Research.md",
-        "ielts": "40-MOC/MOC-IELTS.md",
         "ai-stack": "40-MOC/MOC-Programming.md",
     }
 

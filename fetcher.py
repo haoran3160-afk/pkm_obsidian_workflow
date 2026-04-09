@@ -14,7 +14,6 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import feedparser
-import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 log = logging.getLogger("pkm.fetcher")
@@ -40,6 +39,11 @@ AI_KEYWORDS = [
 ]
 
 AI_NEWS_DOMAINS = {"ai-news", "solopreneur"}
+AI_SCORING_CONTENT_TYPES = {"news", "tweet", "engineering", "tooling", "community"}
+
+AI_BUCKET_FRONTIER = "frontier"
+AI_BUCKET_PRACTICE = "practice"
+AI_BUCKET_TOOLING = "tooling"
 
 DEFAULT_AI_INTEREST_TOPICS = [
     "skill",
@@ -84,7 +88,30 @@ DEFAULT_AI_EXCLUDE_KEYWORDS = [
     "coupon",
 ]
 
-_URL_ACCESS_CACHE: dict[str, tuple[bool, str]] = {}
+
+def infer_content_type(source_name: str, url: str, domain: str, fallback: str = "news") -> str:
+    value = (fallback or "").strip().lower()
+    if value:
+        return value
+
+    source_lower = source_name.lower()
+    url_lower = url.lower()
+    domain_lower = domain.lower()
+
+    if "arxiv" in url_lower or "paperswithcode" in url_lower or domain_lower == "research":
+        return "paper"
+    if "youtube.com" in url_lower or "youtu.be" in url_lower:
+        return "video"
+    if any(token in url_lower for token in ("twitter.com", "x.com", "nitter.net", "rsshub.app/twitter")):
+        return "tweet"
+    if any(
+        token in source_lower
+        for token in ("engineering", "hackernews", "hacker news", "github", "playbook", "dev")
+    ):
+        return "engineering"
+    if "tool" in source_lower or domain_lower == "tooling":
+        return "tooling"
+    return "news"
 
 
 def _contains_keywords(text: str, keywords: Iterable[str]) -> bool:
@@ -108,67 +135,6 @@ def normalize_url(url: str) -> str:
     netloc = parts.netloc.lower()
     path = parts.path.rstrip("/")
     return urlunsplit((scheme, netloc, path, parts.query, ""))
-
-
-def _host_from_url(url: str) -> str:
-    host = urlsplit(url).netloc.lower()
-    if ":" in host:
-        host = host.split(":", 1)[0]
-    if host.startswith("www."):
-        host = host[4:]
-    return host
-
-
-def _is_domain_allowed(url: str, allowed_domains: list[str]) -> bool:
-    if not allowed_domains:
-        return True
-
-    host = _host_from_url(url)
-    if not host:
-        return False
-
-    for domain in allowed_domains:
-        d = (domain or "").strip().lower()
-        if d.startswith("www."):
-            d = d[4:]
-        if not d:
-            continue
-        if host == d or host.endswith("." + d):
-            return True
-    return False
-
-
-def _is_url_accessible(url: str, timeout_sec: int = 8) -> tuple[bool, str]:
-    headers = {"User-Agent": "obsidian-pkm-workflow/3.0"}
-    try:
-        head = requests.head(url, allow_redirects=True, timeout=timeout_sec, headers=headers)
-        if 200 <= head.status_code < 400:
-            return True, f"HEAD {head.status_code}"
-        if head.status_code not in (403, 405):
-            return False, f"HEAD {head.status_code}"
-    except Exception:
-        pass
-
-    try:
-        resp = requests.get(
-            url, allow_redirects=True, timeout=timeout_sec, headers=headers, stream=True
-        )
-        status = resp.status_code
-        resp.close()
-        if 200 <= status < 400:
-            return True, f"GET {status}"
-        return False, f"GET {status}"
-    except Exception as exc:
-        return False, str(exc)
-
-
-def _is_url_accessible_cached(url: str, timeout_sec: int) -> tuple[bool, str]:
-    key = normalize_url(url) or url.strip()
-    if key in _URL_ACCESS_CACHE:
-        return _URL_ACCESS_CACHE[key]
-    result = _is_url_accessible(url, timeout_sec=timeout_sec)
-    _URL_ACCESS_CACHE[key] = result
-    return result
 
 
 def _score_ai_interest(
@@ -292,13 +258,12 @@ def classify_ai_bucket(item: dict) -> str:
     ]
 
     if any(k in text or k in signals for k in frontier_keywords):
-        return "前沿技巧"
+        return AI_BUCKET_FRONTIER
     if any(k in text or k in signals for k in engineering_keywords):
-        return "工程实践"
+        return AI_BUCKET_PRACTICE
     if any(k in text or k in signals for k in tooling_keywords):
-        return "工具链更新"
-    return "工程实践"
-
+        return AI_BUCKET_TOOLING
+    return AI_BUCKET_PRACTICE
 
 @retry(
     retry=retry_if_exception_type(Exception),
@@ -323,8 +288,6 @@ def fetch_rss_feed(
 
     max_ai_items_per_feed = int(quality.get("max_ai_items_per_feed", 8))
     min_ai_interest_score = int(quality.get("min_ai_interest_score", 0))
-    validate_ielts_urls = bool(quality.get("validate_ielts_urls", True))
-    ielts_request_timeout_sec = int(quality.get("ielts_request_timeout_sec", 8))
 
     ai_interest_topics = [
         x.lower() for x in quality.get("ai_interest_topics", DEFAULT_AI_INTEREST_TOPICS)
@@ -335,15 +298,19 @@ def fetch_rss_feed(
     ai_exclude_keywords = [
         x.lower() for x in quality.get("ai_exclude_keywords", DEFAULT_AI_EXCLUDE_KEYWORDS)
     ]
-    ielts_accessible_domains = [x.lower() for x in quality.get("ielts_accessible_domains", [])]
 
     name = feed_config["name"]
     url = feed_config["url"]
     folder = feed_config["note_folder"]
     filter_kw = [kw for kw in feed_config.get("filter_keywords", []) if kw]
     domain = str(feed_config.get("domain", "")).lower()
-    is_ai_feed = domain in AI_NEWS_DOMAINS
-    is_ielts_feed = domain == "ielts" or "ielts" in name.lower()
+    content_type = infer_content_type(
+        source_name=name,
+        url=url,
+        domain=domain,
+        fallback=str(feed_config.get("content_type", "")).lower(),
+    )
+    is_ai_feed = domain in AI_NEWS_DOMAINS or content_type in AI_SCORING_CONTENT_TYPES
 
     log.info(f"[rss] Fetching: {name}")
     try:
@@ -362,8 +329,6 @@ def fetch_rss_feed(
     results = []
     skipped_by_cache = 0
     skipped_by_ai_relevance = 0
-    skipped_by_ielts_domain = 0
-    skipped_by_ielts_access = 0
     pruned_by_cap = 0
     seen_urls: set[str] = set()
 
@@ -387,23 +352,13 @@ def fetch_rss_feed(
         if filter_kw and not _contains_keywords(f"{title} {summary}", filter_kw):
             continue
 
-        if is_ielts_feed and link:
-            if not _is_domain_allowed(link, ielts_accessible_domains):
-                skipped_by_ielts_domain += 1
-                continue
-            if validate_ielts_urls:
-                ok, reason = _is_url_accessible_cached(link, timeout_sec=ielts_request_timeout_sec)
-                if not ok:
-                    skipped_by_ielts_access += 1
-                    log.info(f"  [ielts-skip] inaccessible: {title[:60]} ({reason})")
-                    continue
-
         item = {
             "title": title,
             "link": link,
             "guid": guid,
             "summary": summary,
             "folder": folder,
+            "content_type": content_type,
         }
 
         if is_ai_feed:
@@ -437,12 +392,10 @@ def fetch_rss_feed(
                 feed_cache[final_guid] = today
 
     log.info(
-        "  -> %s items (cache=%s, low-score=%s, ielts-domain=%s, ielts-access=%s, pruned=%s)",
+        "  -> %s items (cache=%s, low-score=%s, pruned=%s)",
         len(results),
         skipped_by_cache,
         skipped_by_ai_relevance,
-        skipped_by_ielts_domain,
-        skipped_by_ielts_access,
         pruned_by_cap,
     )
     return results
@@ -504,6 +457,7 @@ def fetch_youtube_channel(
                 "channel_name": name,
                 "domain": domain,
                 "folder": folder,
+                "content_type": "video",
             }
         )
 
@@ -537,8 +491,11 @@ def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
                 "link": link,
                 "published": published,
                 "summary": summary,
+                "content_type": "video",
             }
         )
 
     log.info(f"  [ok] {name}: {len(results)} videos (raw)")
     return results
+
+

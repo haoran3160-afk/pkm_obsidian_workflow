@@ -1,13 +1,11 @@
-
-## YouTube 最新视频
-
+﻿## YouTube 最新视频
 {% for v in videos %}
-- **Channel**: {{ v.channel_name }}
-  **Title**: {{ v.title }}
-  **URL**: {{ v.link }}
-  **Published**: {{ v.published }}
+- **频道**: {{ v.channel_name }}
+  **标题**: {{ v.title }}
+  **链接**: {{ v.link }}
+  **发布时间**: {{ v.published }}
 {% if v.summary %}
-  **Summary**: {{ v.summary }}
+  **摘要**: {{ v.summary }}
 {% endif %}
 
 {% endfor %}

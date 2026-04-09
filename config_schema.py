@@ -20,6 +20,15 @@ class RssFeed(BaseModel):
     name: str = Field(..., min_length=1)
     url: str = Field(..., description="Full HTTP/HTTPS URL of the RSS feed")
     domain: str = ""
+    content_type: Literal[
+        "news",
+        "paper",
+        "tweet",
+        "engineering",
+        "tooling",
+        "community",
+        "other",
+    ] = "news"
     note_folder: str = Field(..., min_length=1)
     filter_keywords: list[str] = Field(default_factory=list)
     enabled: bool = True
@@ -39,6 +48,7 @@ class YouTubeChannel(BaseModel):
     name: str = Field(..., min_length=1)
     channel_id: str = Field(..., min_length=1)
     domain: str = ""
+    content_type: Literal["video"] = "video"
     note_folder: str = Field(..., min_length=1)
     enabled: bool = True
 
@@ -55,18 +65,6 @@ class ObsidianAPIConfig(BaseModel):
     api_key: str = ""
 
 
-class IELTSPracticeSite(BaseModel):
-    name: str
-    url: str
-    skills: list[str] = Field(default_factory=list)
-
-
-class IELTSResources(BaseModel):
-    practice_sites: list[IELTSPracticeSite] = Field(default_factory=list)
-    youtube_channels: list[dict] = Field(default_factory=list)
-    books: list[str] = Field(default_factory=list)
-
-
 class PKMConfig(BaseModel):
     """Root configuration schema for pkm_config.json."""
 
@@ -78,6 +76,16 @@ class PKMConfig(BaseModel):
 
     max_papers_per_day: int = Field(default=10, ge=1, le=100)
     max_videos_per_channel: int = Field(default=3, ge=1, le=20)
+    max_paper_notes_per_day: int = Field(default=4, ge=0, le=50)
+    max_video_notes_per_day: int = Field(default=3, ge=0, le=30)
+
+    # Daily digest readability controls
+    daily_digest_only_output: bool = True
+    daily_digest_top_picks: int = Field(default=8, ge=1, le=30)
+    daily_digest_max_items_per_source: int = Field(default=3, ge=1, le=20)
+    daily_digest_action_items: int = Field(default=3, ge=1, le=10)
+    daily_digest_max_deferred_items: int = Field(default=8, ge=1, le=30)
+    daily_digest_include_mindmap: bool = True
 
     # AI content quality controls
     max_ai_items_per_feed: int = Field(default=8, ge=1, le=50)
@@ -86,11 +94,6 @@ class PKMConfig(BaseModel):
     ai_priority_topics: list[str] = Field(default_factory=list)
     ai_exclude_keywords: list[str] = Field(default_factory=list)
 
-    # IELTS accessibility controls
-    validate_ielts_urls: bool = True
-    ielts_request_timeout_sec: int = Field(default=8, ge=2, le=30)
-    ielts_accessible_domains: list[str] = Field(default_factory=list)
-
     # Retention and health tracking controls
     used_articles_retention_days: int = Field(default=30, ge=1, le=365)
     source_health_keep_runs: int = Field(default=30, ge=1, le=365)
@@ -98,7 +101,6 @@ class PKMConfig(BaseModel):
 
     daily_fetch_time: str = "07:00"
     domain_mapping: dict[str, str] = Field(default_factory=dict)
-    ielts_resources: IELTSResources | None = None
     vault_path: str | None = None
 
     @field_validator("daily_fetch_time")
@@ -115,7 +117,6 @@ class PKMConfig(BaseModel):
         "ai_interest_topics",
         "ai_priority_topics",
         "ai_exclude_keywords",
-        "ielts_accessible_domains",
     )
     @classmethod
     def normalize_string_lists(cls, values: list[str]) -> list[str]:
