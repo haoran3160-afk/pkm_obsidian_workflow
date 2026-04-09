@@ -1,4 +1,4 @@
-# Obsidian Workflow Open
+#  PKM Obsidian Workflow
 
 > 一个面向 AI 信息摄入与知识沉淀的 Obsidian 本地优先工作流。
 > 目标不是“抓更多”，而是“每天只产出一份高密度、可执行、可沉淀的核心日报”。
@@ -18,7 +18,7 @@
 2. 加工层：摘要看似丰富，但缺乏可执行结论。
 3. 沉淀层：每天产出太多碎片，最后无人回看。
 
-`obsidian_workflow_open` 的设计原则是：
+`pkm_obsidian_workflow` 的设计原则是：
 
 - **少而精**：默认只输出一份核心 `AI Daily`。
 - **可执行**：日报内直接包含“提炼任务”和行动入口。
@@ -27,21 +27,43 @@
 
 ---
 
-## 架构灵感（Karpathy 风格）
+## 架构灵感（Karpathy 知识库架构）
 
-本项目参考了 Karpathy 倡导的知识处理思想：
+把知识库当作一个持续迭代的系统，而不是一次性产出的文档集合。
 
-- **Raw Context First**：先保留足够上下文，不在最前面过度删减信息。
-- **LLM / Agent Curation**：中间层做打分、聚类、优先级排序、结构化提炼。
-- **Promote to Durable Artifacts**：最终沉淀为长期可复用的知识对象。
-- **Governance by Default**：把治理（健康检查、结构一致性、可追溯）做成默认能力。
+### 设计哲学（First Principles）
 
-在本仓库中对应为：
+1. **知识是“压缩链”，不是“堆积场”**
+   先做高保真采集（保留原始上下文），再做逐层压缩（摘要、分类、结论），最后转成可执行动作（任务、实验、决策）。
+2. **上下文优先于结论**
+   结论必须可回溯到来源，避免“只剩观点、没有证据”。这对 AI 时代尤为关键，可降低幻觉摘要对长期知识库的污染。
+3. **决策效率优先于文件数量**
+   目标不是每天生成更多笔记，而是让你在固定时间内读完、理解并做出行动选择。
+4. **治理能力是默认配置**
+   知识库天然会熵增。去重、结构约束、健康检查要内建在流程中，而不是靠事后人工救火。
 
-- `--raw-only` 生成原始日报（证据层）
-- `AI interest scoring + content_type` 进行策展分发（加工层）
-- 单一核心 `AI Daily` 输出（沉淀层）
-- `knowledge_health_check.py` 做结构治理（治理层）
+### 设计哲学：五层闭环（Capture -> Filter -> Curate -> Promote -> Govern）
+
+1. **Capture（采集层）**
+   以“尽量无损”方式接收信息：来源、标题、链接、发布时间、上下文都保留，先不做过早删减。
+2. **Filter（过滤层）**
+   用兴趣评分、优先词、排除词、去重和限流，把“信息流”变成“候选集”，控制每日认知负载。
+3. **Curate（策展层）**
+   将候选集聚合到单一核心 `AI Daily`，并按 `资讯 / 推文 / 工程实践 / 论文 / 视频` 分区，形成统一阅读界面。
+4. **Promote（沉淀层）**
+   只把高价值条目升级为长期笔记（如专题、MOC、行动清单），避免“每条输入都沉淀”导致库内膨胀。
+5. **Govern（治理层）**
+   持续执行知识库健康检查，修正链接失效、结构漂移和重复内容，让系统长期保持可维护性。
+
+### 在本项目中的映射
+
+- `python main.py --raw-only`：Raw Context First，保留证据层与回溯能力
+- `fetcher.py`：评分、去重、分类、限流（Filter）
+- `formatter.py`：生成单一核心 `AI Daily` 并统一分区（Curate）
+- `daily_digest_only_output=true`：默认高信噪比单输出，避免信息碎片化
+- `knowledge_health_check.py`：结构治理与长期质量维护（Govern）
+
+这套哲学的核心不是“自动化越多越好”，而是“在最小认知负担下，把外部信息转成可执行知识”。
 
 ---
 
@@ -225,14 +247,6 @@ mypy main.py fetcher.py formatter.py writer.py config_schema.py --ignore-missing
 pytest --cov=. --cov-report=term-missing -q
 ```
 
-安全建议：
-
-- 不要提交 `.env`
-- API Key 仅本地保存
-- 发布前阅读 [SECURITY.md](SECURITY.md)
-
----
-
 ## 路线图（Roadmap）
 
 - 更强的“多源去重 + 主题聚合”
@@ -259,12 +273,12 @@ MIT License，见 [LICENSE](LICENSE)
 
 ---
 
-## 给 Agent 的一键配置提示词（可直接复制）
+## 给 Agent 的一键配置提示词
 
 如果你希望让 Agent 直接把本项目配置在你的电脑上，把下面这段话原样发给 Agent：
 
 ```text
-请在我的电脑上完整配置并验证 obsidian_workflow_open，要求端到端可运行。
+请在我的电脑上完整配置并验证 pkm_obsidian_workflow，要求端到端可运行。
 
 目标：
 1) 在本地创建并激活 Python 虚拟环境，安装 requirements.txt 与 requirements-dev.txt。
