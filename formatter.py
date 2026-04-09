@@ -78,13 +78,8 @@ def _clean_text(text: str, max_len: int) -> str:
 
 
 def _first_sentence(text: str, max_len: int = 140) -> str:
-    plain = _clean_text(text, max_len=500)
-    if not plain:
-        return ""
-    match = re.search(r"([.!?。！？])", plain)
-    if match:
-        plain = plain[: match.end()]
-    return _clean_text(plain, max_len=max_len)
+    # Reuse the summary splitter to avoid truncating decimal tokens like "GPT-5.4".
+    return _multi_sentence_summary(text, max_len=max_len, max_sentences=1)
 
 
 def _multi_sentence_summary(text: str, max_len: int = 220, max_sentences: int = 2) -> str:
@@ -147,7 +142,9 @@ def _why_it_matters(item: dict) -> str:
     if "practical:+" in reasons:
         return "包含可快速落地的实现细节。"
     if summary:
-        return _first_sentence(summary, max_len=110)
+        if re.search(r"[\u4e00-\u9fff]", summary):
+            return _first_sentence(summary, max_len=110)
+        return "提供一线英文材料，可用于补齐背景、案例与验证依据。"
     return "存在潜在价值，建议先快速人工扫读。"
 
 
@@ -184,7 +181,38 @@ def _build_top_picks(
                 continue
             scored.append((source, item))
     scored.sort(key=lambda pair: (pair[1].get("score", 0), pair[1].get("title", "")), reverse=True)
-    return scored[:top_picks]
+
+    if not scored:
+        return []
+
+    selected: list[tuple[str, dict]] = []
+    seen_links: set[str] = set()
+
+    # Diversity pass: take at most one item per content type first.
+    for content_type in CONTENT_TYPE_ORDER:
+        for source, item in scored:
+            if _infer_content_type(item, source) != content_type:
+                continue
+            link = str(item.get("link", ""))
+            if link in seen_links:
+                continue
+            selected.append((source, item))
+            seen_links.add(link)
+            break
+        if len(selected) >= top_picks:
+            return selected
+
+    # Fill by global score order.
+    for source, item in scored:
+        link = str(item.get("link", ""))
+        if link in seen_links:
+            continue
+        selected.append((source, item))
+        seen_links.add(link)
+        if len(selected) >= top_picks:
+            break
+
+    return selected
 
 
 def _normalize_content_type(value: str) -> str:
@@ -313,6 +341,163 @@ def _capture_prompt(item: dict) -> str:
     return "提炼 1 个本周可验证的流程步骤。"
 
 
+def _published_date(item: dict) -> str:
+    raw = str(item.get("published", "")).strip()
+    if not raw:
+        return "日期未知"
+    return raw[:10] if len(raw) >= 10 else raw
+
+
+def _has_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
+
+
+def _reason_to_cn(reason: str) -> str:
+    token = reason.strip().lower()
+    if token.startswith("priority:evaluation"):
+        return "评测体系"
+    if token.startswith("priority:coding agent") or token.startswith("priority:agent engineering"):
+        return "编码代理"
+    if token.startswith("priority:tool calling"):
+        return "工具调用"
+    if token.startswith("priority:memory"):
+        return "记忆机制"
+    if token.startswith("interest:workflow"):
+        return "工作流设计"
+    if token.startswith("interest:eval") or token.startswith("interest:evaluation"):
+        return "评测实践"
+    if token.startswith("practical:+"):
+        return "可落地实现"
+    if token.startswith("base-ai"):
+        return "AI 核心议题"
+    cleaned = reason.split(":")[-1].strip()
+    return cleaned or "行业动态"
+
+
+def _signal_summary_cn(item: dict, source: str) -> str:
+    mapped: list[str] = []
+    for reason in item.get("score_reasons", []):
+        text = _reason_to_cn(str(reason))
+        if text and text not in mapped:
+            mapped.append(text)
+        if len(mapped) >= 3:
+            break
+    if mapped:
+        return "、".join(mapped)
+    content_type = _infer_content_type(item, source)
+    return f"{CONTENT_TYPE_LABELS.get(content_type, '其他')}动态"
+
+
+def _summary_cn(
+    item: dict,
+    source: str,
+    *,
+    max_len: int = 220,
+    max_sentences: int = 2,
+) -> str:
+    raw = _multi_sentence_summary(
+        item.get("summary", ""), max_len=max_len, max_sentences=max_sentences
+    )
+    if raw and _has_cjk(raw):
+        return raw
+
+    signal = _signal_summary_cn(item, source)
+    lens = _karpathy_lens(item, source)
+    action = _capture_prompt(item)
+    generated = f"英文原文聚焦{signal}，对应「{lens}」维度；建议：{action}"
+    return _clean_text(generated, max_len=max_len)
+
+
+def _build_tldr_candidates(
+    picks: list[tuple[str, dict]],
+    content_groups: dict[str, list[tuple[str, dict]]],
+    limit: int,
+) -> list[tuple[str, dict]]:
+    selected: list[tuple[str, dict]] = []
+    seen_links: set[str] = set()
+
+    def _append(entries: list[tuple[str, dict]]) -> None:
+        for source, item in entries:
+            link = str(item.get("link", ""))
+            if link in seen_links:
+                continue
+            seen_links.add(link)
+            selected.append((source, item))
+            if len(selected) >= limit:
+                return
+
+    _append(picks)
+    if len(selected) >= limit:
+        return selected
+
+    for content_type in CONTENT_TYPE_ORDER:
+        _append(content_groups.get(content_type, []))
+        if len(selected) >= limit:
+            break
+
+    return selected
+
+
+def _build_keyword_tags(
+    picks: list[tuple[str, dict]],
+    content_groups: dict[str, list[tuple[str, dict]]],
+    limit: int = 10,
+) -> list[str]:
+    tags: list[str] = []
+
+    def _add(tag: str) -> None:
+        normalized = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", tag.strip())
+        if not normalized:
+            return
+        hashtag = normalized if normalized.startswith("#") else f"#{normalized}"
+        if hashtag not in tags:
+            tags.append(hashtag)
+
+    for content_type in ("news", "engineering", "paper", "video", "tweet", "tooling"):
+        if content_groups.get(content_type):
+            _add(CONTENT_TYPE_LABELS.get(content_type, "其他"))
+
+    for _, item in picks:
+        bucket = _bucket_label(str(item.get("ai_bucket") or "practice"))
+        _add(bucket)
+        for reason in item.get("score_reasons", [])[:2]:
+            token = str(reason).split(":")[-1].strip()
+            _add(token)
+        if len(tags) >= limit:
+            break
+
+    return tags[:limit]
+
+
+def _collect_source_evidence(
+    picks: list[tuple[str, dict]],
+    content_groups: dict[str, list[tuple[str, dict]]],
+    max_links: int = 8,
+) -> list[tuple[str, str]]:
+    links: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(source: str, item: dict) -> None:
+        url = str(item.get("link", "")).strip()
+        if not url or url in seen:
+            return
+        seen.add(url)
+        links.append((source, url))
+
+    for source, item in picks:
+        _add(source, item)
+        if len(links) >= max_links:
+            return links
+
+    for content_type in CONTENT_TYPE_ORDER:
+        for source, item in content_groups.get(content_type, []):
+            _add(source, item)
+            if len(links) >= max_links:
+                return links
+
+    return links
+
+
 def format_daily_digest(
     items_by_source: dict,
     raw_only: bool = False,
@@ -405,6 +590,11 @@ def format_daily_digest(
     included_tweets = len(content_groups.get("tweet", []))
     included_engineering = len(content_groups.get("engineering", []))
 
+    tldr_limit = min(12, max(6, top_picks))
+    tldr_candidates = _build_tldr_candidates(picks, content_groups, limit=tldr_limit)
+    keyword_tags = _build_keyword_tags(picks, content_groups, limit=10)
+    evidence_links = _collect_source_evidence(picks, content_groups, max_links=8)
+
     lines = [
         "---",
         f'title: "AI 每日简报 - {today}"',
@@ -423,12 +613,7 @@ def format_daily_digest(
         f"> - 扫描来源：**{stats.get('sources_scanned', len(items_by_source))}** 个",
         f"> - 覆盖类型：推文 **{included_tweets}**、工程实践 **{included_engineering}**、论文 **{included_papers}**、视频 **{included_videos}**",
         "> - 输出形态：**单一核心 AI Daily**",
-        "> - 建议阅读顺序：速读摘要 -> 今日精选 -> 统一雷达 -> 提炼任务",
-        "",
-        "## 阅读路径",
-        "- `60 秒`：速读摘要 + 前 3 条今日精选",
-        "- `10 分钟`：+ 统一雷达 + 提炼任务",
-        "- `30 分钟`：+ 知识图谱 + 按来源快扫",
+        "> - 阅读结构：TL;DR -> 关键结论 -> 分栏简报 -> 执行清单",
         "",
     ]
     if daily_only_output:
@@ -439,6 +624,24 @@ def format_daily_digest(
                 "",
             ]
         )
+
+    lines.extend(
+        [
+            "## 今日 TL;DR（Tier 1）",
+            "",
+        ]
+    )
+    if not tldr_candidates:
+        lines.append("- *(今日暂无达标条目。)*")
+        lines.append("")
+    else:
+        for source, item in tldr_candidates:
+            headline = _clean_text(str(item.get("title", "未命名")), max_len=80)
+            summary = _summary_cn(item, source, max_len=120, max_sentences=1)
+            if not summary:
+                summary = _why_it_matters(item)
+            lines.append(f"- {headline}：{summary}（{source}，{_published_date(item)}）")
+        lines.append("")
 
     if include_cognitive_lenses:
         lines.extend(
@@ -460,13 +663,11 @@ def format_daily_digest(
                 lens = _karpathy_lens(item, source)
                 content_type = _infer_content_type(item, source)
                 content_type_label = CONTENT_TYPE_LABELS.get(content_type, "其他")
-                summary = _multi_sentence_summary(
-                    item.get("summary", ""), max_len=240, max_sentences=2
-                )
+                summary = _summary_cn(item, source, max_len=220, max_sentences=2)
 
                 lines.append(f"### 判断 {idx}：{lens}")
                 lines.append(
-                    f"- 证据：[{item['title']}]({item['link']})（{source} / {content_type_label}）"
+                    f"- 证据：[{item['title']}]({item['link']})（{source} / {content_type_label} / {_published_date(item)}）"
                 )
                 if summary:
                     lines.append(f"- 发生了什么：{summary}")
@@ -476,44 +677,30 @@ def format_daily_digest(
 
     lines.extend(
         [
-            "## 今日精选",
+            "## 关键结论（Takeaways）",
             "",
+            "| 主题 | 关键变化 | 影响判断 | 今日动作 |",
+            "|---|---|---|---|",
         ]
     )
-
-    if not picks:
-        lines.append("- *(今日暂无达标精选，请查看文末按来源快扫。)*")
-        lines.append("")
+    if picks:
+        for source, item in picks[:3]:
+            topic = _karpathy_lens(item, source)
+            change = _clean_text(
+                _summary_cn(item, source, max_len=80, max_sentences=1)
+                or str(item.get("title", "")),
+                max_len=80,
+            )
+            impact = _clean_text(_why_it_matters(item), max_len=80)
+            action = _clean_text(_daily_one_thing(item, source), max_len=80)
+            lines.append(f"| {topic} | {change} | {impact} | {action} |")
     else:
-        for idx, (source, item) in enumerate(picks, start=1):
-            summary = _multi_sentence_summary(item.get("summary", ""), max_len=220, max_sentences=2)
-            bucket_label = _bucket_label(str(item.get("ai_bucket") or "practice"))
-            content_type = _infer_content_type(item, source)
-            content_type_label = CONTENT_TYPE_LABELS.get(content_type, "其他")
-            published = str(item.get("published", "")).strip()
-
-            lines.append(f"### {idx}. [{item['title']}]({item['link']})")
-            meta = [
-                f"来源: {source}",
-                f"类型: {content_type_label}",
-                f"分桶: {bucket_label}",
-                f"兴趣分: {item.get('score', 0)}",
-            ]
-            if published:
-                meta.append(f"发布时间: {published}")
-            lines.append(" | ".join(f"`{part}`" for part in meta))
-            if summary:
-                lines.append(f"- 事实快照：{summary}")
-            lines.append(f"- 为什么值得看：{_why_it_matters(item)}")
-            lines.append(f"- 今天怎么用：{_capture_prompt(item)}")
-            score_reasons = item.get("score_reasons", [])
-            if score_reasons:
-                lines.append(f"- 关键证据信号：{', '.join(score_reasons[:4])}")
-            lines.append("")
-
-    lines.append("## 统一雷达")
+        lines.append("| 暂无高价值条目 | - | - | 从分栏简报挑 1 条做复盘 |")
     lines.append("")
-    radar_limit = max(1, max_items_per_source)
+
+    lines.append("## 分栏简报（Tier 2）")
+    lines.append("")
+    section_limit = max(3, max_items_per_source + 2)
     radar_types = [t for t in CONTENT_TYPE_ORDER if content_groups.get(t)]
     if not radar_types:
         lines.append("- *(今日暂无条目。)*")
@@ -521,25 +708,38 @@ def format_daily_digest(
     else:
         for content_type in radar_types:
             entries = content_groups[content_type]
-            shown = entries[:radar_limit]
+            shown = entries[:section_limit]
             hidden = max(0, len(entries) - len(shown))
             lines.append(f"### {CONTENT_TYPE_LABELS[content_type]}")
+
+            major_sources = []
+            for source, _ in entries:
+                if source not in major_sources:
+                    major_sources.append(source)
+                if len(major_sources) >= 2:
+                    break
+            source_label = " / ".join(major_sources) if major_sources else "无"
+            lines.append(f"> 共 **{len(entries)}** 条；主要来源：{source_label}。")
+
             for source, item in shown:
-                title = item.get("title", "未命名")
-                link = item.get("link", "")
-                summary = _first_sentence(item.get("summary", ""), max_len=130)
-                meta_parts = [f"来源: {source}"]
-                if item.get("score") is not None:
-                    meta_parts.append(f"兴趣分: {item.get('score')}")
-                line = f"- [{title}]({link}) | " + " | ".join(meta_parts)
+                title = _clean_text(str(item.get("title", "未命名")), max_len=110)
+                link = str(item.get("link", ""))
+                summary = _summary_cn(item, source, max_len=180, max_sentences=2)
+                score = item.get("score")
+                detail = f"来源：{source}；日期：{_published_date(item)}"
+                if score is not None:
+                    detail += f"；兴趣分：{score}"
+
                 if summary:
-                    line += f" | {summary}"
-                lines.append(line)
+                    lines.append(f"- [{title}]({link}) — {summary}（{detail}）")
+                else:
+                    lines.append(f"- [{title}]({link})（{detail}）")
+
             if hidden > 0:
                 lines.append(f"- ...另有 {hidden} 条")
             lines.append("")
 
-    lines.append("## 提炼任务（可执行）")
+    lines.append("## 可执行清单（Action Queue）")
     lines.append("")
     if picks:
         for idx, (_, item) in enumerate(picks[:action_items], start=1):
@@ -547,7 +747,7 @@ def format_daily_digest(
                 f"- [ ] {idx}. [{item.get('title', '未命名')}]({item.get('link', '')}) | {_capture_prompt(item)}"
             )
     else:
-        lines.append("- [ ] 今日无精选，请从统一雷达中任选 1 条进行提炼。")
+        lines.append("- [ ] 今日无精选，请从分栏简报中任选 1 条进行提炼。")
     lines.append("")
 
     if include_mindmap and picks:
@@ -562,11 +762,9 @@ def format_daily_digest(
         if paper_queue:
             lines.append("### 论文")
             for item in paper_queue:
-                summary = _first_sentence(item.get("summary", ""), max_len=90)
-                line = (
-                    f"- [{item.get('title', '未命名')}]({item.get('link', '')})"
-                    f" | {item.get('source', '论文来源')}"
-                )
+                source = str(item.get("source", "论文来源"))
+                summary = _summary_cn(item, source, max_len=90, max_sentences=1)
+                line = f"- [{item.get('title', '未命名')}]({item.get('link', '')}) | {source}"
                 if summary:
                     line += f" | {summary}"
                 lines.append(line)
@@ -574,19 +772,47 @@ def format_daily_digest(
         if video_queue:
             lines.append("### 视频")
             for item in video_queue:
-                summary = _first_sentence(item.get("summary", ""), max_len=90)
-                line = (
-                    f"- [{item.get('title', '未命名')}]({item.get('link', '')})"
-                    f" | {item.get('source', '视频来源')}"
-                )
+                source = str(item.get("source", "视频来源"))
+                summary = _summary_cn(item, source, max_len=90, max_sentences=1)
+                line = f"- [{item.get('title', '未命名')}]({item.get('link', '')}) | {source}"
                 if summary:
                     line += f" | {summary}"
                 lines.append(line)
             lines.append("")
 
-    lines.append("## 按来源快扫")
+    lines.append("## 证据来源（Top Sources）")
     lines.append("")
+    if evidence_links:
+        refs = [f"[{_clean_text(source, 24)}]({url})" for source, url in evidence_links]
+        lines.append(" | ".join(refs))
+    else:
+        lines.append("- *(暂无可用来源链接)*")
+    lines.append("")
+
+    lines.append("## 关键词")
+    lines.append("")
+    if keyword_tags:
+        lines.append(" ".join(keyword_tags))
+    else:
+        lines.append("#AI资讯 #日报")
+    lines.append("")
+
+    lines.append("## 快速统计")
+    lines.append("")
+    lines.append(f"- 来源总数：**{stats.get('sources_scanned', len(items_by_source))}**")
+    lines.append(f"- Top Picks：**{len(picks)}**")
+    lines.append(
+        f"- 类型覆盖：AI资讯 {len(content_groups.get('news', []))} / 推文 {included_tweets} / 工程 {included_engineering} / 论文 {included_papers} / 视频 {included_videos}"
+    )
     non_empty_sources = [(source, items) for source, items in items_by_source.items() if items]
+    top_sources = sorted(non_empty_sources, key=lambda kv: len(kv[1]), reverse=True)[:3]
+    if top_sources:
+        source_stat = "、".join(f"{source}({len(items)})" for source, items in top_sources)
+        lines.append(f"- 主要来源分布：{source_stat}")
+    lines.append("")
+
+    lines.append("## 按来源快扫（高密度）")
+    lines.append("")
     sorted_sources = sorted(non_empty_sources, key=lambda kv: len(kv[1]), reverse=True)
     for source, items in sorted_sources:
         shown = items[:max_items_per_source]
@@ -599,7 +825,7 @@ def format_daily_digest(
         for item in shown:
             title = item.get("title", "未命名")
             link = item.get("link", "")
-            summary = _first_sentence(item.get("summary", ""), max_len=120)
+            summary = _summary_cn(item, source, max_len=120, max_sentences=1)
             parts: list[str] = []
             if item.get("score") is not None:
                 parts.append(f"兴趣分 {item.get('score')}")

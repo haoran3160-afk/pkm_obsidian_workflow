@@ -45,14 +45,18 @@ def test_format_daily_digest_final_mode_includes_frontmatter_and_links():
     assert path.startswith("30-Daily/AI-News/AI-Daily-")
     assert "type: daily-digest" in content
     assert "> [!summary] 60 秒快读" in content
+    assert "## 今日 TL;DR（Tier 1）" in content
     assert "## Karpathy 视角：今日认知增量" in content
     assert "> [!tip] 认知评估框架" in content
-    assert "## 今日精选" in content
-    assert "## 统一雷达" in content
-    assert "## 提炼任务（可执行）" in content
+    assert "## 关键结论（Takeaways）" in content
+    assert "## 分栏简报（Tier 2）" in content
+    assert "## 可执行清单（Action Queue）" in content
     assert "## 知识图谱" in content
+    assert "## 证据来源（Top Sources）" in content
+    assert "## 关键词" in content
+    assert "## 快速统计" in content
     assert "```mermaid" in content
-    assert "## 按来源快扫" in content
+    assert "## 按来源快扫（高密度）" in content
     assert "How we monitor internal coding agents" in content
 
 

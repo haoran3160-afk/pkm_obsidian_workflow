@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 import fetcher
@@ -202,3 +203,37 @@ def test_score_ai_interest_includes_show_hn_and_exclude_penalty():
     assert score >= 4
     assert "base-ai" in reasons
     assert "show-hn" in reasons
+
+
+def test_infer_content_type_prefers_hard_signal_over_default_news():
+    content_type = fetcher.infer_content_type(
+        source_name="arXiv cs.AI",
+        url="https://arxiv.org/rss/cs.AI",
+        domain="research",
+        fallback="news",
+    )
+    assert content_type == "paper"
+
+
+def test_fetch_rss_feed_includes_published_date(monkeypatch):
+    feed_config = {
+        "name": "OpenAI News",
+        "url": "https://openai.com/news/rss.xml",
+        "note_folder": "30-Daily/AI-News",
+        "domain": "ai-news",
+    }
+    entries = [
+        {
+            "title": "Post",
+            "link": "https://openai.com/post",
+            "id": "post-1",
+            "summary": "agent workflow",
+            "published_parsed": time.strptime("2026-04-09", "%Y-%m-%d"),
+        }
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda url: _feed(entries))
+
+    items = fetcher.fetch_rss_feed(feed_config, {}, "2026-04-09", raw_only=True)
+
+    assert len(items) == 1
+    assert items[0]["published"] == "2026-04-09"

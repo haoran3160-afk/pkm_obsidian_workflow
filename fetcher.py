@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -90,14 +91,11 @@ DEFAULT_AI_EXCLUDE_KEYWORDS = [
 
 
 def infer_content_type(source_name: str, url: str, domain: str, fallback: str = "news") -> str:
-    value = (fallback or "").strip().lower()
-    if value:
-        return value
-
     source_lower = source_name.lower()
     url_lower = url.lower()
     domain_lower = domain.lower()
 
+    # Hard signals override generic defaults.
     if "arxiv" in url_lower or "paperswithcode" in url_lower or domain_lower == "research":
         return "paper"
     if "youtube.com" in url_lower or "youtu.be" in url_lower:
@@ -106,6 +104,11 @@ def infer_content_type(source_name: str, url: str, domain: str, fallback: str = 
         token in url_lower for token in ("twitter.com", "x.com", "nitter.net", "rsshub.app/twitter")
     ):
         return "tweet"
+
+    value = (fallback or "").strip().lower()
+    if value and value != "news":
+        return value
+
     if any(
         token in source_lower
         for token in ("engineering", "hackernews", "hacker news", "github", "playbook", "dev")
@@ -113,7 +116,7 @@ def infer_content_type(source_name: str, url: str, domain: str, fallback: str = 
         return "engineering"
     if "tool" in source_lower or domain_lower == "tooling":
         return "tooling"
-    return "news"
+    return value or "news"
 
 
 def _contains_keywords(text: str, keywords: Iterable[str]) -> bool:
@@ -127,6 +130,30 @@ def ai_filter(text: str) -> bool:
 
 def _clean_summary(raw_text: str, max_len: int) -> str:
     return re.sub(r"<[^>]+>", "", raw_text).strip()[:max_len]
+
+
+def _extract_entry_date(entry: Any) -> str:
+    parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+    if parsed:
+        try:
+            return time.strftime("%Y-%m-%d", parsed)
+        except Exception:
+            pass
+
+    for key in ("published", "updated", "pubDate"):
+        raw = str(entry.get(key, "")).strip()
+        if not raw:
+            continue
+        m = re.search(r"\d{4}-\d{2}-\d{2}", raw)
+        if m:
+            return m.group(0)
+        m = re.search(r"\d{1,2}\s+[A-Za-z]{3}\s+\d{4}", raw)
+        if m:
+            try:
+                return time.strftime("%Y-%m-%d", time.strptime(m.group(0), "%d %b %Y"))
+            except ValueError:
+                continue
+    return ""
 
 
 def normalize_url(url: str) -> str:
@@ -347,6 +374,7 @@ def fetch_rss_feed(
         guid = (entry.get("id") or entry.get("guid") or link or "").strip()
         summary = entry.get("summary", entry.get("description", "")) or ""
         summary = _clean_summary(summary, max_len=500)
+        published = _extract_entry_date(entry)
 
         if not raw_only and guid and guid in feed_cache:
             skipped_by_cache += 1
@@ -359,6 +387,7 @@ def fetch_rss_feed(
             "title": title,
             "link": link,
             "guid": guid,
+            "published": published,
             "summary": summary,
             "folder": folder,
             "content_type": content_type,

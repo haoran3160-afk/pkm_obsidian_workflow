@@ -103,6 +103,7 @@
             "name": "arXiv cs.AI",
             "url": "https://arxiv.org/rss/cs.AI",
             "domain": "Research",
+            "content_type": "paper",
             "note_folder": "20-Sources/Papers",
             "enabled": true
         },
@@ -110,6 +111,7 @@
             "name": "arXiv cs.LG",
             "url": "https://arxiv.org/rss/cs.LG",
             "domain": "Research",
+            "content_type": "paper",
             "note_folder": "20-Sources/Papers",
             "enabled": true
         },
@@ -117,6 +119,7 @@
             "name": "Papers With Code",
             "url": "https://paperswithcode.com/rss",
             "domain": "Research",
+            "content_type": "paper",
             "note_folder": "20-Sources/Papers",
             "enabled": true
         },
@@ -197,7 +200,7 @@
             "domain": "Tweet",
             "content_type": "tweet",
             "note_folder": "30-Daily/AI-News",
-            "enabled": false
+            "enabled": true
         },
         {
             "name": "Anthropic X (RSSHub Optional)",
@@ -205,7 +208,7 @@
             "domain": "Tweet",
             "content_type": "tweet",
             "note_folder": "30-Daily/AI-News",
-            "enabled": false
+            "enabled": true
         },
         {
             "name": "Simon Willison (Engineering Practice Optional)",
