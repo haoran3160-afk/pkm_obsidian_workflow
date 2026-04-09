@@ -1,7 +1,7 @@
 # Obsidian Workflow Open
 
-> 面向 AI 高质量信息摄入的 Obsidian 本地优先（Local-First）知识工作流。
-> 核心目标：把多源信息压缩成一份可读、可提炼、可沉淀的每日核心简报。
+> 一个面向 AI 信息摄入与知识沉淀的 Obsidian 本地优先工作流。
+> 目标不是“抓更多”，而是“每天只产出一份高密度、可执行、可沉淀的核心日报”。
 
 [![CI](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/ci.yml)
 [![Deploy Docs](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/docs.yml/badge.svg)](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/docs.yml)
@@ -10,59 +10,92 @@
 
 ---
 
-## 项目定位
+## 为什么这个项目值得用
 
-`obsidian_workflow_open` 不是单纯的资讯抓取脚本，而是一个可持续迭代的 PKM 工程流水线：
+大多数“资讯 -> 笔记”流程会在三个地方失效：
 
-1. 多源采集：RSS、YouTube（可扩展）。
-2. 质量过滤：AI 相关性评分 + 去重 + 限流。
-3. 结构化输出：统一写入单一核心日报（默认）。
-4. 知识治理：健康检查、结构一致性与可追溯来源。
+1. 输入层：来源很多，但噪声更大。
+2. 加工层：摘要看似丰富，但缺乏可执行结论。
+3. 沉淀层：每天产出太多碎片，最后无人回看。
 
-当前版本已完全 AI-only（IELTS 相关内容与流程已移除）。
+`obsidian_workflow_open` 的设计原则是：
 
----
-
-## 当前产出模式（重点）
-
-默认开启：`daily_digest_only_output = true`
-
-- 最终只产出一份核心日报：`30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md`
-- 不再默认生成 paper/video 独立笔记，避免信息过载
-- 同一日报内统一包含：
-  - AI 资讯
-  - 推文速览
-  - 工程实践
-  - 论文雷达
-  - 视频速览
-- 并提供：
-  - 今日精选（Top Picks）
-  - 提炼任务（可执行）
-  - Mermaid 知识图谱
-  - 按来源快扫（折叠区）
-
-如需恢复“论文/视频独立落地”，可将 `daily_digest_only_output` 设为 `false`。
+- **少而精**：默认只输出一份核心 `AI Daily`。
+- **可执行**：日报内直接包含“提炼任务”和行动入口。
+- **可沉淀**：保留 Raw 证据链，支持后续复盘与二次加工。
+- **本地优先**：默认写入本地 Obsidian Vault，数据资产可控。
 
 ---
 
-## 工作流概览
+## 架构灵感（Karpathy 风格）
+
+本项目参考了 Karpathy 倡导的知识处理思想：
+
+- **Raw Context First**：先保留足够上下文，不在最前面过度删减信息。
+- **LLM / Agent Curation**：中间层做打分、聚类、优先级排序、结构化提炼。
+- **Promote to Durable Artifacts**：最终沉淀为长期可复用的知识对象。
+- **Governance by Default**：把治理（健康检查、结构一致性、可追溯）做成默认能力。
+
+在本仓库中对应为：
+
+- `--raw-only` 生成原始日报（证据层）
+- `AI interest scoring + content_type` 进行策展分发（加工层）
+- 单一核心 `AI Daily` 输出（沉淀层）
+- `knowledge_health_check.py` 做结构治理（治理层）
+
+---
+
+## 核心优势
+
+- **单一核心输出（默认）**：`daily_digest_only_output = true`，避免信息过载。
+- **统一视图**：同一日报聚合 `AI资讯 / 推文速览 / 工程实践 / 论文雷达 / 视频速览`。
+- **质量过滤**：兴趣评分、优先词、噪声词、去重、限流。
+- **双层工作流**：Raw 原始层 + Curated 核心层，可追溯且可回放。
+- **Obsidian 原生**：支持本地写入、REST API 写入、双写模式。
+- **工程化质量保障**：测试、静态检查、CI、文档部署齐备。
+
+---
+
+## 系统结构
 
 ```mermaid
 graph TD
-    A[main.py 编排入口] --> B[fetcher.py 抓取层]
-    A --> C[formatter.py 渲染层]
-    A --> D[writer.py 写入层]
-    A --> H[knowledge_health_check.py 治理层]
+    A[main.py Orchestrator] --> B[fetcher.py Extract]
+    A --> C[formatter.py Transform]
+    A --> D[writer.py Load]
+    A --> H[knowledge_health_check.py Govern]
 
     B --> B1[RSS]
     B --> B2[YouTube]
-    B --> B3[AI 兴趣评分]
+    B --> B3[AI Interest Scoring]
+    B --> B4[Content Type Routing]
 
-    C --> C1[Raw 原始日报]
-    C --> C2[Core AI Daily 核心日报]
+    C --> C1[Raw Daily Feeds]
+    C --> C2[Core AI Daily]
 
-    D --> D1[Obsidian 本地写入]
+    D --> D1[Obsidian Disk]
     D --> D2[Obsidian REST API]
+```
+
+---
+
+## 目录结构
+
+```text
+obsidian_workflow_open/
+├─ .agent/workflows/                  # Agent 工作流模板
+├─ docs/                              # 文档
+├─ templates/                         # Markdown 模板
+├─ tests/                             # 测试
+├─ main.py                            # 编排入口
+├─ fetcher.py                         # 抓取与打分
+├─ formatter.py                       # 日报/笔记渲染
+├─ writer.py                          # 写入适配（disk/api）
+├─ config_schema.py                   # Pydantic 配置校验
+├─ pkm_bridge.py                      # 外部写入桥接
+├─ knowledge_health_check.py          # 知识库健康检查
+├─ pkm_config.json                    # 主配置
+└─ README.md
 ```
 
 ---
@@ -83,29 +116,22 @@ cd pkm_obsidian_workflow
 pip install -r requirements.txt
 ```
 
-### 3) 初始化配置
+### 3) 配置
 
-Unix/macOS:
+复制环境变量模板：
 
-```bash
-cp .env.example .env
-```
+- macOS/Linux: `cp .env.example .env`
+- PowerShell: `Copy-Item .env.example .env`
 
-Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-最少配置项：
+设置最小必要项：
 
 ```dotenv
 OBSIDIAN_VAULT_PATH=D:/path/to/your/Obsidian
 ```
 
-然后编辑 `pkm_config.json`（数据源与质量阈值）。
+编辑 `pkm_config.json` 配置数据源与阈值。
 
-### 4) 预检
+### 4) 运行前诊断
 
 ```bash
 python main.py --doctor
@@ -114,47 +140,58 @@ python main.py --doctor
 ### 5) 运行
 
 ```bash
-# 正常执行（写入核心日报）
+# 正常运行：写入核心日报
 python main.py
 
-# 只生成 Raw 原始日报（给 Agent/人工二次策展）
+# 仅生成 Raw 原始日报（供 Agent/人工二次策展）
 python main.py --raw-only
 
-# 仅预览，不执行实际写入
+# 预览将写入内容，不执行 I/O
 python main.py --dry-run
 
 # 测试模式（不写入 Vault）
 python main.py --test
 
-# 知识库健康检查
+# 生成知识库健康报告
 python main.py --health-check
 ```
 
 ---
 
-## 关键配置项（pkm_config.json）
+## 输出产物
 
-| 参数 | 作用 |
+- `00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md`
+- `30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md`
+- `40-MOC/lint-report-YYYY-MM-DD.md`
+
+示例可见：
+
+- [AI Daily Sample](docs/sample_outputs/ai-daily-brief-sample.md)
+- [Paper Note Sample](docs/sample_outputs/paper-note-sample.md)
+- [Video Note Sample](docs/sample_outputs/video-note-sample.md)
+
+---
+
+## 配置重点（pkm_config.json）
+
+| 参数 | 说明 |
 |---|---|
-| `daily_digest_only_output` | 是否仅输出单一核心 AI Daily（推荐 `true`） |
-| `daily_digest_top_picks` | 日报 Top Picks 数量上限 |
-| `daily_digest_max_items_per_source` | 每来源最多展示条数（其余折叠） |
-| `daily_digest_action_items` | 提炼任务条数 |
-| `daily_digest_max_deferred_items` | 延后队列每类显示上限 |
+| `daily_digest_only_output` | 是否仅输出单一核心日报（推荐 `true`） |
+| `daily_digest_top_picks` | 日报 Top Picks 上限 |
+| `daily_digest_max_items_per_source` | 每来源展示上限 |
+| `daily_digest_action_items` | 提炼任务数量 |
 | `daily_digest_include_mindmap` | 是否输出 Mermaid 思维导图 |
-| `min_ai_interest_score` | AI 内容最低保留分数 |
-| `max_ai_items_per_feed` | 限制单来源占比 |
-| `max_paper_notes_per_day` | 每日纳入日报的论文条目上限 |
-| `max_video_notes_per_day` | 每日纳入日报的视频条目上限 |
+| `min_ai_interest_score` | AI 内容最低保留分 |
+| `max_ai_items_per_feed` | 单来源占比限制 |
+| `max_paper_notes_per_day` | 每日纳入论文条目上限 |
+| `max_video_notes_per_day` | 每日纳入视频条目上限 |
 | `ai_interest_topics` | 中权重兴趣词 |
 | `ai_priority_topics` | 高权重优先词 |
-| `ai_exclude_keywords` | 降权噪声词 |
-| `used_articles_retention_days` | 去重记忆窗口 |
-| `source_health_keep_runs` | 来源健康历史保留轮次 |
+| `ai_exclude_keywords` | 噪声降权词 |
 
-### 数据源分类（content_type）
+### `content_type` 分类
 
-RSS 支持 `content_type` 字段，用于在核心日报中归类展示：
+RSS 项可配置 `content_type`，用于核心日报统一分区：
 
 - `news`
 - `tweet`
@@ -165,30 +202,18 @@ RSS 支持 `content_type` 字段，用于在核心日报中归类展示：
 - `community`
 - `other`
 
-示例：
+---
 
-```json
-{
-  "name": "OpenAI X (RSSHub Optional)",
-  "url": "https://rsshub.app/twitter/user/OpenAI",
-  "domain": "Tweet",
-  "content_type": "tweet",
-  "note_folder": "30-Daily/AI-News",
-  "enabled": false
-}
-```
+## 推荐工作方式
+
+1. 每天先跑 `python main.py --raw-only`。
+2. 审核 Raw 后跑 `python main.py` 生成核心日报。
+3. 从“提炼任务（可执行）”里挑 1-3 条做深度笔记。
+4. 每周跑 `python main.py --health-check` 做结构治理。
 
 ---
 
-## 输出目录
-
-- Raw 原始日报：`00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md`
-- 核心日报：`30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md`
-- 健康检查报告：`40-MOC/lint-report-YYYY-MM-DD.md`
-
----
-
-## 工程质量
+## 工程质量与安全
 
 本地建议执行：
 
@@ -200,24 +225,62 @@ mypy main.py fetcher.py formatter.py writer.py config_schema.py --ignore-missing
 pytest --cov=. --cov-report=term-missing -q
 ```
 
+安全建议：
+
+- 不要提交 `.env`
+- API Key 仅本地保存
+- 发布前阅读 [SECURITY.md](SECURITY.md)
+
 ---
 
-## 文档入口
+## 路线图（Roadmap）
 
-- [Quickstart](docs/quickstart.md)
-- [Plugin Guide](docs/plugins.md)
-- [Docs Index](docs/index.md)
-- [Sample Outputs](docs/sample_outputs/ai-daily-brief-sample.md)
+- 更强的“多源去重 + 主题聚合”
+- 推文线程级摘要与观点冲突检测
+- 周报/月报自动生成与回顾模板
+- 深度笔记自动升级（从日报任务到永久笔记）
+- 更完整的插件生态（来源、模板、评分器）
 
 ---
 
 ## 贡献
 
-- 先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)
-- 使用 `.github` 下的 Issue/PR 模板提交问题与改动
+欢迎 PR 与 Issue：
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- `.github/ISSUE_TEMPLATE`
+- `.github/pull_request_template.md`
 
 ---
 
 ## 许可证
 
 MIT License，见 [LICENSE](LICENSE)
+
+---
+
+## 给 Agent 的一键配置提示词（可直接复制）
+
+如果你希望让 Agent 直接把本项目配置在你的电脑上，把下面这段话原样发给 Agent：
+
+```text
+请在我的电脑上完整配置并验证 obsidian_workflow_open，要求端到端可运行。
+
+目标：
+1) 在本地创建并激活 Python 虚拟环境，安装 requirements.txt 与 requirements-dev.txt。
+2) 检查并配置 .env（至少包含 OBSIDIAN_VAULT_PATH）。
+3) 检查 pkm_config.json，确保 daily_digest_only_output=true，并保留 AI-only 数据源配置。
+4) 运行 python main.py --doctor，修复所有阻塞问题。
+5) 运行 python main.py --raw-only 与 python main.py，确保在 Vault 中生成：
+   - 00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md
+   - 30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md
+6) 核验日报必须是中文结构化输出，并包含分区：
+   - AI资讯 / 推文速览 / 工程实践 / 论文雷达 / 视频速览
+7) 运行 python main.py --health-check，并给出报告路径。
+8) 最后输出：已修改文件列表、执行命令列表、关键结果摘要。
+
+约束：
+- 不要删除我的已有 Vault 内容。
+- 不要提交或覆盖与本任务无关的文件。
+- 如果遇到权限/网络问题，先给出最小修复方案，再继续执行。
+```
