@@ -6,11 +6,11 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="AI-ready PKM pipeline that streams RSS, arXiv papers, and YouTube into your Obsidian Vault.">
+        <meta name="description" content="Local-first AI digest workflow for Obsidian, with raw capture, strict curation, and vault-native output.">
       
       
       
-        <link rel="canonical" href="https://yourusername.github.io/obsidian_workflow_open/">
+        <link rel="canonical" href="https://haoran3160-afk.github.io/pkm_obsidian_workflow/">
       
       
       
@@ -25,7 +25,7 @@
     
     
       
-        <title>Obsidian PKM Workflow</title>
+        <title>PKM Obsidian Workflow</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#obsidian-pkm-workflow" class="md-skip">
+        <a href="#pkm-obsidian-workflow" class="md-skip">
           Skip to content
         </a>
       
@@ -92,7 +92,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="Obsidian PKM Workflow" class="md-header__button md-logo" aria-label="Obsidian PKM Workflow" data-md-component="logo">
+    <a href="." title="PKM Obsidian Workflow" class="md-header__button md-logo" aria-label="PKM Obsidian Workflow" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -106,7 +106,7 @@
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            Obsidian PKM Workflow
+            PKM Obsidian Workflow
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
@@ -194,13 +194,13 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/yourusername/obsidian_workflow_open" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/haoran3160-afk/pkm_obsidian_workflow" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
   </div>
   <div class="md-source__repository">
-    obsidian_workflow_open
+    haoran3160-afk/pkm_obsidian_workflow
   </div>
 </a>
       </div>
@@ -268,27 +268,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="configuration.md" class="md-tabs__link">
-          
-  
-  
-  Configuration
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="templates.md" class="md-tabs__link">
+        <a href="plugins/" class="md-tabs__link">
           
   
   
@@ -308,31 +288,11 @@
     
     
       <li class="md-tabs__item">
-        <a href="cli.md" class="md-tabs__link">
+        <a href="sample_outputs/ai-daily-brief-sample/" class="md-tabs__link">
           
   
   
-  Reference
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="contributing.md" class="md-tabs__link">
-          
-  
-  
-  Community
+  Samples
 
         </a>
       </li>
@@ -364,23 +324,23 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="Obsidian PKM Workflow" class="md-nav__button md-logo" aria-label="Obsidian PKM Workflow" data-md-component="logo">
+    <a href="." title="PKM Obsidian Workflow" class="md-nav__button md-logo" aria-label="PKM Obsidian Workflow" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
-    Obsidian PKM Workflow
+    PKM Obsidian Workflow
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/yourusername/obsidian_workflow_open" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/haoran3160-afk/pkm_obsidian_workflow" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
   </div>
   <div class="md-source__repository">
-    obsidian_workflow_open
+    haoran3160-afk/pkm_obsidian_workflow
   </div>
 </a>
     </div>
@@ -570,14 +530,14 @@
   
   
     <li class="md-nav__item">
-      <a href="installation.md" class="md-nav__link">
+      <a href="workthrough/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Installation
+    Workflow Walkthrough
   
 
     
@@ -628,7 +588,7 @@
   <span class="md-ellipsis">
     
   
-    Configuration
+    Customization
   
 
     
@@ -644,7 +604,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Configuration
+    Customization
   
 
           </label>
@@ -657,42 +617,14 @@
   
   
     <li class="md-nav__item">
-      <a href="configuration.md" class="md-nav__link">
+      <a href="plugins/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    pkm_config.json
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="environment.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Environment Variables
+    Source Plugins
   
 
     
@@ -743,7 +675,7 @@
   <span class="md-ellipsis">
     
   
-    Customization
+    Samples
   
 
     
@@ -759,7 +691,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Customization
+    Samples
   
 
           </label>
@@ -772,19 +704,26 @@
   
   
     <li class="md-nav__item">
-      <a href="templates.md" class="md-nav__link">
+      <a href="sample_outputs/ai-daily-brief-sample/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Note Templates
+    AI Daily Sample
   
 
     
   </span>
   
+  
+    
+  
+  
+    <span class="md-status md-status--inbox"></span>
+  
+
   
 
       </a>
@@ -800,106 +739,26 @@
   
   
     <li class="md-nav__item">
-      <a href="plugins/" class="md-nav__link">
+      <a href="sample_outputs/paper-note-sample/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Writing Plugins
+    Paper Note Sample
   
 
     
   </span>
   
   
-
-      </a>
-    </li>
+    
   
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
+  
+    <span class="md-status md-status--unreviewed"></span>
   
 
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Reference
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Reference
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="cli.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Reference
-  
-
-    
-  </span>
-  
   
 
       </a>
@@ -915,162 +774,26 @@
   
   
     <li class="md-nav__item">
-      <a href="api.md" class="md-nav__link">
+      <a href="sample_outputs/video-note-sample/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    API Reference
+    Video Note Sample
   
 
     
   </span>
   
   
-
-      </a>
-    </li>
+    
   
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
+  
+    <span class="md-status md-status--unreviewed"></span>
   
 
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Community
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Community
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="contributing.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="changelog.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Changelog
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="security.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Security
-  
-
-    
-  </span>
-  
   
 
       </a>
@@ -1158,46 +881,51 @@
   
 
 
-<h1 id="obsidian-pkm-workflow">Obsidian PKM Workflow<a class="headerlink" href="#obsidian-pkm-workflow" title="Permanent link">&para;</a></h1>
+<h1 id="pkm-obsidian-workflow">PKM Obsidian Workflow<a class="headerlink" href="#pkm-obsidian-workflow" title="Permanent link">&para;</a></h1>
 <blockquote>
-<p><strong>Your Local, AI-Ready Second Brain Pipeline.</strong></p>
+<p>本地优先的 AI 日报工作流，把抓取、筛选、策展、写入放进一个可复现的 Obsidian 流程。</p>
 </blockquote>
-<p>An automated PKM workflow that streams RSS feeds, arXiv papers, and YouTube videos directly into your Obsidian Vault as pristine Markdown — with zero cloud dependency.</p>
+<p>这个项目不是“多抓一点 RSS”，而是“每天稳定生成一份值得看的 AI 日报”。</p>
+<p>默认产出两层内容：</p>
+<ul>
+<li><code>Raw Daily Feeds</code>：保留原始证据，方便 Agent 或人工二次策展。</li>
+<li><code>AI Daily</code>：按固定栏目输出一份高信息密度日报，而不是散乱的碎片笔记。</li>
+</ul>
 <div class="grid cards">
 <ul>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M338.8-9.9c11.9 8.6 16.3 24.2 10.9 37.8L271.3 224H416c13.5 0 25.5 8.4 30.1 21.1s.7 26.9-9.6 35.5l-288 240c-11.3 9.4-27.4 9.9-39.3 1.3s-16.3-24.2-10.9-37.8L176.7 288H32c-13.5 0-25.5-8.4-30.1-21.1s-.7-26.9 9.6-35.5l288-240c11.3-9.4 27.4-9.9 39.3-1.3"/></svg></span> <strong><a href="quickstart/">Quickstart</a></strong><br />
-  Zero to your first fetch in 5 minutes.</p>
+  从安装、配置到首个日报产出，最短路径跑通。</p>
 </li>
 <li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M195.1 9.5c3-14.8 16.1-25.5 31.3-25.5h59.8c15.2 0 28.3 10.7 31.3 25.5l14.5 70c14.1 6 27.3 13.7 39.3 22.8l67.8-22.5c14.4-4.8 30.2 1.2 37.8 14.4l29.9 51.8c7.6 13.2 4.9 29.8-6.5 39.9L447 233.3c.9 7.4 1.3 15 1.3 22.7s-.5 15.3-1.3 22.7l53.4 47.5c11.4 10.1 14 26.8 6.5 39.9L477 417.9c-7.6 13.1-23.4 19.2-37.8 14.4l-67.8-22.5c-12.1 9.1-25.3 16.7-39.3 22.8l-14.4 69.9c-3.1 14.9-16.2 25.5-31.3 25.5h-59.8c-15.2 0-28.3-10.7-31.3-25.5l-14.4-69.9c-14.1-6-27.2-13.7-39.3-22.8l-68.1 22.5c-14.4 4.8-30.2-1.2-37.8-14.4L5.8 366.1c-7.6-13.2-4.9-29.8 6.5-39.9l53.4-47.5c-.9-7.4-1.3-15-1.3-22.7s.5-15.3 1.3-22.7l-53.4-47.5C.9 175.7-1.7 159 5.8 145.9l29.9-51.8c7.6-13.2 23.4-19.2 37.8-14.4l67.8 22.5c12.1-9.1 25.3-16.7 39.3-22.8zM256.3 336a80 80 0 1 0-.6-160 80 80 0 1 0 .6 160"/></svg></span> <strong><a href="configuration.md">Configuration</a></strong><br />
-  Customize feeds, YouTube channels, and write mode.</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="m263.4-27 14.8 36.8L315 24.6c3 1.2 5 4.2 5 7.4s-2 6.2-5 7.4l-36.8 14.8L263.4 91c-1.2 3-4.2 5-7.4 5s-6.2-2-7.4-5l-14.8-36.8L197 39.4c-3-1.2-5-4.2-5-7.4s2-6.2 5-7.4l36.8-14.8L248.6-27c1.2-3 4.2-5 7.4-5s6.2 2 7.4 5M110.7 41.7l21.5 50.1 50.1 21.5c5.9 2.5 9.7 8.3 9.7 14.7s-3.8 12.2-9.7 14.7l-50.1 21.5-21.5 50.1c-2.5 5.9-8.3 9.7-14.7 9.7s-12.2-3.8-14.7-9.7l-21.5-50.1-50.1-21.5C3.8 140.2 0 134.4 0 128s3.8-12.2 9.7-14.7l50.1-21.5 21.5-50.1C83.8 35.8 89.6 32 96 32s12.2 3.8 14.7 9.7M464 304c6.4 0 12.2 3.8 14.7 9.7l21.5 50.1 50.1 21.5c5.9 2.5 9.7 8.3 9.7 14.7s-3.8 12.2-9.7 14.7l-50.1 21.5-21.5 50.1c-2.5 5.9-8.3 9.7-14.7 9.7s-12.2-3.8-14.7-9.7l-21.5-50.1-50.1-21.5c-5.9-2.5-9.7-8.3-9.7-14.7s3.8-12.2 9.7-14.7l50.1-21.5 21.5-50.1c2.5-5.9 8.3-9.7 14.7-9.7M460 0c11 0 21.6 4.4 29.5 12.2l42.3 42.3C539.6 62.4 544 73 544 84s-4.4 21.6-12.2 29.5l-88.2 88.2-101.3-101.3 88.2-88.2C438.4 4.4 449 0 460 0M44.2 398.5l264.2-264.2 101.3 101.3-264.2 264.2C137.6 507.6 127 512 116 512s-21.6-4.4-29.5-12.2l-42.3-42.3C36.4 449.6 32 439 32 428s4.4-21.6 12.2-29.5"/></svg></span> <strong><a href="workthrough/">Workflow Walkthrough</a></strong><br />
+  了解抓取层、策展层和最终日报是怎么串起来的。</p>
 </li>
 <li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M224 0c35.3 0 64 21.5 64 48 0 10.4-4.4 20-12 27.9-6.6 6.9-12 15.3-12 24.9 0 15 12.2 27.2 27.2 27.2H336c26.5 0 48 21.5 48 48v44.8c0 15 12.2 27.2 27.2 27.2 9.5 0 18-5.4 24.9-12 7.9-7.5 17.5-12 27.9-12 26.5 0 48 28.7 48 64s-21.5 64-48 64c-10.4 0-20.1-4.4-27.9-12-6.9-6.6-15.3-12-24.9-12-15 0-27.2 12.2-27.2 27.2V464c0 26.5-21.5 48-48 48h-56.8c-12.8 0-23.2-10.4-23.2-23.2 0-9.2 5.8-17.3 13.2-22.8 11.6-8.7 18.8-20.7 18.8-34 0-26.5-28.7-48-64-48s-64 21.5-64 48c0 13.3 7.2 25.3 18.8 34 7.4 5.5 13.2 13.5 13.2 22.8 0 12.8-10.4 23.2-23.2 23.2H48c-26.5 0-48-21.5-48-48V343.2C0 330.4 10.4 320 23.2 320c9.2 0 17.3 5.8 22.8 13.2 8.7 11.6 20.7 18.8 34 18.8 26.5 0 48-28.7 48-64s-21.5-64-48-64c-13.3 0-25.3 7.2-34 18.8-5.5 7.4-13.5 13.2-22.8 13.2C10.4 256 0 245.6 0 232.8V176c0-26.5 21.5-48 48-48h108.8c15 0 27.2-12.2 27.2-27.2 0-9.5-5.4-18-12-24.9-7.5-7.9-12-17.5-12-27.9 0-26.5 28.7-48 64-48"/></svg></span> <strong><a href="plugins/">Plugins</a></strong><br />
-  Add Reddit, Twitter, or any custom data source.</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M224 0c35.3 0 64 21.5 64 48 0 10.4-4.4 20-12 27.9-6.6 6.9-12 15.3-12 24.9 0 15 12.2 27.2 27.2 27.2H336c26.5 0 48 21.5 48 48v44.8c0 15 12.2 27.2 27.2 27.2 9.5 0 18-5.4 24.9-12 7.9-7.5 17.5-12 27.9-12 26.5 0 48 28.7 48 64s-21.5 64-48 64c-10.4 0-20.1-4.4-27.9-12-6.9-6.6-15.3-12-24.9-12-15 0-27.2 12.2-27.2 27.2V464c0 26.5-21.5 48-48 48h-56.8c-12.8 0-23.2-10.4-23.2-23.2 0-9.2 5.8-17.3 13.2-22.8 11.6-8.7 18.8-20.7 18.8-34 0-26.5-28.7-48-64-48s-64 21.5-64 48c0 13.3 7.2 25.3 18.8 34 7.4 5.5 13.2 13.5 13.2 22.8 0 12.8-10.4 23.2-23.2 23.2H48c-26.5 0-48-21.5-48-48V343.2C0 330.4 10.4 320 23.2 320c9.2 0 17.3 5.8 22.8 13.2 8.7 11.6 20.7 18.8 34 18.8 26.5 0 48-28.7 48-64s-21.5-64-48-64c-13.3 0-25.3 7.2-34 18.8-5.5 7.4-13.5 13.2-22.8 13.2C10.4 256 0 245.6 0 232.8V176c0-26.5 21.5-48 48-48h108.8c15 0 27.2-12.2 27.2-27.2 0-9.5-5.4-18-12-24.9-7.5-7.9-12-17.5-12-27.9 0-26.5 28.7-48 64-48"/></svg></span> <strong><a href="plugins/">Source Plugins</a></strong><br />
+  扩展抓取器，接入你自己的 Reddit、API 或内部信息源。</p>
 </li>
 <li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M0 64C0 28.7 28.7 0 64 0h149.5c17 0 33.3 6.7 45.3 18.7l106.5 106.6c12 12 18.7 28.3 18.7 45.3V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64zm208-5.5V152c0 13.3 10.7 24 24 24h93.5zm-53.8 237.1c8.6-10.1 7.5-25.2-2.6-33.8s-25.2-7.5-33.8 2.6l-48 56c-7.7 9-7.7 22.2 0 31.2l48 56c8.6 10.1 23.8 11.2 33.8 2.6s11.2-23.8 2.6-33.8L119.6 336zm112-31.2c-8.6-10.1-23.8-11.2-33.8-2.6s-11.2 23.8-2.6 33.8l34.6 40.4-34.6 40.4c-8.6 10.1-7.5 25.2 2.6 33.8s25.2 7.5 33.8-2.6l48-56c7.7-9 7.7-22.2 0-31.2z"/></svg></span> <strong><a href="templates.md">Templates</a></strong><br />
-  Customize Jinja2 templates to match your PKM taxonomy.</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M0 64C0 28.7 28.7 0 64 0h149.5c17 0 33.3 6.7 45.3 18.7l106.5 106.6c12 12 18.7 28.3 18.7 45.3V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64zm208-5.5V152c0 13.3 10.7 24 24 24h93.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24h144c13.3 0 24-10.7 24-24s-10.7-24-24-24zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24h144c13.3 0 24-10.7 24-24s-10.7-24-24-24z"/></svg></span> <strong><a href="sample_outputs/ai-daily-brief-sample/">AI Daily Sample</a></strong><br />
+  查看最终日报结构和写作风格示例。</p>
 </li>
 <li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M9.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L146.7 256zM224 384h256c17.7 0 32 14.3 32 32s-14.3 32-32 32H224c-17.7 0-32-14.3-32-32s14.3-32 32-32"/></svg></span> <strong><a href="cli.md">CLI Reference</a></strong><br />
-  All command-line flags explained.</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M256 141.3v309.3l.5-.2A449 449 0 0 1 428.8 416H448V96h-19.2c-42.2 0-84.1 8.4-123.1 24.6-16.8 7-33.4 13.9-49.7 20.7m-25.1-79.8L256 72l25.1-10.5C327.9 42 378.1 32 428.8 32H464c26.5 0 48 21.5 48 48v352c0 26.5-21.5 48-48 48h-35.2c-50.7 0-100.9 10-147.7 29.5l-12.8 5.3c-7.9 3.3-16.7 3.3-24.6 0l-12.8-5.3C184.1 490 133.9 480 83.2 480H48c-26.5 0-48-21.5-48-48V80c0-26.5 21.5-48 48-48h35.2c50.7 0 100.9 10 147.7 29.5"/></svg></span> <strong><a href="sample_outputs/paper-note-sample/">Paper Note Sample</a></strong><br />
+  查看论文条目的独立笔记格式。</p>
 </li>
 <li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 17q.86 0 1.45.6t.58 1.4L14 22l-7-2v-9h1.95l7.27 2.69q.78.31.78 1.12 0 .47-.34.82t-.86.37H13l-1.75-.67-.33.94L13 17zM16 3.23Q17.06 2 18.7 2q1.36 0 2.3 1t1 2.3q0 1.03-1 2.46t-1.97 2.39T16 13q-2.08-1.89-3.06-2.85t-1.97-2.39T10 5.3q0-1.36.97-2.3t2.34-1q1.6 0 2.69 1.23M.984 11H5v11H.984z"/></svg></span> <strong><a href="contributing.md">Contributing</a></strong><br />
-  How to contribute to the project.</p>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M96 64c-35.3 0-64 28.7-64 64v256c0 35.3 28.7 64 64 64h256c35.3 0 64-28.7 64-64V128c0-35.3-28.7-64-64-64zm368 272 73.5 58.8c4.2 3.4 9.4 5.2 14.8 5.2 13.1 0 23.7-10.6 23.7-23.7V135.7c0-13.1-10.6-23.7-23.7-23.7-5.4 0-10.6 1.8-14.8 5.2L464 176z"/></svg></span> <strong><a href="sample_outputs/video-note-sample/">Video Note Sample</a></strong><br />
+  查看视频类条目的落地格式。</p>
 </li>
 </ul>
 </div>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph LR
-    A[RSS / YouTube / Plugins] --&gt;|Extract| B[fetcher.py]
-    B --&gt;|items| C[formatter.py]
-    C --&gt;|Jinja2| D[Markdown Strings]
-    D --&gt;|Load| E[writer.py]
-    E --&gt;|disk / api| F[(Obsidian Vault)]</code></pre>
+    A["RSS / YouTube / Plugins"] --&gt;|Extract| B["fetcher.py"]
+    B --&gt;|Candidates| C["daily_curation.py"]
+    C --&gt;|Plan| D["formatter.py / llm_digest.py"]
+    D --&gt;|Markdown| E["writer.py"]
+    E --&gt;|disk / api| F["Obsidian Vault"]</code></pre>
 <h2 id="features-at-a-glance">Features at a Glance<a class="headerlink" href="#features-at-a-glance" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1208,52 +936,48 @@
 </thead>
 <tbody>
 <tr>
-<td>RSS / Atom Feed Parsing</td>
-<td>✅</td>
+<td>RSS / Atom feed parsing</td>
+<td>Yes</td>
 </tr>
 <tr>
 <td>YouTube via RSS</td>
-<td>✅</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Network retry (exponential backoff)</td>
-<td>✅</td>
+<td>Raw capture mode</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Jinja2 Note Templates</td>
-<td>✅</td>
+<td>Local-parity curated digest</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Pydantic Config Validation</td>
-<td>✅</td>
+<td>Pydantic config validation</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Write Mode: disk / api / both</td>
-<td>✅</td>
+<td>Write mode: <code>disk</code> / <code>api</code> / <code>both</code></td>
+<td>Yes</td>
 </tr>
 <tr>
-<td><code>--dry-run</code> mode</td>
-<td>✅</td>
+<td><code>--dry-run</code> and <code>--doctor</code></td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Source Plugin Registry</td>
-<td>✅</td>
+<td>Source plugin registry</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Rich Terminal Summaries</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Structured Logging (structlog)</td>
-<td>✅</td>
+<td>Structured logging</td>
+<td>Yes</td>
 </tr>
 <tr>
 <td>GitHub Actions CI</td>
-<td>✅</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>Daily Scheduler</td>
-<td>✅</td>
+<td>Daily scheduler</td>
+<td>Yes</td>
 </tr>
 </tbody>
 </table>
@@ -1316,7 +1040,7 @@
       
       
     
-    <a href="https://github.com/yourusername/obsidian_workflow_open" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+    <a href="https://github.com/haoran3160-afk/pkm_obsidian_workflow" target="_blank" rel="noopener" title="github.com" class="md-social__link">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
     </a>
   
