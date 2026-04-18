@@ -4,9 +4,8 @@ description: PKM Daily Digest - local-parity AI & Growth curation workflow
 
 # PKM: 每日 AI & Growth Digest
 
-当用户说“每日抓取”“今日 AI 日报”“更新知识库”时，严格按这套工作流执行。
-
-目标不是“把抓到的东西全部总结一遍”，而是输出一份和本地工作流尽量一致的日报，栏目固定为：
+当用户说“每日抓取”“今日 AI 日报”“更新知识库”时，严格按这套工作流执行。  
+目标不是“把抓到的东西全都总结一遍”，而是输出一份和本地工作流尽量一致的日报，栏目固定为：
 
 - `Top 1`
 - `Top 2`
@@ -53,20 +52,20 @@ python main.py --raw-only
 
 - 1 条。
 - 优先 `Sequoia Capital`。
-- 如果当天没有足够信号，可由 `The Guardian Science` 这类宏观基础设施 / 商业格局文章补位。
+- 如果当天没有足够信号，可用 `The Guardian Science` 这类宏观基础设施 / 商业格局文章补位。
 - 使用深度模板。
 
 ### 3c. 洞见
 
 - 1 条。
 - 优先 `Dan Koe Blog`。
-- 如果当天研究型 insight 更强，可由 `arXiv` 或分析型来源补位。
+- 如果当天研究型 insight 更强，可用 `arXiv` 或分析型来源补位。
 - 使用 brief 模板。
 
 ### 3d. 今日视频
 
 - 1 条。
-- 如果本周还没有出现 `3Blue1Brown`，优先强制使用。
+- 如果本周还没出现 `3Blue1Brown`，优先强制使用。
 - 否则按来源轮换。
 
 ### 3e. 洞见（AI 公司 / Solopreneur / 工具化）
@@ -164,4 +163,4 @@ aliases: ["Daily Digest YYYY-MM-DD"]
 - 实际入选栏目数
 - 去重是否影响了最终选题
 - 是否触发了 `3Blue1Brown` 周保底
-- 是否使用了模型写作层，若没有，原因是什么
+- 是否使用了模型精修层；若没有，原因是什么

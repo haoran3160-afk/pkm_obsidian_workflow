@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-llm_digest.py - Model-backed copy generation for the final daily digest.
+Optional LLM refinement for the final daily digest.
 
-This module does not decide what to select. It only turns an already curated
-daily plan into high-quality Chinese digest copy that matches the local
-workflow's writing standard.
+The workflow must remain useful without any external model. This module is an
+opt-in enhancer: when explicitly enabled and API quota is available, it can
+rewrite the already curated digest copy into more editorial Chinese. When it
+fails, the deterministic local copy should still be good enough to publish.
 """
 
 from __future__ import annotations
@@ -25,6 +26,9 @@ REQUEST_TIMEOUT_SECONDS = 90
 
 
 def can_generate_digest_copy() -> bool:
+    enabled = os.getenv("PKM_ENABLE_LLM_DIGEST_COPY", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return False
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
 
 
@@ -34,10 +38,10 @@ def generate_digest_copy(
     model: str | None = None,
     reasoning_effort: str | None = None,
 ) -> dict[str, Any] | None:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
+    if not can_generate_digest_copy():
         return None
 
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
     base_url = os.getenv("OPENAI_BASE_URL", "").strip().rstrip("/")
     endpoint = f"{base_url}/responses" if base_url else OPENAI_RESPONSES_URL
 
@@ -104,16 +108,10 @@ def _build_request_payload(
                     {
                         "type": "input_text",
                         "text": (
-                            "你是顶级中文 AI 日报主编。你的任务不是泛泛总结，而是把已选定的条目"
-                            "写成信息密度高、判断明确、像资深科技编辑写出来的日报。"
-                            "只能基于给定证据写作，禁止编造未提供的事实、数字、时长或来源。"
-                            "如果信息缺失，可以写“未披露”，但要优先提炼真实有用的结论。"
-                            "标题必须是中文编辑标题，不要机械直译原文。"
-                            "概念标签输出 2-3 个 `#concept/...`。"
-                            "深度板块的“核心发现”写 1-2 句，“关键细节”写 2-3 条，“行动启示”写 1 句。"
-                            "简报板块的“一句话”要高密度，控制在 50 个汉字左右。"
-                            "视频板块的“核心结论”写 1-2 句，“关键方法论”写 2 条。"
-                            "输出必须是严格 JSON，并符合给定 schema。"
+                            "你是顶级中文科技编辑。任务不是重新选题，而是在给定证据基础上，"
+                            "把已选条目改写成一份信息密度高、判断明确、没有空话的 AI 日报。"
+                            "禁止编造未提供的事实、指标、时间或来源。允许写“未披露”，"
+                            "但优先提炼真实可执行结论。输出必须是严格 JSON，并符合给定 schema。"
                         ),
                     }
                 ],
@@ -281,11 +279,7 @@ def _digest_copy_schema() -> dict[str, Any]:
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "top_stories": {
-                "type": "array",
-                "maxItems": 3,
-                "items": deep_section,
-            },
+            "top_stories": {"type": "array", "maxItems": 3, "items": deep_section},
             "venture_story": {"anyOf": [deep_section, {"type": "null"}]},
             "insight_story": {"anyOf": [brief_section, {"type": "null"}]},
             "video_story": {"anyOf": [video_section, {"type": "null"}]},

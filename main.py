@@ -124,7 +124,7 @@ def load_feed_cache() -> dict:
     if not CACHE_PATH.exists():
         return {}
     try:
-        data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_read_json_text(CACHE_PATH))
         cutoff = (datetime.now() - timedelta(days=CACHE_EXPIRY_DAYS)).strftime("%Y-%m-%d")
         return {guid: date for guid, date in data.items() if date >= cutoff}
     except Exception as e:
@@ -143,9 +143,17 @@ def _load_json_file(path: Path, default: dict) -> dict:
     if not path.exists():
         return default
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(_read_json_text(path))
     except Exception:
         return default
+
+
+def _read_json_text(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeError:
+        text = path.read_text(encoding="utf-8-sig")
+    return text.lstrip("\ufeff")
 
 
 def _write_json_file(path: Path, payload: dict) -> None:

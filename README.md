@@ -6,7 +6,7 @@
 [![CI](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/ci.yml)
 [![Deploy Docs](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/docs.yml/badge.svg)](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/docs.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: MIT](LICENSE)](LICENSE)
 
 ---
 
@@ -18,12 +18,12 @@
 2. 总结层看起来很满，但没有形成可执行判断。
 3. 沉淀层产出太碎，几天后自己都不会回看。
 
-`pkm_obsidian_workflow` 的设计目标不是做一个抓取器，而是做一个**本地优先、可回溯、可治理的 AI 日报系统**：
+`pkm_obsidian_workflow` 的目标不是做一个抓取器，而是做一个本地优先、可回溯、可治理的 AI 日报系统：
 
-- **少而精**：默认每天只写一份 `AI Daily`，而不是到处散落几十条半成品。
-- **证据优先**：先保留 raw 证据，再做策展和摘要，尽量避免“观点先行、证据缺位”。
-- **可执行**：最终日报必须能转成行动，不只是“知道了”。
-- **可治理**：去重、来源轮换、健康检查、状态文件都在流程内，而不是靠人工补锅。
+- **少而精**：默认每天只写一份 `AI Daily`，而不是散落几十条半成品。
+- **证据优先**：先保留 raw 证据，再做策展和摘要，避免“观点先行、证据缺位”。
+- **可执行**：最终日报必须能转成行动，而不只是“知道了”。
+- **可治理**：去重、来源轮换、健康检查、状态文件都内建在流程里。
 
 ---
 
@@ -35,15 +35,12 @@
 
 1. **知识是压缩链，不是堆料场**  
    先做高保真采集，再做逐层压缩，最后转成行动。
-
 2. **上下文优先于结论**  
-   结论必须尽量可回溯到来源，避免 AI 时代最常见的“摘要幻觉污染知识库”。
-
+   结论必须尽量可回溯到来源，避免“摘要幻觉污染知识库”。
 3. **决策效率优先于笔记数量**  
    成功标准不是生成更多 Markdown，而是让你在固定时间内读完、判断、行动。
-
 4. **治理能力必须内建**  
-   去重、轮换、结构检查、健康报告，应该是流程的一部分，而不是后处理。
+   去重、轮换、结构检查、健康报告应该是流程的一部分，而不是后处理。
 
 ### 五层闭环
 
@@ -59,7 +56,8 @@
 - `fetcher.py`：抓取、评分、去重、内容路由。
 - `daily_curation.py`：栏目配额、来源轮换、历史去重、最终选题。
 - `formatter.py`：把策展计划渲染成固定结构日报。
-- `llm_digest.py`：可选的模型写作层，仅负责最终 copy，不参与选题。
+- `digest_copy.py`：不依赖外部 LLM 的稳定 fallback copy。
+- `llm_digest.py`：可选的模型精修层，只负责最终 copy，不参与选题。
 - `writer.py`：将 Markdown 写入本地 Vault 或 Obsidian REST API。
 - `knowledge_health_check.py`：知识库治理与健康检查。
 
@@ -68,11 +66,12 @@
 ## 核心优势
 
 - **单一核心输出**：默认 `daily_digest_only_output = true`，减少认知负担。
-- **双阶段工作流**：`Raw` 与 `Curated` 分层明确，适合 Agent 与人工协作。
+- **双阶段工作流**：`Raw` 与 `Curated` 分层明确，适合 Agent 和人工协同。
 - **本地优先**：核心数据和产物都在你的 Obsidian Vault，不依赖云端托管。
-- **策展而非拼模板**：最终日报由 `daily_curation.py` 决定结构与选题，不再靠 formatter 硬凑栏目。
+- **策展而非拼模板**：最终日报由 `daily_curation.py` 决定结构与选题，而不是靠 formatter 硬凑。
+- **稳定 fallback**：不开启模型精修也能产出完整日报，不会因为 API 配额而塌成空壳。
 - **可审计状态**：`used_articles.json` 与 `source_rotation.json` 明确记录历史选择。
-- **工程化基础完整**：Pydantic 配置校验、pytest、CI、日志、文档站都齐全。
+- **工程化完整**：Pydantic 配置校验、pytest、CI、日志、文档站都已齐全。
 
 ---
 
@@ -82,7 +81,7 @@
 graph TD
     A["main.py orchestrator"] --> B["fetcher.py"]
     A --> C["daily_curation.py"]
-    A --> D["formatter.py / llm_digest.py"]
+    A --> D["formatter.py / digest_copy.py / llm_digest.py"]
     A --> E["writer.py"]
     A --> F["knowledge_health_check.py"]
 
@@ -98,6 +97,8 @@ graph TD
 
     D --> D1["Raw Daily Feeds"]
     D --> D2["AI Daily"]
+    D --> D3["deterministic fallback copy"]
+    D --> D4["optional LLM refinement"]
 
     E --> E1["disk"]
     E --> E2["Obsidian REST API"]
@@ -109,20 +110,21 @@ graph TD
 
 ```text
 obsidian_workflow_open/
-├─ .agent/workflows/                  # Agent 工作流模板
-├─ docs/                              # 项目文档与样例
-├─ templates/                         # Markdown 模板
-├─ tests/                             # 单元测试
-├─ main.py                            # 编排入口
-├─ fetcher.py                         # 抓取、评分、去重
-├─ daily_curation.py                  # 最终选题与状态管理
-├─ llm_digest.py                      # 可选模型写作层
-├─ formatter.py                       # 原始流 / 最终日报渲染
-├─ writer.py                          # 写入适配（disk / api）
-├─ config_schema.py                   # Pydantic 配置校验
-├─ knowledge_health_check.py          # 知识库健康检查
-├─ pkm_config.json                    # 主配置
-└─ README.md
+├── .agent/workflows/                  # Agent 工作流模板
+├── docs/                              # 项目文档与样例
+├── templates/                         # Markdown 模板
+├── tests/                             # 单元测试
+├── main.py                            # 编排入口
+├── fetcher.py                         # 抓取、评分、去重
+├── daily_curation.py                  # 最终选题与状态管理
+├── digest_copy.py                     # 稳定 fallback copy
+├── llm_digest.py                      # 可选模型精修层
+├── formatter.py                       # Raw 流 / 最终日报渲染
+├── writer.py                          # 写入适配（disk / api）
+├── config_schema.py                   # Pydantic 配置校验
+├── knowledge_health_check.py          # 知识库健康检查
+├── pkm_config.json                    # 主配置
+└── README.md
 ```
 
 ---
@@ -150,15 +152,16 @@ pip install -r requirements.txt
 - macOS/Linux：`cp .env.example .env`
 - PowerShell：`Copy-Item .env.example .env`
 
-最少必须配置：
+最少必需配置：
 
 ```dotenv
 OBSIDIAN_VAULT_PATH=D:/path/to/your/Obsidian
 ```
 
-如果你希望最终日报使用模型写作层，而不是 deterministic fallback，也可以配置：
+如果你希望启用模型精修层，而不是只使用 deterministic fallback，可以额外配置：
 
 ```dotenv
+PKM_ENABLE_LLM_DIGEST_COPY=1
 OPENAI_API_KEY=...
 OPENAI_BASE_URL=
 PKM_CURATION_MODEL=gpt-5.4-mini
@@ -247,14 +250,14 @@ python main.py --health-check
 
 1. 先跑 `python main.py --raw-only`，检查当天原始证据流是否健康。
 2. 再跑 `python main.py`，生成最终 `AI Daily`。
-3. 从日报里的行动启示中挑 1-3 条，升级成你的长期笔记或实验。
+3. 从日报里的行动启示中挑 1-3 条，升级成长期笔记或实验。
 4. 每周跑一次 `python main.py --health-check`，治理结构和链接。
 
 如果你追求和本地私有版本尽量接近的输出质量，建议：
 
 - 保持 AI-only feed 集合，不要把泛科技或泛商业源无差别塞进来。
-- 给 `OPENAI_API_KEY` 留出稳定配额，否则最终日报会退回 fallback copy。
-- 定期检查 `used_articles.json` 与 `source_rotation.json`，确认选题历史符合预期。
+- 默认先用 deterministic fallback 跑通，再按需开启模型精修层。
+- 定期检查 `used_articles.json` 和 `source_rotation.json`，确认选题历史符合预期。
 
 ---
 
@@ -271,9 +274,9 @@ pytest -q
 
 项目的安全边界很明确：
 
-- 这是一个**本地优先**的内容工作流，不托管用户数据。
-- 风险点主要在**可配置网络源**和**Vault 文件写入**。
-- 如果启用 `OPENAI_API_KEY`，它只用于最终日报 copy 生成，不参与本地数据持久化。
+- 这是一个本地优先的内容工作流，不托管用户数据。
+- 风险点主要在可配置网络源和 Vault 文件写入。
+- 启用 `OPENAI_API_KEY` 时，它只用于最终日报精修，不参与本地数据持久化。
 
 ---
 
@@ -287,56 +290,39 @@ pytest -q
 
 ---
 
-## 贡献
-
-欢迎 PR 与 Issue。
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- `.github/ISSUE_TEMPLATE`
-- `.github/pull_request_template.md`
-
-提交改动前请至少保证：
-
-1. 代码行为与文档一致。
-2. 新增配置项有 schema 校验和 README 说明。
-3. `pytest -q` 通过。
-4. 不提交运行时状态文件、日志和本地 Vault 数据。
-
----
-
-## 许可证
-
-MIT License，见 [LICENSE](LICENSE)。
-
----
-
 ## 给 Agent 的一键配置提示词
 
-如果你希望 Agent 直接帮你把这个项目配置到本地，并完整跑通，请把下面这段提示词原样发给 Agent：
+把下面这段提示词交给你的 Agent，它会更接近本项目的本地工作流，而不是把抓到的条目粗暴拼成一份“像日报的东西”。
 
 ```text
-请在我的电脑上完整配置并验证 pkm_obsidian_workflow，要求端到端可运行。
+你现在是这个仓库的日报策展 Agent，不是“抓取后顺手总结一下”的摘要器。
 
-目标：
-1) 在本地创建并激活 Python 虚拟环境，安装 requirements.txt 与 requirements-dev.txt。
-2) 检查并配置 .env，至少包含 OBSIDIAN_VAULT_PATH；如果我提供了 API Key，也配置 OPENAI_API_KEY。
-3) 检查 pkm_config.json，确认 daily_digest_only_output=true，并保留 AI-only 数据源配置。
-4) 运行 python main.py --doctor，修复所有阻塞问题。
-5) 运行 python main.py --raw-only 与 python main.py，确认在 Vault 中生成：
-   - 00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md
-   - 30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md
-6) 核验最终日报必须是结构化输出，至少包含：
-   - Top 1 / Top 2 / Top 3
-   - 创投洞见
-   - 洞见
-   - 今日视频
-   - 洞见
-7) 运行 python main.py --health-check，并给出报告路径。
-8) 最后输出：修改文件列表、执行命令列表、关键结果摘要、尚未解决的风险。
+你的目标：
+1. 先保留 raw 证据，再做最终策展。
+2. 输出结果要尽量接近本地 Obsidian 工作流，而不是自由发挥。
+3. 结果必须高信息密度、少空话、能转成行动。
 
-约束：
-- 不要删除我已有的 Vault 内容。
-- 不要提交或覆盖与本任务无关的文件。
-- 如果遇到权限、网络或 API 限流问题，先给出最小修复方案，再继续执行。
-- 如果最终日报退回 fallback copy，必须明确说明原因，不要假装已经达到本地版质量。
+强约束：
+1. 每次开始前，先读取 used_articles.json 和 source_rotation.json。
+2. 已被 used_articles.json 记录过的 URL，不得再次入选。
+3. 优先使用最近 4 天未被选中过的来源，避免同源刷屏。
+4. 如果本周还没使用过 3Blue1Brown，则“今日视频”优先给它。
+5. Top 1-3 优先来自 AI 主新闻、工程实践、工作流与评测更新，不要默认塞论文。
+6. 创投洞见、洞见、今日视频、AI 公司洞见都必须按固定栏目输出。
+7. 没有足够证据时可以写“未披露”，但绝不允许编造数字、发布时间、性能结论或商业结果。
+8. 输出必须包含来源、原文链接、核心概念、深度 Takeaways 或简报要点、行动启示。
+
+工作顺序：
+1. 运行 Raw 流，保留当天原始证据。
+2. 读取状态文件，执行历史去重和来源轮换。
+3. 按栏目配额选题，不要只按分数排序。
+4. 先用 deterministic copy 产出稳定日报。
+5. 如果显式开启了 LLM 精修层，再对最终 copy 做语言层润色；不得让模型参与改写选题事实。
+6. 成功写入后，更新 used_articles.json 和 source_rotation.json。
+
+成功标准：
+- 日报结构稳定。
+- 来源分布健康。
+- 每个栏目都能读出“这条信息为什么重要”和“接下来该做什么”。
+- 即使没有外部模型，也能输出完整、可信、可读的日报。
 ```

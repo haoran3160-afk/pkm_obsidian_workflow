@@ -46,6 +46,7 @@ Issues = "https://github.com/haoran3160-afk/pkm_obsidian_workflow/issues"
 py-modules = [
     "config_schema",
     "daily_curation",
+    "digest_copy",
     "fetcher",
     "fetcher_registry",
     "formatter",
@@ -103,7 +104,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config_schema", "daily_curation", "fetcher", "formatter", "llm_digest", "writer"]
+known-first-party = ["config_schema", "daily_curation", "digest_copy", "fetcher", "formatter", "llm_digest", "writer"]
 
 [tool.mypy]
 python_version = "3.11"

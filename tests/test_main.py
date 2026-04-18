@@ -75,6 +75,16 @@ def test_run_doctor_fails_when_vault_path_missing(monkeypatch):
     assert main.run_doctor(check_network=False) is False
 
 
+def test_load_feed_cache_accepts_utf8_bom(monkeypatch, tmp_path):
+    cache_file = tmp_path / "feed_cache.json"
+    cache_file.write_text('\ufeff{"a":"2099-01-01"}', encoding="utf-8")
+
+    monkeypatch.setattr(main, "CACHE_PATH", cache_file)
+    monkeypatch.setattr(main, "CACHE_EXPIRY_DAYS", 7)
+
+    assert main.load_feed_cache() == {"a": "2099-01-01"}
+
+
 def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir(parents=True, exist_ok=True)
