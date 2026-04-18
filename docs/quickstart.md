@@ -1,6 +1,6 @@
-# Quickstart — 5 Minutes to Your First PKM Run
+# Quickstart - 5 Minutes to Your First PKM Run
 
-This guide gets you from zero to your first automated Obsidian feed in under 5 minutes.
+This guide gets you from zero to a working daily digest in under 5 minutes.
 
 ## Prerequisites
 
@@ -10,8 +10,8 @@ This guide gets you from zero to your first automated Obsidian feed in under 5 m
 ## Step 1: Clone & Install
 
 ```bash
-git clone https://github.com/yourusername/obsidian_workflow_open.git
-cd obsidian_workflow_open
+git clone https://github.com/haoran3160-afk/pkm_obsidian_workflow.git
+cd pkm_obsidian_workflow
 pip install -r requirements.txt
 ```
 
@@ -27,13 +27,19 @@ Open `.env` and set your vault path:
 OBSIDIAN_VAULT_PATH=C:/Users/you/Documents/MyVault
 ```
 
+If you want model-written Chinese copy for the final digest, also set:
+
+```dotenv
+OPENAI_API_KEY=...
+```
+
 ## Step 3: Run Doctor
 
 ```bash
 python main.py --doctor --doctor-skip-network
 ```
 
-If you see ✅ **OK**, proceed. Otherwise follow the Doctor's guidance.
+If you see `OK`, proceed. Otherwise follow the Doctor output.
 
 ## Step 4: Dry Run (Preview)
 
@@ -43,18 +49,19 @@ See exactly what files would be created without touching your Vault:
 python main.py --dry-run
 ```
 
-## Step 5: Fetch!
+## Step 5: Fetch
 
 ```bash
 python main.py
 ```
 
-Your Vault will now have new notes under `30-Daily/AI-News/`, `20-Sources/Papers/`, and `20-Sources/Videos/`.
+By default the workflow writes:
 
----
+- `00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md`
+- `30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md`
 
 ## Next Steps
 
-- [Configuration Reference](configuration.md) — customize your RSS feeds and YouTube channels
-- [Note Templates](templates.md) — change frontmatter style
-- [Writing Plugins](plugins.md) — add Reddit, Twitter, or any custom source
+- [Workflow Walkthrough](workthrough.md) - understand the curation layer
+- [Writing Plugins](plugins.md) - add Reddit, Twitter, or any custom source
+- [AI Daily Sample](sample_outputs/ai-daily-brief-sample.md) - inspect the final output contract

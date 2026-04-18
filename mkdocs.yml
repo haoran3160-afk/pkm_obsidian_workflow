@@ -1,8 +1,8 @@
-site_name: Obsidian PKM Workflow
-site_description: AI-ready PKM pipeline that streams RSS, arXiv papers, and YouTube into your Obsidian Vault.
-site_url: https://yourusername.github.io/obsidian_workflow_open/
-repo_url: https://github.com/yourusername/obsidian_workflow_open
-repo_name: obsidian_workflow_open
+site_name: PKM Obsidian Workflow
+site_description: Local-first AI digest workflow for Obsidian, with raw capture, strict curation, and vault-native output.
+site_url: https://haoran3160-afk.github.io/pkm_obsidian_workflow/
+repo_url: https://github.com/haoran3160-afk/pkm_obsidian_workflow
+repo_name: haoran3160-afk/pkm_obsidian_workflow
 edit_uri: edit/main/docs/
 
 theme:
@@ -69,22 +69,15 @@ nav:
   - Home: index.md
   - Getting Started:
     - Quickstart: quickstart.md
-    - Installation: installation.md
-  - Configuration:
-    - pkm_config.json: configuration.md
-    - Environment Variables: environment.md
+    - Workflow Walkthrough: workthrough.md
   - Customization:
-    - Note Templates: templates.md
-    - Writing Plugins: plugins.md
-  - Reference:
-    - CLI Reference: cli.md
-    - API Reference: api.md
-  - Community:
-    - Contributing: contributing.md
-    - Changelog: changelog.md
-    - Security: security.md
+    - Source Plugins: plugins.md
+  - Samples:
+    - AI Daily Sample: sample_outputs/ai-daily-brief-sample.md
+    - Paper Note Sample: sample_outputs/paper-note-sample.md
+    - Video Note Sample: sample_outputs/video-note-sample.md
 
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yourusername/obsidian_workflow_open
+      link: https://github.com/haoran3160-afk/pkm_obsidian_workflow

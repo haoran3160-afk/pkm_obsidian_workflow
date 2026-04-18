@@ -1,313 +1,270 @@
 {
-    "vault_path": "YOUR_VAULT_PATH",
-    "obsidian_api": {
-        "base_url": "http://localhost:27123",
-        "api_key": "YOUR_API_KEY_HERE"
+  "vault_path": "YOUR_VAULT_PATH",
+  "obsidian_api": {
+    "base_url": "http://localhost:27123",
+    "api_key": "YOUR_API_KEY_HERE"
+  },
+  "write_mode": "disk",
+  "youtube_channels": [
+    {
+      "name": "Y Combinator",
+      "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg",
+      "domain": "AI-Stack",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
     },
-    "youtube_channels": [
-        {
-            "name": "Y Combinator",
-            "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg",
-            "domain": "AI-Stack",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "Andrej Karpathy",
-            "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ",
-            "domain": "AI-Stack",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "Yannic Kilcher",
-            "channel_id": "UCZHmQk67mSJgfCCTn7xBfew",
-            "domain": "Research",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "DeepLearning.AI",
-            "channel_id": "UCcIXc5mAz2EqCeAijJCmDCg",
-            "domain": "Data-Science",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "AI Engineer",
-            "channel_id": "UCVit6i7FtFSBqT0OHD8YSYQ",
-            "domain": "AI-Stack",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "Dwarkesh Patel",
-            "channel_id": "UCZa18YV7qayTh-MRIrBhDpA",
-            "domain": "Research",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "3Blue1Brown",
-            "channel_id": "UCYO_jab_esuFRV4b17AJtAw",
-            "domain": "Math-Modeling",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "StatQuest",
-            "channel_id": "UCtYLUTtgS3k1Fg4y5tAhLbw",
-            "domain": "Data-Science",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        },
-        {
-            "name": "Dan Koe",
-            "channel_id": "UCO_CszI-vXN80yB1sD7hHMA",
-            "domain": "AI-Stack",
-            "note_folder": "20-Sources/Videos",
-            "enabled": true
-        }
-    ],
-    "rss_feeds": [
-        {
-            "name": "The Batch (DeepLearning.AI)",
-            "url": "https://www.deeplearning.ai/the-batch/feed/",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "HackerNews Best",
-            "url": "https://hnrss.org/best",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "filter_keywords": [
-                "AI",
-                "LLM",
-                "machine learning",
-                "neural",
-                "GPT",
-                "model"
-            ],
-            "enabled": true
-        },
-        {
-            "name": "The Rundown AI",
-            "url": "https://www.therundown.ai/feed",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "arXiv cs.AI",
-            "url": "https://arxiv.org/rss/cs.AI",
-            "domain": "Research",
-            "content_type": "paper",
-            "note_folder": "20-Sources/Papers",
-            "enabled": true
-        },
-        {
-            "name": "arXiv cs.LG",
-            "url": "https://arxiv.org/rss/cs.LG",
-            "domain": "Research",
-            "content_type": "paper",
-            "note_folder": "20-Sources/Papers",
-            "enabled": true
-        },
-        {
-            "name": "Papers With Code",
-            "url": "https://paperswithcode.com/rss",
-            "domain": "Research",
-            "content_type": "paper",
-            "note_folder": "20-Sources/Papers",
-            "enabled": true
-        },
-        {
-            "name": "Sequoia Capital",
-            "url": "https://www.sequoiacap.com/feed/",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "Dan Koe Blog",
-            "url": "https://thedankoe.com/feed/",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "Ben's Bites (AI Solopreneur)",
-            "url": "https://bensbites.feeder.co/rss",
-            "domain": "Solopreneur",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "TLDR AI (AI Solopreneur Apps)",
-            "url": "https://tldr.tech/ai/rss",
-            "domain": "Solopreneur",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "OpenAI News (Optional)",
-            "url": "https://openai.com/news/rss.xml",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "Anthropic News (Optional)",
-            "url": "https://www.anthropic.com/news/rss.xml",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "Google DeepMind Blog (Optional)",
-            "url": "https://deepmind.google/discover/blog/rss.xml",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": false
-        },
-        {
-            "name": "AWS ML Blog (Optional)",
-            "url": "https://aws.amazon.com/blogs/machine-learning/feed/",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": false
-        },
-        {
-            "name": "Hugging Face Blog (Optional)",
-            "url": "https://huggingface.co/blog/feed.xml",
-            "domain": "AI-News",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "LangChain Blog (Optional)",
-            "url": "https://blog.langchain.dev/rss/",
-            "domain": "AI-News",
-            "content_type": "engineering",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "OpenAI X (RSSHub Optional)",
-            "url": "https://rsshub.app/twitter/user/OpenAI",
-            "domain": "Tweet",
-            "content_type": "tweet",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "Anthropic X (RSSHub Optional)",
-            "url": "https://rsshub.app/twitter/user/AnthropicAI",
-            "domain": "Tweet",
-            "content_type": "tweet",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "Simon Willison (Engineering Practice Optional)",
-            "url": "https://simonwillison.net/atom/everything/",
-            "domain": "Engineering",
-            "content_type": "engineering",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        },
-        {
-            "name": "GitHub Changelog AI (Optional)",
-            "url": "https://github.blog/changelog/label/ai/feed/",
-            "domain": "Tooling",
-            "content_type": "tooling",
-            "note_folder": "30-Daily/AI-News",
-            "enabled": true
-        }
-    ],
-    "domain_mapping": {
-        "python": "10-Notes/Programming/Python",
-        "cpp": "10-Notes/Programming/Cpp",
-        "c++": "10-Notes/Programming/Cpp",
-        "r": "10-Notes/Programming/R",
-        "ai-stack": "10-Notes/Programming/AI-Stack",
-        "llm": "10-Notes/Programming/AI-Stack",
-        "rag": "10-Notes/Programming/AI-Stack",
-        "math-modeling": "10-Notes/Math-Modeling",
-        "data-science": "10-Notes/Data-Science",
-        "statistics": "10-Notes/Data-Science",
-        "research": "10-Notes/Research",
-        "paper": "10-Notes/Research"
+    {
+      "name": "Andrej Karpathy",
+      "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ",
+      "domain": "AI-Stack",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
     },
-    "note_language_default": "cn",
-    "daily_fetch_time": "07:00",
-    "max_papers_per_day": 10,
-    "max_videos_per_channel": 3,
-    "max_paper_notes_per_day": 4,
-    "max_video_notes_per_day": 3,
-    "daily_digest_only_output": true,
-    "daily_digest_top_picks": 6,
-    "daily_digest_max_items_per_source": 2,
-    "daily_digest_action_items": 3,
-    "daily_digest_max_deferred_items": 6,
-    "daily_digest_include_mindmap": true,
-    "daily_digest_include_cognitive_lenses": true,
-    "daily_digest_cognitive_questions": [
-        "能力边界是否实质前移（不仅是榜单数字）？",
-        "架构范式是否变化（例如主模型+子代理）？",
-        "成本-延迟-质量前沿是否改写？",
-        "评测与治理是否可复现、可审计？",
-        "能否沉淀为长期杠杆（SOP/模板/基线）？"
-    ],
-    "max_ai_items_per_feed": 8,
-    "min_ai_interest_score": 7,
-    "ai_interest_topics": [
-        "skill",
-        "skills",
-        "harness engineering",
-        "context engineering",
-        "agent engineering",
-        "context window",
-        "context management",
-        "prompt engineering",
-        "eval",
-        "evaluation",
-        "vibe coding",
-        "ai coding",
-        "cursor",
-        "windsurf",
-        "claude code",
-        "open source model",
-        "tool calling",
-        "workflow"
-    ],
-    "ai_priority_topics": [
-        "harness engineering",
-        "context engineering",
-        "vibe coding",
-        "agent engineering",
-        "evaluation",
-        "tool calling",
-        "memory",
-        "long context",
-        "coding agent",
-        "best practices"
-    ],
-    "ai_exclude_keywords": [
-        "funding round",
-        "acquisition",
-        "job posting",
-        "hiring",
-        "press release",
-        "sponsored",
-        "webinar",
-        "event recap",
-        "conference tickets",
-        "coupon"
-    ],
-    "used_articles_retention_days": 30,
-    "source_health_keep_runs": 30,
-    "raw_archive_folder": "01-Raw/daily-feeds"
+    {
+      "name": "Yannic Kilcher",
+      "channel_id": "UCZHmQk67mSJgfCCTn7xBfew",
+      "domain": "Research",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    },
+    {
+      "name": "DeepLearning.AI",
+      "channel_id": "UCcIXc5mJsHVYTZR1maL5l9w",
+      "domain": "Data-Science",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    },
+    {
+      "name": "AI Engineer",
+      "channel_id": "UCLKPca3kwwd-B59HNr-_lvA",
+      "domain": "AI-Stack",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    },
+    {
+      "name": "Dwarkesh Patel",
+      "channel_id": "UCZa18YV7qayTh-MRIrBhDpA",
+      "domain": "Research",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    },
+    {
+      "name": "3Blue1Brown",
+      "channel_id": "UCYO_jab_esuFRV4b17AJtAw",
+      "domain": "Math-Modeling",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    },
+    {
+      "name": "StatQuest",
+      "channel_id": "UCtYLUTtgS3k1Fg4y5tAhLbw",
+      "domain": "Data-Science",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    },
+    {
+      "name": "Dan Koe",
+      "channel_id": "UCWXYDYv5STLk-zoxMP2I1Lw",
+      "domain": "AI-Stack",
+      "note_folder": "20-Sources/Videos",
+      "enabled": true
+    }
+  ],
+  "rss_feeds": [
+    {
+      "name": "Latent Space",
+      "url": "https://www.latent.space/feed",
+      "domain": "AI-News",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "HackerNews Best",
+      "url": "https://hnrss.org/best",
+      "domain": "AI-News",
+      "note_folder": "30-Daily/AI-News",
+      "filter_keywords": ["AI", "LLM", "machine learning", "neural", "GPT", "model"],
+      "enabled": true
+    },
+    {
+      "name": "Simon Willison",
+      "url": "https://simonwillison.net/atom/everything/",
+      "domain": "AI-News",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "OpenAI News",
+      "url": "https://openai.com/news/rss.xml",
+      "domain": "AI-News",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "Ethan Mollick (One Useful Thing)",
+      "url": "https://www.oneusefulthing.org/feed",
+      "domain": "AI-News",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "MLOps Community",
+      "url": "https://mlops.community/feed/",
+      "domain": "AI-News",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "Sequoia Capital",
+      "url": "https://www.sequoiacap.com/feed/",
+      "domain": "Venture",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "Dan Koe Blog",
+      "url": "https://thedankoe.com/feed/",
+      "domain": "Growth",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "The Guardian Science",
+      "url": "https://www.theguardian.com/science/rss",
+      "domain": "Venture",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "Lilian Weng",
+      "url": "https://lilianweng.github.io/index.xml",
+      "domain": "AI-Company",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "Google AI Blog",
+      "url": "https://blog.google/innovation-and-ai/technology/ai/rss/",
+      "domain": "AI-Company",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "Hugging Face Blog",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "domain": "AI-Company",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "LangChain Blog",
+      "url": "https://blog.langchain.com/rss/",
+      "domain": "AI-Company",
+      "note_folder": "30-Daily/AI-News",
+      "enabled": true
+    },
+    {
+      "name": "arXiv cs.AI",
+      "url": "https://arxiv.org/rss/cs.AI",
+      "domain": "Research",
+      "content_type": "paper",
+      "note_folder": "20-Sources/Papers",
+      "enabled": true
+    },
+    {
+      "name": "arXiv cs.LG",
+      "url": "https://arxiv.org/rss/cs.LG",
+      "domain": "Research",
+      "content_type": "paper",
+      "note_folder": "20-Sources/Papers",
+      "enabled": true
+    }
+  ],
+  "domain_mapping": {
+    "python": "10-Notes/Programming/Python",
+    "cpp": "10-Notes/Programming/Cpp",
+    "c++": "10-Notes/Programming/Cpp",
+    "r": "10-Notes/Programming/R",
+    "ai-stack": "10-Notes/Programming/AI-Stack",
+    "llm": "10-Notes/Programming/AI-Stack",
+    "rag": "10-Notes/Programming/AI-Stack",
+    "math-modeling": "10-Notes/Math-Modeling",
+    "data-science": "10-Notes/Data-Science",
+    "statistics": "10-Notes/Data-Science",
+    "research": "10-Notes/Research",
+    "paper": "10-Notes/Research"
+  },
+  "note_language_default": "cn",
+  "daily_fetch_time": "07:00",
+  "max_papers_per_day": 10,
+  "max_videos_per_channel": 3,
+  "max_paper_notes_per_day": 4,
+  "max_video_notes_per_day": 3,
+  "daily_digest_only_output": true,
+  "daily_digest_top_picks": 3,
+  "daily_digest_max_items_per_source": 2,
+  "daily_digest_action_items": 3,
+  "daily_digest_max_deferred_items": 6,
+  "daily_digest_include_mindmap": false,
+  "daily_digest_include_cognitive_lenses": false,
+  "daily_digest_quality_gate_enabled": false,
+  "daily_digest_tldr_min_quality_score": 1,
+  "daily_digest_tldr_max_undisclosed": 0,
+  "daily_digest_tldr_min_items": 1,
+  "daily_digest_tldr_min_hard_signal_ratio": 0.4,
+  "daily_digest_tldr_max_undisclosed_ratio": 0.3,
+  "daily_digest_min_top_nonpaper": 3,
+  "daily_digest_min_top_content_types": 1,
+  "daily_digest_max_paper_in_top": 0,
+  "daily_digest_cognitive_questions": [],
+  "max_ai_items_per_feed": 8,
+  "min_ai_interest_score": 6,
+  "enable_fulltext_enrichment": true,
+  "fulltext_enrichment_per_feed": 2,
+  "ai_interest_topics": [
+    "skill",
+    "skills",
+    "harness engineering",
+    "context engineering",
+    "agent engineering",
+    "context window",
+    "context management",
+    "prompt engineering",
+    "eval",
+    "evaluation",
+    "vibe coding",
+    "ai coding",
+    "cursor",
+    "windsurf",
+    "claude code",
+    "open source model",
+    "tool calling",
+    "workflow"
+  ],
+  "ai_priority_topics": [
+    "harness engineering",
+    "context engineering",
+    "vibe coding",
+    "agent engineering",
+    "evaluation",
+    "tool calling",
+    "memory",
+    "long context",
+    "coding agent",
+    "best practices"
+  ],
+  "ai_exclude_keywords": [
+    "funding round",
+    "job posting",
+    "hiring",
+    "press release",
+    "sponsored",
+    "webinar",
+    "event recap",
+    "conference tickets",
+    "coupon"
+  ],
+  "used_articles_retention_days": 30,
+  "source_health_keep_runs": 30,
+  "raw_archive_folder": "01-Raw/daily-feeds"
 }

@@ -1,6 +1,6 @@
 # Writing Custom Source Plugins
 
-The **Source Plugin Registry** (`fetcher_registry.py`) lets you add new data sources — like Reddit, Twitter, or any web API — without modifying any core files.
+The **Source Plugin Registry** (`fetcher_registry.py`) lets you add new data sources - like Reddit, Twitter, or any web API - without modifying any core files.
 
 ## How It Works
 
@@ -16,11 +16,12 @@ Built-in types: `rss`, `youtube`, `youtube_raw`.
 # plugins/my_reddit_fetcher.py
 from fetcher_registry import register_fetcher
 
+
 @register_fetcher("reddit")
 def fetch_reddit(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
     """
     Fetch posts from a Reddit community.
-    
+
     Returns a list of dicts with keys: title, link, guid, summary, folder.
     """
     import requests
@@ -41,13 +42,15 @@ def fetch_reddit(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
         if guid in cache:
             continue
         cache[guid] = today
-        results.append({
-            "title": d["title"],
-            "link": f"https://reddit.com{d['permalink']}",
-            "guid": guid,
-            "summary": d.get("selftext", "")[:300],
-            "folder": folder,
-        })
+        results.append(
+            {
+                "title": d["title"],
+                "link": f"https://reddit.com{d['permalink']}",
+                "guid": guid,
+                "summary": d.get("selftext", "")[:300],
+                "folder": folder,
+            }
+        )
     return results
 ```
 
@@ -83,12 +86,13 @@ Your fetcher function **must**:
 - Accept `(config: dict, cache: dict, today: str, **kwargs)` signature
 - Return `list[dict]` where each dict has at minimum: `title`, `link`, `guid`, `summary`, `folder`
 - Update `cache[guid] = today` for items that should be deduplicated on future runs
-- **Not** perform any file I/O or Markdown formatting (that's the Transform layer)
+- Not perform any file I/O or Markdown formatting
 - Use `tenacity` for retry logic on any network calls
 
 ## Listing Registered Fetchers
 
 ```python
 from fetcher_registry import list_registered
+
 print(list_registered())  # ['reddit', 'rss', 'youtube', 'youtube_raw']
 ```

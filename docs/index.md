@@ -3,31 +3,36 @@ hide:
   - toc
 ---
 
-# Obsidian PKM Workflow
+# PKM Obsidian Workflow
 
-> **Your Local, AI-Ready Second Brain Pipeline.**
+> 本地优先的 AI 日报工作流，把抓取、筛选、策展、写入放进一个可复现的 Obsidian 流程。
 
-An automated PKM workflow that streams RSS feeds, arXiv papers, and YouTube videos directly into your Obsidian Vault as pristine Markdown — with zero cloud dependency.
+这个项目不是“多抓一点 RSS”，而是“每天稳定生成一份值得看的 AI 日报”。
+
+默认产出两层内容：
+
+- `Raw Daily Feeds`：保留原始证据，方便 Agent 或人工二次策展。
+- `AI Daily`：按固定栏目输出一份高信息密度日报，而不是散乱的碎片笔记。
 
 <div class="grid cards" markdown>
 
 - :fontawesome-solid-bolt: **[Quickstart](quickstart.md)**  
-  Zero to your first fetch in 5 minutes.
+  从安装、配置到首个日报产出，最短路径跑通。
 
-- :fontawesome-solid-gear: **[Configuration](configuration.md)**  
-  Customize feeds, YouTube channels, and write mode.
+- :fontawesome-solid-wand-magic-sparkles: **[Workflow Walkthrough](workthrough.md)**  
+  了解抓取层、策展层和最终日报是怎么串起来的。
 
-- :fontawesome-solid-puzzle-piece: **[Plugins](plugins.md)**  
-  Add Reddit, Twitter, or any custom data source.
+- :fontawesome-solid-puzzle-piece: **[Source Plugins](plugins.md)**  
+  扩展抓取器，接入你自己的 Reddit、API 或内部信息源。
 
-- :fontawesome-solid-file-code: **[Templates](templates.md)**  
-  Customize Jinja2 templates to match your PKM taxonomy.
+- :fontawesome-solid-file-lines: **[AI Daily Sample](sample_outputs/ai-daily-brief-sample.md)**  
+  查看最终日报结构和写作风格示例。
 
-- :fontawesome-solid-terminal: **[CLI Reference](cli.md)**  
-  All command-line flags explained.
+- :fontawesome-solid-book-open: **[Paper Note Sample](sample_outputs/paper-note-sample.md)**  
+  查看论文条目的独立笔记格式。
 
-- :material-hand-heart: **[Contributing](contributing.md)**  
-  How to contribute to the project.
+- :fontawesome-solid-video: **[Video Note Sample](sample_outputs/video-note-sample.md)**  
+  查看视频类条目的落地格式。
 
 </div>
 
@@ -35,26 +40,25 @@ An automated PKM workflow that streams RSS feeds, arXiv papers, and YouTube vide
 
 ```mermaid
 graph LR
-    A[RSS / YouTube / Plugins] -->|Extract| B[fetcher.py]
-    B -->|items| C[formatter.py]
-    C -->|Jinja2| D[Markdown Strings]
-    D -->|Load| E[writer.py]
-    E -->|disk / api| F[(Obsidian Vault)]
+    A["RSS / YouTube / Plugins"] -->|Extract| B["fetcher.py"]
+    B -->|Candidates| C["daily_curation.py"]
+    C -->|Plan| D["formatter.py / llm_digest.py"]
+    D -->|Markdown| E["writer.py"]
+    E -->|disk / api| F["Obsidian Vault"]
 ```
 
 ## Features at a Glance
 
 | Feature | Status |
 |---------|--------|
-| RSS / Atom Feed Parsing | ✅ |
-| YouTube via RSS | ✅ |
-| Network retry (exponential backoff) | ✅ |
-| Jinja2 Note Templates | ✅ |
-| Pydantic Config Validation | ✅ |
-| Write Mode: disk / api / both | ✅ |
-| `--dry-run` mode | ✅ |
-| Source Plugin Registry | ✅ |
-| Rich Terminal Summaries | ✅ |
-| Structured Logging (structlog) | ✅ |
-| GitHub Actions CI | ✅ |
-| Daily Scheduler | ✅ |
+| RSS / Atom feed parsing | Yes |
+| YouTube via RSS | Yes |
+| Raw capture mode | Yes |
+| Local-parity curated digest | Yes |
+| Pydantic config validation | Yes |
+| Write mode: `disk` / `api` / `both` | Yes |
+| `--dry-run` and `--doctor` | Yes |
+| Source plugin registry | Yes |
+| Structured logging | Yes |
+| GitHub Actions CI | Yes |
+| Daily scheduler | Yes |

@@ -135,6 +135,15 @@ def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, 
     monkeypatch.setattr(main, "_compact_used_articles", lambda _path, _retention: None)
     monkeypatch.setattr(main, "_save_source_health", lambda _report: None)
     monkeypatch.setattr(main, "_archive_old_raw_feeds", lambda _vault, keep_days=7: 0)
+    monkeypatch.setattr(main.daily_curation, "load_used_urls", lambda _path: set())
+    monkeypatch.setattr(
+        main.daily_curation, "load_rotation_state", lambda _path: {"sources": {}, "weekly_summary": {}}
+    )
+    monkeypatch.setattr(
+        main.daily_curation,
+        "persist_daily_digest_selection",
+        lambda *args, **kwargs: None,
+    )
 
     def fake_fetch_rss(feed_config, *_args, **_kwargs):
         if "arxiv" in feed_config["url"]:

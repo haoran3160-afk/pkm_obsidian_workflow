@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py 鈥?Obsidian PKM Workflow Orchestrator
+main.py - Obsidian PKM Workflow Orchestrator
 Coordinates fetching, formatting, and writing of daily digests and feeds.
 Usage:
   python main.py
@@ -14,6 +14,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from collections import defaultdict
@@ -26,8 +27,10 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
+import daily_curation
 import fetcher
 import formatter
+import llm_digest
 import writer
 from config_schema import PKMConfig, load_and_validate
 
@@ -88,11 +91,22 @@ DAILY_DIGEST_MAX_DEFERRED_ITEMS = CONFIG.daily_digest_max_deferred_items
 DAILY_DIGEST_INCLUDE_MINDMAP = CONFIG.daily_digest_include_mindmap
 DAILY_DIGEST_INCLUDE_COGNITIVE_LENSES = CONFIG.daily_digest_include_cognitive_lenses
 DAILY_DIGEST_COGNITIVE_QUESTIONS = CONFIG.daily_digest_cognitive_questions
+DAILY_DIGEST_QUALITY_GATE_ENABLED = CONFIG.daily_digest_quality_gate_enabled
+DAILY_DIGEST_TLDR_MIN_QUALITY_SCORE = CONFIG.daily_digest_tldr_min_quality_score
+DAILY_DIGEST_TLDR_MAX_UNDISCLOSED = CONFIG.daily_digest_tldr_max_undisclosed
+DAILY_DIGEST_TLDR_MIN_ITEMS = CONFIG.daily_digest_tldr_min_items
+DAILY_DIGEST_TLDR_MIN_HARD_SIGNAL_RATIO = CONFIG.daily_digest_tldr_min_hard_signal_ratio
+DAILY_DIGEST_TLDR_MAX_UNDISCLOSED_RATIO = CONFIG.daily_digest_tldr_max_undisclosed_ratio
+DAILY_DIGEST_MIN_TOP_NONPAPER = CONFIG.daily_digest_min_top_nonpaper
+DAILY_DIGEST_MIN_TOP_CONTENT_TYPES = CONFIG.daily_digest_min_top_content_types
+DAILY_DIGEST_MAX_PAPER_IN_TOP = CONFIG.daily_digest_max_paper_in_top
 WRITE_MODE = os.getenv("PKM_WRITE_MODE", CONFIG.write_mode)
 
 QUALITY_CONFIG = {
     "max_ai_items_per_feed": CONFIG.max_ai_items_per_feed,
     "min_ai_interest_score": CONFIG.min_ai_interest_score,
+    "enable_fulltext_enrichment": CONFIG.enable_fulltext_enrichment,
+    "fulltext_enrichment_per_feed": CONFIG.fulltext_enrichment_per_feed,
     "ai_interest_topics": CONFIG.ai_interest_topics,
     "ai_priority_topics": CONFIG.ai_priority_topics,
     "ai_exclude_keywords": CONFIG.ai_exclude_keywords,
@@ -190,7 +204,7 @@ def _record_source_health(
             "kind": kind,
             "status": status,
             "item_count": item_count,
-            "detail": detail[:200],
+            "detail": detail[:320],
         }
     )
 
@@ -215,7 +229,7 @@ def _save_source_health(report: dict[str, Any]) -> None:
 def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
     """
     Dispatch a write operation based on WRITE_MODE config.
-    In dry_run mode, only print the target path 鈥?no actual I/O.
+    In dry_run mode, only print the target path - no actual I/O.
     """
     if dry_run:
         console.print(f"  [dim cyan][dry-run][/] would write 鈫?[bold]{filepath}[/]")
@@ -332,6 +346,104 @@ def _remove_deferred_from_cache(feed_cache: dict, deferred_items: list[dict], to
             feed_cache.pop(guid, None)
 
 
+def _extract_digest_quality_score(content: str) -> float | None:
+    match = re.search(r"综合评分：\*\*(\d+(?:\.\d+)?)\/10\*\*", content)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _parse_item_date(value: str) -> datetime | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _backfill_digest_items(
+    news_items: dict[str, list[dict]],
+    *,
+    today: str,
+    score_threshold: float = 9.0,
+) -> int:
+    """
+    Low-quality daily runs often happen when only video shorts or sparse-paper entries arrive.
+    Backfill from high-signal RSS sources (recent 7 days, ignore cache) to rescue digest quality.
+    """
+    backfill_keywords = (
+        "openai",
+        "anthropic",
+        "langchain",
+        "simon",
+        "hackernews",
+        "batch",
+        "rundown",
+        "changelog",
+    )
+    today_dt = datetime.strptime(today, "%Y-%m-%d")
+    local_cache: dict[str, str] = {}
+    added = 0
+    backfill_quality = dict(QUALITY_CONFIG)
+    backfill_quality["min_ai_interest_score"] = max(
+        4, int(QUALITY_CONFIG.get("min_ai_interest_score", 6)) - 2
+    )
+    backfill_quality["max_ai_items_per_feed"] = 4
+    backfill_quality["fulltext_enrichment_per_feed"] = max(
+        2, int(QUALITY_CONFIG.get("fulltext_enrichment_per_feed", 2))
+    )
+
+    for feed in CONFIG.rss_feeds:
+        if not feed.enabled:
+            continue
+        name_lower = feed.name.lower()
+        if not any(token in name_lower for token in backfill_keywords):
+            continue
+        inferred_type = fetcher.infer_content_type(
+            source_name=feed.name,
+            url=feed.url,
+            domain=str(feed.domain or ""),
+            fallback=str(getattr(feed, "content_type", "") or ""),
+        )
+        if inferred_type in {"paper", "video"}:
+            continue
+        try:
+            items = fetcher.fetch_rss_feed(
+                feed.model_dump(),
+                local_cache,
+                today,
+                raw_only=False,
+                quality_config=backfill_quality,
+            )
+        except Exception as exc:
+            log.warning("digest.backfill.feed_fail", feed=feed.name, error=str(exc))
+            continue
+        if not items:
+            continue
+
+        for item in items:
+            published = _parse_item_date(str(item.get("published", "")))
+            if published is None:
+                continue
+            if (today_dt - published).days > 7:
+                continue
+            enriched = dict(item)
+            enriched["backfill"] = True
+            news_items[feed.name].append(enriched)
+            added += 1
+
+    if added > 0:
+        for src, items in list(news_items.items()):
+            news_items[src] = _dedupe_items(items)
+        log.info("digest.backfill.applied", items_added=added, threshold=score_threshold)
+    return added
+
+
 def _archive_old_raw_feeds(vault_path: str, keep_days: int = 7) -> int:
     if keep_days < 1:
         return 0
@@ -396,7 +508,7 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
     duration = time.monotonic() - report["start_time"]
     mode_label = report["mode"]
 
-    console.rule(f"[bold green]PKM Run Summary 鈥?{mode_label}[/]")
+    console.rule(f"[bold green]PKM Run Summary - {mode_label}[/]")
 
     # Sources table
     table = Table(title="Feed Sources", border_style="dim", show_lines=True)
@@ -407,11 +519,11 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
     table.add_column("Time (s)", justify="right")
 
     for src in report["rss_sources"]:
-        status = "[green]鉁?OK[/]" if src["ok"] else "[red]鉂?Fail[/]"
+        status = "[green]OK[/]" if src["ok"] else "[red]FAIL[/]"
         table.add_row(src["name"], "RSS", str(src["items"]), status, f"{src['elapsed']:.1f}")
 
     for src in report["yt_sources"]:
-        status = "[green]鉁?OK[/]" if src["ok"] else "[red]鉂?Fail[/]"
+        status = "[green]OK[/]" if src["ok"] else "[red]FAIL[/]"
         table.add_row(src["name"], "YouTube", str(src["items"]), status, f"{src['elapsed']:.1f}")
 
     console.print(table)
@@ -517,11 +629,11 @@ def run_doctor(check_network: bool = True) -> bool:
     if errors:
         console.print("\n[red]Errors:[/]")
         for item in errors:
-            console.print(f"  [red]鉁梉/]  {item}")
+            console.print(f"  [red]-[/]  {item}")
         console.print("\n[bold red]Doctor result: FAILED[/]")
         return False
 
-    console.print("\n[bold green]Doctor result: OK 鉁匸/]")
+    console.print("\n[bold green]Doctor result: OK[/]")
     return True
 
 
@@ -544,6 +656,8 @@ def run_daily_fetch(
     log.info("cache.loaded", guid_count=len(feed_cache))
     _refresh_source_rotation_week(SOURCE_ROTATION_PATH)
     _compact_used_articles(USED_ARTICLES_PATH, CONFIG.used_articles_retention_days)
+    used_urls = daily_curation.load_used_urls(USED_ARTICLES_PATH)
+    rotation_state = daily_curation.load_rotation_state(SOURCE_ROTATION_PATH)
     today = formatter.today_str()
 
     news_items: dict[str, list[dict]] = defaultdict(list)
@@ -562,15 +676,21 @@ def run_daily_fetch(
             continue
 
         t0 = time.monotonic()
+        rss_meta: dict[str, Any] = {"status": "ok", "detail": "", "mode": "direct"}
         try:
-            items = fetcher.fetch_rss_feed(
+            fetched = fetcher.fetch_rss_feed(
                 feed.model_dump(),
                 feed_cache,
                 today,
                 MAX_PAPERS,
                 raw_only,
                 quality_config=QUALITY_CONFIG,
+                return_meta=True,
             )
+            if isinstance(fetched, tuple):
+                items, rss_meta = fetched
+            else:
+                items = fetched
             ok = True
         except Exception as exc:
             log.error("rss.fail", feed=feed.name, error=str(exc))
@@ -583,7 +703,14 @@ def run_daily_fetch(
         report["rss_sources"].append(
             {"name": feed.name, "items": len(items), "ok": ok, "elapsed": time.monotonic() - t0}
         )
-        _record_source_health(report, feed.name, "rss", "ok", len(items))
+        _record_source_health(
+            report,
+            feed.name,
+            "rss",
+            str(rss_meta.get("status", "ok")),
+            len(items),
+            str(rss_meta.get("detail", "")),
+        )
 
         if _is_paper_feed(feed.url):
             if raw_only:
@@ -689,12 +816,16 @@ def run_daily_fetch(
                 video_candidates.append({**video, "_source_name": channel.name})
 
         # 3) Global write limits to avoid Obsidian overload
-        selected_papers, deferred_papers = _select_with_global_limit(
-            paper_candidates, "_source_name", MAX_PAPER_NOTES_PER_DAY
-        )
-        selected_videos, deferred_videos = _select_with_global_limit(
-            video_candidates, "_source_name", MAX_VIDEO_NOTES_PER_DAY
-        )
+        if DAILY_DIGEST_ONLY_OUTPUT:
+            selected_papers, deferred_papers = list(paper_candidates), []
+            selected_videos, deferred_videos = list(video_candidates), []
+        else:
+            selected_papers, deferred_papers = _select_with_global_limit(
+                paper_candidates, "_source_name", MAX_PAPER_NOTES_PER_DAY
+            )
+            selected_videos, deferred_videos = _select_with_global_limit(
+                video_candidates, "_source_name", MAX_VIDEO_NOTES_PER_DAY
+            )
 
         _remove_deferred_from_cache(feed_cache, deferred_papers, today)
         _remove_deferred_from_cache(feed_cache, deferred_videos, today)
@@ -795,6 +926,37 @@ def run_daily_fetch(
             or paper_queue_refs
             or video_queue_refs
         ):
+            digest_stats = {
+                "sources_scanned": len(report["rss_sources"]) + len(report["yt_sources"]),
+                "papers_written": len(paper_written_refs),
+                "papers_deferred": len(deferred_papers),
+                "videos_written": len(video_written_refs),
+                "videos_deferred": len(deferred_videos),
+                "daily_only_output": DAILY_DIGEST_ONLY_OUTPUT,
+            }
+            curation_plan = daily_curation.plan_daily_digest(
+                dict(news_items),
+                today=today,
+                top_picks=DAILY_DIGEST_TOP_PICKS,
+                action_items=DAILY_DIGEST_ACTION_ITEMS,
+                max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
+                min_top_nonpaper=DAILY_DIGEST_MIN_TOP_NONPAPER,
+                min_top_content_types=DAILY_DIGEST_MIN_TOP_CONTENT_TYPES,
+                max_paper_in_top=DAILY_DIGEST_MAX_PAPER_IN_TOP,
+                paper_written=paper_written_refs,
+                video_written=video_written_refs,
+                paper_queue=paper_queue_refs,
+                video_queue=video_queue_refs,
+                stats=digest_stats,
+                used_urls=used_urls,
+                rotation_state=rotation_state,
+            )
+            digest_copy = None
+            if not test_mode and not dry_run and llm_digest.can_generate_digest_copy():
+                try:
+                    digest_copy = llm_digest.generate_digest_copy(curation_plan)
+                except Exception as exc:
+                    log.warning("digest.llm_copy.fail", error=str(exc))
             path, content = formatter.format_daily_digest(
                 dict(news_items),
                 raw_only=False,
@@ -805,23 +967,35 @@ def run_daily_fetch(
                 include_mindmap=DAILY_DIGEST_INCLUDE_MINDMAP,
                 include_cognitive_lenses=DAILY_DIGEST_INCLUDE_COGNITIVE_LENSES,
                 cognitive_questions=DAILY_DIGEST_COGNITIVE_QUESTIONS,
+                quality_gate_enabled=DAILY_DIGEST_QUALITY_GATE_ENABLED,
+                tldr_min_quality_score=DAILY_DIGEST_TLDR_MIN_QUALITY_SCORE,
+                tldr_max_undisclosed=DAILY_DIGEST_TLDR_MAX_UNDISCLOSED,
+                tldr_min_items=DAILY_DIGEST_TLDR_MIN_ITEMS,
+                tldr_min_hard_signal_ratio=DAILY_DIGEST_TLDR_MIN_HARD_SIGNAL_RATIO,
+                tldr_max_undisclosed_ratio=DAILY_DIGEST_TLDR_MAX_UNDISCLOSED_RATIO,
+                min_top_nonpaper=DAILY_DIGEST_MIN_TOP_NONPAPER,
+                min_top_content_types=DAILY_DIGEST_MIN_TOP_CONTENT_TYPES,
+                max_paper_in_top=DAILY_DIGEST_MAX_PAPER_IN_TOP,
                 paper_written=paper_written_refs,
                 video_written=video_written_refs,
                 paper_queue=paper_queue_refs,
                 video_queue=video_queue_refs,
-                stats={
-                    "sources_scanned": len(report["rss_sources"]) + len(report["yt_sources"]),
-                    "papers_written": len(paper_written_refs),
-                    "papers_deferred": len(deferred_papers),
-                    "videos_written": len(video_written_refs),
-                    "videos_deferred": len(deferred_videos),
-                    "daily_only_output": DAILY_DIGEST_ONLY_OUTPUT,
-                },
+                stats=digest_stats,
+                curation_plan=curation_plan,
+                digest_copy=digest_copy,
             )
             if test_mode:
                 log.info("test.digest.preview", path=path, preview=content[:200])
             else:
-                _record_write(report, path, _write(path, content, dry_run))
+                ok_digest = _write(path, content, dry_run)
+                _record_write(report, path, ok_digest)
+                if ok_digest and not dry_run:
+                    daily_curation.persist_daily_digest_selection(
+                        curation_plan,
+                        used_articles_path=USED_ARTICLES_PATH,
+                        source_rotation_path=SOURCE_ROTATION_PATH,
+                        retention_days=CONFIG.used_articles_retention_days,
+                    )
 
     # Finalize
     if not dry_run:

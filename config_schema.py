@@ -31,6 +31,7 @@ class RssFeed(BaseModel):
     ] = "news"
     note_folder: str = Field(..., min_length=1)
     filter_keywords: list[str] = Field(default_factory=list)
+    fallback_urls: list[str] = Field(default_factory=list)
     enabled: bool = True
 
     @field_validator("url")
@@ -40,6 +41,21 @@ class RssFeed(BaseModel):
         if not value.startswith(("http://", "https://")):
             raise ValueError(f"RSS feed URL must start with http:// or https://. Got: {v!r}")
         return value
+
+    @field_validator("fallback_urls")
+    @classmethod
+    def fallback_urls_must_be_http(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for value in values:
+            url = (value or "").strip()
+            if not url:
+                continue
+            if not url.startswith(("http://", "https://")):
+                raise ValueError(
+                    f"Fallback URL must start with http:// or https://. Got: {value!r}"
+                )
+            cleaned.append(url)
+        return cleaned
 
 
 class YouTubeChannel(BaseModel):
@@ -87,19 +103,30 @@ class PKMConfig(BaseModel):
     daily_digest_max_deferred_items: int = Field(default=8, ge=1, le=30)
     daily_digest_include_mindmap: bool = True
     daily_digest_include_cognitive_lenses: bool = True
+    daily_digest_quality_gate_enabled: bool = True
+    daily_digest_tldr_min_quality_score: int = Field(default=1, ge=-5, le=10)
+    daily_digest_tldr_max_undisclosed: int = Field(default=0, ge=0, le=5)
+    daily_digest_tldr_min_items: int = Field(default=1, ge=1, le=12)
+    daily_digest_tldr_min_hard_signal_ratio: float = Field(default=0.4, ge=0.0, le=1.0)
+    daily_digest_tldr_max_undisclosed_ratio: float = Field(default=0.3, ge=0.0, le=3.0)
+    daily_digest_min_top_nonpaper: int = Field(default=2, ge=0, le=10)
+    daily_digest_min_top_content_types: int = Field(default=2, ge=1, le=10)
+    daily_digest_max_paper_in_top: int = Field(default=1, ge=0, le=10)
     daily_digest_cognitive_questions: list[str] = Field(
         default_factory=lambda: [
-            "能力边界是否实质前移（不仅是榜单数字）？",
-            "架构范式是否变化（例如主模型+子代理）？",
-            "成本-延迟-质量前沿是否改写？",
-            "评测与治理是否可复现、可审计？",
-            "能否沉淀为长期杠杆（SOP/模板/基线）？",
+            "能力边界是否真的前移，而不只是榜单数字更好看？",
+            "架构范式是否发生变化，例如主模型加子代理或新型工具编排？",
+            "成本、延迟、质量之间的前沿约束是否被改写？",
+            "评测与治理是否可复现、可审计，而不只是宣传口径？",
+            "这条信息能否沉淀为长期杠杆，例如 SOP、模板或基线？",
         ]
     )
 
     # AI content quality controls
     max_ai_items_per_feed: int = Field(default=8, ge=1, le=50)
     min_ai_interest_score: int = Field(default=4, ge=0, le=30)
+    enable_fulltext_enrichment: bool = True
+    fulltext_enrichment_per_feed: int = Field(default=2, ge=0, le=20)
     ai_interest_topics: list[str] = Field(default_factory=list)
     ai_priority_topics: list[str] = Field(default_factory=list)
     ai_exclude_keywords: list[str] = Field(default_factory=list)

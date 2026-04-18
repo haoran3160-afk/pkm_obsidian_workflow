@@ -10,10 +10,15 @@ feed_cache.json
 source_rotation.json
 source_health.json
 used_articles.json
+gcm-diagnose.log
+graphify-out/
 
 # Python artifacts
 __pycache__/
 .pytest_cache/
+.pytest_tmp/
+.tmp_pytest/
+pytest_tmp_run/
 .mypy_cache/
 .ruff_cache/
 *.pyc

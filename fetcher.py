@@ -11,11 +11,16 @@ import logging
 import re
 import time
 from collections.abc import Iterable
+from datetime import datetime
+from html import unescape
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import feedparser
+import requests
+from requests.adapters import HTTPAdapter
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from urllib3.util.retry import Retry
 
 log = logging.getLogger("pkm.fetcher")
 
@@ -39,8 +44,8 @@ AI_KEYWORDS = [
     "arxiv",
 ]
 
-AI_NEWS_DOMAINS = {"ai-news", "solopreneur"}
-AI_SCORING_CONTENT_TYPES = {"news", "tweet", "engineering", "tooling", "community"}
+AI_SCORING_DOMAINS = {"ai-news", "solopreneur", "ai-company", "research"}
+AI_SCORING_CONTENT_TYPES = {"tweet", "engineering", "tooling", "community", "paper"}
 
 AI_BUCKET_FRONTIER = "frontier"
 AI_BUCKET_PRACTICE = "practice"
@@ -89,6 +94,52 @@ DEFAULT_AI_EXCLUDE_KEYWORDS = [
     "coupon",
 ]
 
+TWEET_FALLBACK_HOSTS = (
+    "nitter.net",
+    "nitter.poast.org",
+    "nitter.privacydev.net",
+)
+FULLTEXT_FETCH_TIMEOUT_SECONDS = 5
+FULLTEXT_FETCH_MAX_CHARS = 2400
+FULLTEXT_MIN_CHARS = 280
+FEED_REQUEST_TIMEOUT_SECONDS = 12
+FEED_HTTP_RETRIES = 2
+FEED_HTTP_BACKOFF_SECONDS = 0.4
+FULLTEXT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+FEED_HEADERS = {
+    "User-Agent": FULLTEXT_HEADERS["User-Agent"],
+    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.8",
+}
+
+
+def _build_http_session() -> requests.Session:
+    """Create a shared HTTP session with retry for flaky endpoints."""
+    retry = Retry(
+        total=max(FEED_HTTP_RETRIES, 0),
+        connect=max(FEED_HTTP_RETRIES, 0),
+        read=max(FEED_HTTP_RETRIES, 0),
+        status=max(FEED_HTTP_RETRIES, 0),
+        backoff_factor=max(FEED_HTTP_BACKOFF_SECONDS, 0.0),
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET", "HEAD"]),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update(FEED_HEADERS)
+    return session
+
+
+HTTP_SESSION = _build_http_session()
+
 
 def infer_content_type(source_name: str, url: str, domain: str, fallback: str = "news") -> str:
     source_lower = source_name.lower()
@@ -129,7 +180,162 @@ def ai_filter(text: str) -> bool:
 
 
 def _clean_summary(raw_text: str, max_len: int) -> str:
-    return re.sub(r"<[^>]+>", "", raw_text).strip()[:max_len]
+    text = re.sub(r"<[^>]+>", " ", raw_text)
+    text = unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_len]
+
+
+def _extract_primary_text_from_html(raw_html: str, max_chars: int) -> str:
+    """Best-effort extraction without external parser dependencies."""
+    html = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", raw_html)
+    article_matches = re.findall(r"(?is)<(article|main)[^>]*>(.*?)</\1>", html)
+    if article_matches:
+        body = max((match[1] for match in article_matches), key=len)
+    else:
+        body_match = re.search(r"(?is)<body[^>]*>(.*?)</body>", html)
+        body = body_match.group(1) if body_match else html
+    body = re.sub(r"(?is)<br\s*/?>", "\n", body)
+    body = re.sub(r"(?is)</(p|div|li|h[1-6]|blockquote)>", "\n", body)
+    body = re.sub(r"(?is)<[^>]+>", " ", body)
+    body = unescape(body)
+    body = re.sub(r"[ \t]+", " ", body)
+    body = re.sub(r"\n{2,}", "\n", body)
+    return body.strip()[:max_chars]
+
+
+def _fetch_article_fulltext(url: str, max_chars: int = FULLTEXT_FETCH_MAX_CHARS) -> str:
+    """Fetch article HTML and extract readable text for higher-fidelity summarization."""
+    if not url.startswith(("http://", "https://")):
+        return ""
+    try:
+        response = HTTP_SESSION.get(
+            url,
+            timeout=FULLTEXT_FETCH_TIMEOUT_SECONDS,
+            headers=FULLTEXT_HEADERS,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").lower()
+        if "html" not in content_type and "xml" not in content_type:
+            return ""
+        extracted = _extract_primary_text_from_html(response.text, max_chars=max_chars)
+        if len(extracted) < FULLTEXT_MIN_CHARS:
+            return ""
+        return extracted
+    except Exception as exc:
+        log.debug(f"fulltext.fetch.fail | url={url} error={exc}")
+        return ""
+
+
+def _tweet_feed_urls_with_fallback(
+    url: str, content_type: str, configured_fallback_urls: list[str] | None = None
+) -> list[str]:
+    if content_type != "tweet":
+        return [url]
+    normalized = url.strip()
+    lower = normalized.lower()
+    urls = [normalized]
+    for configured in configured_fallback_urls or []:
+        if configured:
+            urls.append(configured.strip())
+    marker = "rsshub.app/twitter/user/"
+    if marker in lower:
+        user = normalized.split(marker, 1)[1].split("?")[0].strip("/ ")
+        if user:
+            for host in TWEET_FALLBACK_HOSTS:
+                urls.append(f"https://{host}/{user}/rss")
+    # keep order while deduping
+    deduped: list[str] = []
+    for candidate in urls:
+        if candidate and candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
+
+
+def _parse_feed_with_fallback(
+    name: str, candidate_urls: list[str]
+) -> tuple[object | None, str, dict[str, Any]]:
+    last_parsed: object | None = None
+    last_url = candidate_urls[0] if candidate_urls else ""
+    parse_notes: list[str] = []
+
+    def _meta(mode: str, status: str = "ok") -> dict[str, Any]:
+        return {
+            "mode": mode,
+            "status": status,
+            "notes": "; ".join(parse_notes)[:320],
+        }
+
+    if not candidate_urls:
+        return None, "", _meta("none", status="error")
+
+    for idx, candidate_url in enumerate(candidate_urls):
+        direct_warning = ""
+        try:
+            parsed = _parse_feed(candidate_url)
+        except Exception as exc:
+            parse_notes.append(f"direct-exception={candidate_url}:{exc}")
+            log.warning(f"rss.parse.fail | feed={name} url={candidate_url} error={exc}")
+            continue
+
+        last_parsed = parsed
+        last_url = candidate_url
+        if getattr(parsed, "bozo", False):
+            direct_warning = str(getattr(parsed, "bozo_exception", "feed parse warning"))
+            parse_notes.append(f"bozo={candidate_url}:{direct_warning}")
+        entries = list(getattr(parsed, "entries", []))
+        if entries:
+            mode = "direct" if idx == 0 else "fallback-url"
+            status = "warn" if direct_warning or idx > 0 else "ok"
+            return parsed, candidate_url, _meta(mode, status=status)
+
+        # HTTP-content fallback for feeds that parse empty directly.
+        try:
+            response = HTTP_SESSION.get(
+                candidate_url,
+                allow_redirects=True,
+                timeout=FEED_REQUEST_TIMEOUT_SECONDS,
+            )
+            status_code = int(response.status_code)
+            if status_code >= 400:
+                parse_notes.append(f"http-status={candidate_url}:{status_code}")
+            else:
+                parsed_http = feedparser.parse(response.content)
+                if getattr(parsed_http, "bozo", False):
+                    bozo = str(getattr(parsed_http, "bozo_exception", "feed parse warning"))
+                    parse_notes.append(f"http-bozo={candidate_url}:{bozo}")
+                http_entries = list(getattr(parsed_http, "entries", []))
+                if http_entries:
+                    mode = f"fallback-http-{status_code}"
+                    status = "warn" if idx > 0 or direct_warning else "ok"
+                    return parsed_http, candidate_url, _meta(mode, status=status)
+        except Exception as exc:
+            parse_notes.append(f"http-exception={candidate_url}:{exc}")
+
+        if idx < len(candidate_urls) - 1:
+            log.info(f"rss.empty.fallback | feed={name} url={candidate_url}")
+
+    status = "warn" if last_parsed is not None else "error"
+    return last_parsed, last_url, _meta("direct-empty", status=status)
+
+
+def _freshness_adjustment(published: str, today: str) -> tuple[int, str]:
+    try:
+        published_date = datetime.strptime(published[:10], "%Y-%m-%d").date()
+        today_date = datetime.strptime(today[:10], "%Y-%m-%d").date()
+    except Exception:
+        return 0, "fresh:unknown"
+    delta = (today_date - published_date).days
+    if delta <= 2:
+        return 2, "fresh:d0-2"
+    if delta <= 7:
+        return 1, "fresh:d3-7"
+    if delta <= 14:
+        return 0, "fresh:d8-14"
+    if delta <= 30:
+        return -1, "fresh:d15-30"
+    return -3, "fresh:stale"
 
 
 def _extract_entry_date(entry: Any) -> str:
@@ -312,12 +518,15 @@ def fetch_rss_feed(
     max_papers: int = 10,
     raw_only: bool = False,
     quality_config: dict | None = None,
-) -> list:
-    """Fetch a single RSS feed and return item dicts."""
+    return_meta: bool = False,
+) -> list | tuple[list, dict[str, Any]]:
+    """Fetch a single RSS feed and return items (and optional health metadata)."""
     quality = quality_config or {}
 
     max_ai_items_per_feed = int(quality.get("max_ai_items_per_feed", 8))
     min_ai_interest_score = int(quality.get("min_ai_interest_score", 0))
+    enable_fulltext_enrichment = bool(quality.get("enable_fulltext_enrichment", True))
+    fulltext_enrichment_per_feed = int(quality.get("fulltext_enrichment_per_feed", 5))
 
     ai_interest_topics = [
         x.lower() for x in quality.get("ai_interest_topics", DEFAULT_AI_INTEREST_TOPICS)
@@ -340,26 +549,58 @@ def fetch_rss_feed(
         domain=domain,
         fallback=str(feed_config.get("content_type", "")).lower(),
     )
-    is_ai_feed = domain in AI_NEWS_DOMAINS or content_type in AI_SCORING_CONTENT_TYPES
+    is_ai_feed = domain in AI_SCORING_DOMAINS or content_type in AI_SCORING_CONTENT_TYPES
 
+    feed_candidate_urls = _tweet_feed_urls_with_fallback(
+        url,
+        content_type,
+        configured_fallback_urls=feed_config.get("fallback_urls", []),
+    )
     log.info(f"[rss] Fetching: {name}")
-    try:
-        d = _parse_feed(url)
-    except Exception as exc:
-        log.error(f"[rss-fail] {name}: failed after retries ({exc})")
-        return []
+    d, resolved_url, fetch_meta = _parse_feed_with_fallback(name, feed_candidate_urls)
+    fetch_mode = str(fetch_meta.get("mode", "direct"))
+    fetch_status = str(fetch_meta.get("status", "ok"))
+    fetch_notes = str(fetch_meta.get("notes", ""))
+    if fetch_mode != "direct":
+        log.info(f"rss.fallback.used | feed={name} mode={fetch_mode} resolved_url={resolved_url}")
+    if d is None:
+        log.error(f"[rss-fail] {name}: all feed endpoints failed")
+        detail = "; ".join(
+            x
+            for x in [
+                f"mode={fetch_mode}",
+                f"resolved={resolved_url}",
+                fetch_notes,
+            ]
+            if x
+        )
+        meta = {"status": "error", "detail": detail[:320], "mode": fetch_mode}
+        return ([], meta) if return_meta else []
 
-    is_paper_feed = "arxiv" in url.lower() or "paperswithcode" in url.lower()
+    is_paper_feed = "arxiv" in resolved_url.lower() or "paperswithcode" in resolved_url.lower()
     parsed_entries: list[Any] = list(getattr(d, "entries", []))
     entries = parsed_entries[:max_papers] if is_paper_feed else parsed_entries[:20]
     if not entries:
         log.info("  -> 0 items")
-        return []
+        detail = "; ".join(
+            x
+            for x in [
+                f"mode={fetch_mode}",
+                f"resolved={resolved_url}",
+                f"content_type={content_type}",
+                fetch_notes,
+            ]
+            if x
+        )
+        meta = {"status": "warn", "detail": detail[:320], "mode": fetch_mode}
+        return ([], meta) if return_meta else []
 
     results = []
     skipped_by_cache = 0
     skipped_by_ai_relevance = 0
+    skipped_by_filter = 0
     pruned_by_cap = 0
+    enriched_by_fulltext = 0
     seen_urls: set[str] = set()
 
     for entry in entries:
@@ -373,7 +614,7 @@ def fetch_rss_feed(
 
         guid = (entry.get("id") or entry.get("guid") or link or "").strip()
         summary = entry.get("summary", entry.get("description", "")) or ""
-        summary = _clean_summary(summary, max_len=500)
+        summary = _clean_summary(summary, max_len=700)
         published = _extract_entry_date(entry)
 
         if not raw_only and guid and guid in feed_cache:
@@ -381,6 +622,7 @@ def fetch_rss_feed(
             continue
 
         if filter_kw and not _contains_keywords(f"{title} {summary}", filter_kw):
+            skipped_by_filter += 1
             continue
 
         item = {
@@ -390,6 +632,7 @@ def fetch_rss_feed(
             "published": published,
             "summary": summary,
             "folder": folder,
+            "domain": domain,
             "content_type": content_type,
         }
 
@@ -402,9 +645,42 @@ def fetch_rss_feed(
                 ai_priority_topics=ai_priority_topics,
                 ai_exclude_keywords=ai_exclude_keywords,
             )
+            freshness_delta, freshness_reason = _freshness_adjustment(published, today)
+            score += freshness_delta
+            score_reasons.append(freshness_reason)
             if score < min_ai_interest_score:
                 skipped_by_ai_relevance += 1
                 continue
+
+            can_enrich = (
+                enable_fulltext_enrichment
+                and not raw_only
+                and content_type in {"news", "engineering", "tooling", "community", "paper"}
+                and enriched_by_fulltext < fulltext_enrichment_per_feed
+            )
+            if can_enrich:
+                full_text = _fetch_article_fulltext(link)
+                if full_text:
+                    summary = _clean_summary(
+                        f"{summary}\n{full_text}", max_len=FULLTEXT_FETCH_MAX_CHARS
+                    )
+                    enriched_by_fulltext += 1
+                    score, score_reasons = _score_ai_interest(
+                        title,
+                        summary,
+                        source_name=name,
+                        ai_interest_topics=ai_interest_topics,
+                        ai_priority_topics=ai_priority_topics,
+                        ai_exclude_keywords=ai_exclude_keywords,
+                    )
+                    freshness_delta, freshness_reason = _freshness_adjustment(published, today)
+                    score += freshness_delta
+                    score_reasons.append(freshness_reason)
+                    if score < min_ai_interest_score:
+                        skipped_by_ai_relevance += 1
+                        continue
+
+            item["summary"] = summary
             item["score"] = score
             item["score_reasons"] = score_reasons[:6]
             item["ai_bucket"] = classify_ai_bucket(item)
@@ -424,12 +700,35 @@ def fetch_rss_feed(
                 feed_cache[final_guid] = today
 
     log.info(
-        "  -> %s items (cache=%s, low-score=%s, pruned=%s)",
+        "  -> %s items (mode=%s, cache=%s, low-score=%s, filtered=%s, pruned=%s, enriched=%s)",
         len(results),
+        fetch_mode,
         skipped_by_cache,
         skipped_by_ai_relevance,
+        skipped_by_filter,
         pruned_by_cap,
+        enriched_by_fulltext,
     )
+    status = fetch_status
+    if status == "ok" and (fetch_mode != "direct" or skipped_by_ai_relevance > 0):
+        status = "warn"
+    detail = "; ".join(
+        x
+        for x in [
+            f"mode={fetch_mode}",
+            f"resolved={resolved_url}",
+            f"cache={skipped_by_cache}",
+            f"low_score={skipped_by_ai_relevance}",
+            f"filtered={skipped_by_filter}",
+            f"pruned={pruned_by_cap}",
+            f"enriched={enriched_by_fulltext}",
+            fetch_notes,
+        ]
+        if x
+    )
+    meta = {"status": status, "detail": detail[:320], "mode": fetch_mode}
+    if return_meta:
+        return results, meta
     return results
 
 

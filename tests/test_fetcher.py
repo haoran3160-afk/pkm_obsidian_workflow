@@ -100,6 +100,204 @@ def test_fetch_rss_feed_applies_content_type_from_config(monkeypatch):
     assert items[0]["content_type"] == "tweet"
 
 
+def test_tweet_feed_fallback_url_candidates():
+    urls = fetcher._tweet_feed_urls_with_fallback(
+        "https://rsshub.app/twitter/user/OpenAI",
+        "tweet",
+    )
+
+    assert urls[0] == "https://rsshub.app/twitter/user/OpenAI"
+    assert "https://nitter.net/OpenAI/rss" in urls
+    assert "https://nitter.poast.org/OpenAI/rss" in urls
+
+
+def test_fetch_rss_feed_uses_tweet_fallback_when_primary_empty(monkeypatch):
+    feed_config = {
+        "name": "OpenAI X",
+        "url": "https://rsshub.app/twitter/user/OpenAI",
+        "note_folder": "30-Daily/AI-News",
+        "content_type": "tweet",
+        "domain": "Tweet",
+    }
+    call_count = {"n": 0}
+
+    def fake_parse(url):
+        call_count["n"] += 1
+        if "rsshub.app" in url:
+            return _feed([])
+        return _feed(
+            [
+                {
+                    "title": "Agent eval release",
+                    "link": "https://x.com/openai/status/123",
+                    "id": "tweet-fallback-1",
+                    "summary": "Thread summary",
+                }
+            ]
+        )
+
+    monkeypatch.setattr(fetcher, "_parse_feed", fake_parse)
+
+    items = fetcher.fetch_rss_feed(feed_config, {}, "2026-04-10", raw_only=True)
+
+    assert len(items) == 1
+    assert items[0]["guid"] == "tweet-fallback-1"
+    assert call_count["n"] >= 2
+
+
+def test_fetch_rss_feed_return_meta_reports_fallback_url(monkeypatch):
+    feed_config = {
+        "name": "OpenAI X",
+        "url": "https://rsshub.app/twitter/user/OpenAI",
+        "note_folder": "30-Daily/AI-News",
+        "content_type": "tweet",
+    }
+    call_count = {"n": 0}
+
+    def fake_parse(url):
+        call_count["n"] += 1
+        if "rsshub.app" in url:
+            return _feed([])
+        return _feed(
+            [
+                {
+                    "title": "Fallback tweet",
+                    "link": "https://x.com/openai/status/999",
+                    "id": "tweet-fallback-meta",
+                    "summary": "Thread summary",
+                }
+            ]
+        )
+
+    monkeypatch.setattr(fetcher, "_parse_feed", fake_parse)
+
+    items, meta = fetcher.fetch_rss_feed(
+        feed_config,
+        {},
+        "2026-04-10",
+        raw_only=True,
+        return_meta=True,
+    )
+
+    assert len(items) == 1
+    assert meta["mode"] == "fallback-url"
+    assert meta["status"] == "warn"
+    assert call_count["n"] >= 2
+
+
+def test_fetch_rss_feed_enriches_summary_with_fulltext(monkeypatch):
+    feed_config = {
+        "name": "Engineering Feed",
+        "url": "https://example.com/rss.xml",
+        "note_folder": "30-Daily/AI-News",
+        "domain": "AI-News",
+        "content_type": "engineering",
+    }
+    entries = [
+        {
+            "title": "Practical eval pipeline",
+            "link": "https://example.com/post",
+            "id": "g-enrich",
+            "summary": "Short summary.",
+            "published_parsed": time.strptime("2026-04-10", "%Y-%m-%d"),
+        }
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda _url: _feed(entries))
+    monkeypatch.setattr(
+        fetcher,
+        "_fetch_article_fulltext",
+        lambda _url: (
+            "Detailed benchmark section with pass@1 41.2% on SWE-bench "
+            "and latency 420ms under tool calling evaluation."
+        ),
+    )
+
+    items = fetcher.fetch_rss_feed(
+        feed_config,
+        {},
+        "2026-04-10",
+        raw_only=False,
+        quality_config={
+            "min_ai_interest_score": 0,
+            "enable_fulltext_enrichment": True,
+            "fulltext_enrichment_per_feed": 2,
+        },
+    )
+
+    assert len(items) == 1
+    assert "pass@1 41.2%" in items[0]["summary"]
+    assert "420ms" in items[0]["summary"]
+
+
+def test_fetch_rss_feed_return_meta_detail_contains_filter_count(monkeypatch):
+    feed_config = {
+        "name": "HN",
+        "url": "https://hnrss.org/best",
+        "note_folder": "30-Daily/AI-News",
+        "filter_keywords": ["gpt"],
+    }
+    entries = [
+        {"title": "GPT cached item", "link": "https://a", "id": "seen-guid", "summary": "cached"},
+        {"title": "Database update", "link": "https://b", "id": "no-ai", "summary": "unrelated"},
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda _url: _feed(entries))
+
+    items, meta = fetcher.fetch_rss_feed(
+        feed_config,
+        {},
+        "2026-03-26",
+        return_meta=True,
+    )
+
+    assert len(items) == 1
+    assert "filtered=1" in meta["detail"]
+
+
+def test_fetch_rss_feed_applies_freshness_decay_in_score(monkeypatch):
+    feed_config = {
+        "name": "AI Daily",
+        "url": "https://example.com/ai.xml",
+        "note_folder": "30-Daily/AI-News",
+        "domain": "AI-News",
+    }
+    entries = [
+        {
+            "title": "Agent evaluation playbook",
+            "link": "https://a.example/post",
+            "id": "fresh-guid",
+            "summary": "Workflow guide with eval focus.",
+            "published_parsed": time.strptime("2026-04-10", "%Y-%m-%d"),
+        },
+        {
+            "title": "Agent evaluation playbook old",
+            "link": "https://b.example/post",
+            "id": "stale-guid",
+            "summary": "Workflow guide with eval focus.",
+            "published_parsed": time.strptime("2026-03-01", "%Y-%m-%d"),
+        },
+    ]
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda _url: _feed(entries))
+    monkeypatch.setattr(fetcher, "_fetch_article_fulltext", lambda _url: "")
+
+    items = fetcher.fetch_rss_feed(
+        feed_config,
+        {},
+        "2026-04-10",
+        raw_only=False,
+        quality_config={
+            "min_ai_interest_score": 10,
+            "ai_interest_topics": ["workflow", "eval"],
+            "ai_priority_topics": ["evaluation"],
+            "ai_exclude_keywords": [],
+            "enable_fulltext_enrichment": False,
+        },
+    )
+
+    assert len(items) == 1
+    assert items[0]["guid"] == "fresh-guid"
+    assert any("fresh:d0-2" in reason for reason in items[0].get("score_reasons", []))
+
+
 def test_fetch_youtube_channel_skips_cached_and_cleans_html(monkeypatch):
     channel = {
         "name": "Test Channel",

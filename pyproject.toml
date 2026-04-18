@@ -1,11 +1,11 @@
 [build-system]
 requires = ["setuptools>=70", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "obsidian-pkm-workflow"
 version = "2.1.0"
-description = "AI-ready PKM pipeline that streams RSS feeds, arXiv papers, and YouTube videos directly into your Obsidian Vault."
+description = "Local-first AI digest workflow that streams RSS feeds, arXiv papers, and YouTube videos into your Obsidian Vault."
 authors = [{ name = "obsidian-pkm contributors" }]
 license = { text = "MIT" }
 readme = "README.md"
@@ -38,15 +38,23 @@ dependencies = [
 pkm = "main:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/obsidian_workflow_open"
-Repository = "https://github.com/yourusername/obsidian_workflow_open"
-Issues = "https://github.com/yourusername/obsidian_workflow_open/issues"
+Homepage = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
+Repository = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
+Issues = "https://github.com/haoran3160-afk/pkm_obsidian_workflow/issues"
 
-# ── Tool Configurations ────────────────────────────────────────────────────────
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["pkm_workflow*"]
+[tool.setuptools]
+py-modules = [
+    "config_schema",
+    "daily_curation",
+    "fetcher",
+    "fetcher_registry",
+    "formatter",
+    "knowledge_health_check",
+    "llm_digest",
+    "main",
+    "pkm_bridge",
+    "writer",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -76,26 +84,26 @@ fail_under = 70
 line-length = 100
 target-version = "py310"
 exclude = [
-    "parse_ruff.py",       # temp helper script
+    "parse_ruff.py",
     "git_log.txt",
 ]
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "UP",
 ]
 ignore = [
-    "E501",  # line too long (handled by formatter)
-    "B008",  # do not perform function calls in default args
+    "E501",
+    "B008",
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["fetcher", "formatter", "writer", "config_schema"]
+known-first-party = ["config_schema", "daily_curation", "fetcher", "formatter", "llm_digest", "writer"]
 
 [tool.mypy]
 python_version = "3.11"
