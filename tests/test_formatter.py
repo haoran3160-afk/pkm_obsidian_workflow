@@ -23,14 +23,14 @@ def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
 
     assert path.startswith("00-Inbox/Raw-Feeds/Raw-Daily-Feeds-")
     assert "## AI 资讯分桶" in content
-    assert "### 前沿技术" in content
+    assert "### 前沿突破" in content
     assert "Context engineering guide" in content
     assert "https://example.com/a" in content
     assert "## LangChain Blog" in content
     assert "Unscored item" in content
 
 
-def test_format_daily_digest_final_mode_uses_clean_local_template():
+def test_format_daily_digest_final_mode_uses_curated_template():
     items = {
         "OpenAI News": [
             {
@@ -53,6 +53,7 @@ def test_format_daily_digest_final_mode_uses_clean_local_template():
                 "content_type": "video",
                 "published": "2026-04-17",
                 "domain": "Math-Modeling",
+                "channel_name": "3Blue1Brown",
             }
         ],
     }
@@ -61,14 +62,12 @@ def test_format_daily_digest_final_mode_uses_clean_local_template():
 
     assert path.startswith("30-Daily/AI-News/AI-Daily-")
     assert 'title: "AI & Growth Digest - ' in content
-    assert "## 🔥 Top 1 - " in content
+    assert "## 🔟 Top 1 - " in content
     assert "### 深度 Takeaways" in content
     assert "**来源**：" in content
     assert "**行动启示**：" in content
     assert "## 📺 今日视频 - " in content
     assert "**频道**：" in content
-    assert "Daily Snapshot" not in content
-    assert "Action Queue" not in content
 
 
 def test_format_daily_digest_merges_llm_override_with_stable_base_copy():
@@ -111,10 +110,10 @@ def test_format_daily_digest_merges_llm_override_with_stable_base_copy():
     llm_override = {
         "top_stories": [
             {
-                "headline_cn": "OpenAI 把桌面 Agent 推到真实工作流入口",
+                "headline_cn": "OpenAI 把桌面代理推进真实工作流入口",
                 "core_concepts": ["#concept/Agent-Engineering", "#concept/Browser-Automation"],
-                "core_finding": "Codex 的重点不在聊天，而在执行层。",
-                "key_details": ["支持 Computer Use", "代理开始处理跨应用操作"],
+                "core_finding": "重点不在聊天，而在执行层。",
+                "key_details": ["支持 Computer Use", "开始处理跨应用操作"],
                 "actionable_insight": "优先把跨应用 SOP 交给本地 Agent。",
             }
         ],
@@ -124,7 +123,7 @@ def test_format_daily_digest_merges_llm_override_with_stable_base_copy():
         "ai_company_story": {
             "headline_cn": "Chrome 开始把高频 Prompt 做成技能",
             "core_concepts": ["#concept/Reusable-Workflows", "#concept/Browser-Automation"],
-            "one_line_summary": "重点不是写 Prompt，而是把它产品化。",
+            "one_line_summary": "重点不是继续堆 Prompt，而是把它产品化。",
             "key_points": ["可以封装技能", "可以一键复用", "可以团队共享"],
             "actionable_insight": "把高频 Prompt 固化成本地技能。",
         },
@@ -146,10 +145,10 @@ def test_format_daily_digest_merges_llm_override_with_stable_base_copy():
         digest_copy=llm_override,
     )
 
-    assert "OpenAI 把桌面 Agent 推到真实工作流入口" in content
+    assert "OpenAI 把桌面代理推进真实工作流入口" in content
     assert "Chrome 开始把高频 Prompt 做成技能" in content
-    assert "## 🤖 洞见 - Chrome 开始把高频 Prompt 做成技能" in content
-    assert "## 🔥 Top 2 - " in content
+    assert "## 🧠 洞见 - Chrome 开始把高频 Prompt 做成技能" in content
+    assert "## 🔟 Top 2 - " in content
 
 
 def test_format_note_templates_cover_paper_and_video():
@@ -159,7 +158,7 @@ def test_format_note_templates_cover_paper_and_video():
     )
     assert paper_path.startswith("20-Sources/Papers/")
     assert "Paper: LLM Eval" in paper_content
-    assert "一句话摘要" in paper_content
+    assert "summary" in paper_content
 
     video_path, video_content = formatter.format_video_note(
         {
@@ -174,7 +173,7 @@ def test_format_note_templates_cover_paper_and_video():
     )
     assert video_path.startswith("20-Sources/Videos/2026-04-07-Andrej-Karpathy-")
     assert "How I use LLMs" in video_content
-    assert "观看目标" in video_content
+    assert "video summary" in video_content
 
 
 def test_build_note_includes_entity_type_and_sources():

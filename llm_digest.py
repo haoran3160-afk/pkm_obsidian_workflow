@@ -42,19 +42,23 @@ def generate_digest_copy(
         return None
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    base_url = os.getenv("OPENAI_BASE_URL", "").strip().rstrip("/")
+    base_url = (os.getenv("OPENAI_BASE_URL") or "").strip().rstrip("/")
     endpoint = f"{base_url}/responses" if base_url else OPENAI_RESPONSES_URL
 
-    requested_model = (model or os.getenv("PKM_CURATION_MODEL", "")).strip()
+    requested_model = (model or os.getenv("PKM_CURATION_MODEL") or "").strip()
     model_candidates = [requested_model] if requested_model else list(DEFAULT_CURATION_MODELS)
     last_error: Exception | None = None
 
     for idx, model_name in enumerate(model_candidates):
+        effective_reasoning_effort = (
+            reasoning_effort
+            or os.getenv("PKM_CURATION_REASONING_EFFORT")
+            or DEFAULT_REASONING_EFFORT
+        )
         payload = _build_request_payload(
             plan,
             model=model_name,
-            reasoning_effort=reasoning_effort
-            or os.getenv("PKM_CURATION_REASONING_EFFORT", DEFAULT_REASONING_EFFORT),
+            reasoning_effort=effective_reasoning_effort,
         )
         try:
             response = requests.post(

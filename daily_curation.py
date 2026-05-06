@@ -8,11 +8,13 @@ source rotation, and a curated final slate. This module mirrors that behavior.
 
 from __future__ import annotations
 
-import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+
+import state_schema
 
 THREE_BLUE_ONE_BROWN = "3blue1brown"
 VENTURE_SOURCE_TOKENS = ("sequoia", "guardian")
@@ -76,16 +78,16 @@ class DailyDigestPlan:
 
 
 def load_used_urls(path: Path) -> set[str]:
-    payload = _load_json(path, {"articles": []})
+    payload = state_schema.load_used_articles_state(path)
     return {
-        _normalize_url(str(item.get("url", "")))
-        for item in payload.get("articles", [])
-        if str(item.get("url", "")).strip()
+        _normalize_url(article.url)
+        for article in payload.articles
+        if article.url.strip()
     }
 
 
 def load_rotation_state(path: Path) -> dict[str, Any]:
-    return _load_json(path, {"sources": {}, "weekly_summary": {}})
+    return state_schema.load_source_rotation_state(path).model_dump()
 
 
 def plan_daily_digest(
@@ -207,52 +209,44 @@ def persist_daily_digest_selection(
     if not plan.selected_links:
         return
 
-    used_payload = _load_json(
-        used_articles_path,
-        {
-            "description": "Tracks URLs used in past daily digests to prevent duplication.",
-            "articles": [],
-        },
-    )
-    articles = list(used_payload.get("articles", []))
+    used_payload = state_schema.load_used_articles_state(used_articles_path)
+    articles = list(used_payload.articles)
     for link in plan.selected_links:
-        articles.append({"date": plan.date, "url": link})
+        articles.append(state_schema.UsedArticleEntry(date=plan.date, url=link))
 
     cutoff = datetime.strptime(plan.date, "%Y-%m-%d").date() - timedelta(days=retention_days)
-    normalized: dict[str, dict[str, str]] = {}
+    normalized: dict[str, state_schema.UsedArticleEntry] = {}
     for item in articles:
-        url = _normalize_url(str(item.get("url", "")))
-        date_str = str(item.get("date", "")).strip()
-        if not url or not date_str:
-            continue
-        try:
-            current = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            continue
+        url = _normalize_url(item.url)
+        current = datetime.strptime(item.date, "%Y-%m-%d").date()
         if current < cutoff:
             continue
         previous = normalized.get(url)
-        if previous is None or previous["date"] < date_str:
-            normalized[url] = {"date": date_str, "url": url}
+        if previous is None or previous.date < item.date:
+            normalized[url] = state_schema.UsedArticleEntry(date=item.date, url=url)
 
-    used_payload["articles"] = sorted(normalized.values(), key=lambda row: (row["date"], row["url"]))
-    used_articles_path.write_text(json.dumps(used_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    used_payload.articles = sorted(normalized.values(), key=lambda row: (row.date, row.url))
+    state_schema.save_used_articles_state(used_articles_path, used_payload)
 
-    rotation_payload = load_rotation_state(source_rotation_path)
-    sources = rotation_payload.setdefault("sources", {})
+    rotation_payload = state_schema.load_source_rotation_state(source_rotation_path)
+    sources = rotation_payload.sources
     for source in plan.selected_sources:
-        entry = sources.setdefault(source, {"category": _guess_rotation_category(source), "last_used": plan.date})
-        entry["last_used"] = plan.date
+        entry = sources.setdefault(
+            source,
+            state_schema.SourceRotationEntry(
+                category=_guess_rotation_category(source),
+                last_used=plan.date,
+            ),
+        )
+        entry.last_used = plan.date
 
-    weekly = rotation_payload.setdefault("weekly_summary", {})
-    weekly.setdefault("week_start", _week_start(plan.date))
+    weekly = rotation_payload.weekly_summary
+    if not weekly.week_start:
+        weekly.week_start = _week_start(plan.date)
     if plan.used_three_blue_one_brown:
-        weekly["3blue1brown_used_this_week"] = True
+        weekly.threeblue1brown_used_this_week = True
 
-    source_rotation_path.write_text(
-        json.dumps(rotation_payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    state_schema.save_source_rotation_state(source_rotation_path, rotation_payload)
 
 
 def _build_candidates(
@@ -514,15 +508,6 @@ def _week_start(date_str: str) -> str:
     current = datetime.strptime(date_str, "%Y-%m-%d").date()
     monday = current - timedelta(days=current.weekday())
     return monday.strftime("%Y-%m-%d")
-
-
-def _load_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
-    if not path.exists():
-        return default
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
 
 
 def _normalize_url(url: str) -> str:

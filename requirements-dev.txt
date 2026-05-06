@@ -4,6 +4,7 @@
 # Test dependencies
 pytest>=8.3.0
 pytest-cov>=5.0.0
+httpx>=0.28.1
 
 # Lint & type checking
 ruff>=0.4.0

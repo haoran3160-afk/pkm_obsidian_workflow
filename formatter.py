@@ -24,7 +24,7 @@ env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)), trim_blocks=True, 
 
 AI_BUCKET_ORDER = ["frontier", "practice", "tooling"]
 AI_BUCKET_LABELS = {
-    "frontier": "前沿技术",
+    "frontier": "前沿突破",
     "practice": "工程实践",
     "tooling": "工具更新",
 }
@@ -119,63 +119,13 @@ def format_daily_digest(
 def _render_raw_digest(items_by_source: dict[str, list[dict[str, Any]]]) -> tuple[str, str]:
     today = today_str()
     filepath = f"00-Inbox/Raw-Feeds/Raw-Daily-Feeds-{today}.md"
-
-    bucketed: dict[str, list[tuple[str, dict[str, Any]]]] = {key: [] for key in AI_BUCKET_ORDER}
-    for source, items in items_by_source.items():
-        for item in items:
-            bucket = str(item.get("ai_bucket", "practice") or "practice")
-            if bucket not in bucketed:
-                bucket = "practice"
-            bucketed[bucket].append((source, item))
-
-    lines = [
-        f"# 原始信息流日报 - {today}",
-        "",
-        "*由 PKM 工作流自动生成，供 Agent 或人工二次策展。*",
-        "",
-        "## AI 资讯分桶",
-        "",
-    ]
-
-    for bucket in AI_BUCKET_ORDER:
-        lines.append(f"### {AI_BUCKET_LABELS[bucket]}")
-        lines.append("")
-        entries = bucketed[bucket]
-        if not entries:
-            lines.append("- *(今日为空)*")
-            lines.append("")
-            continue
-
-        for source, item in entries:
-            lines.extend(_render_raw_item(source, item))
-            lines.append("")
-
-    lines.append("## 按来源展开")
-    lines.append("")
-    for source, items in items_by_source.items():
-        lines.append(f"## {source}")
-        lines.append("")
-        for item in items:
-            lines.extend(_render_raw_item(source, item))
-            lines.append("")
-
-    return filepath, "\n".join(lines).rstrip() + "\n"
-
-
-def _render_raw_item(source: str, item: dict[str, Any]) -> list[str]:
-    lines = [
-        f"- **标题**：{item.get('title', 'Untitled')}",
-        f"  **链接**：{item.get('link', '')}",
-        f"  **来源**：{source}",
-    ]
-    if item.get("score") is not None:
-        lines.append(f"  **兴趣分**：{item.get('score')}")
-    if item.get("score_reasons"):
-        lines.append(f"  **评分信号**：{', '.join(item['score_reasons'])}")
-    summary = _clean_text(str(item.get("summary", "")), max_len=500)
-    if summary:
-        lines.append(f"  **摘要**：{summary}")
-    return lines
+    template = env.get_template("raw_daily_feeds.md.j2")
+    content = template.render(
+        today=today,
+        buckets=_build_raw_bucket_context(items_by_source),
+        sources=_build_raw_source_context(items_by_source),
+    )
+    return filepath, content.rstrip() + "\n"
 
 
 def _render_curated_daily_digest(
@@ -183,112 +133,150 @@ def _render_curated_daily_digest(
     digest_copy: dict[str, Any],
 ) -> tuple[str, str]:
     filepath = f"30-Daily/AI-News/AI-Daily-{plan.date}.md"
-    lines = [
-        "---",
-        f'title: "AI & Growth Digest - {plan.date}"',
-        f"date: {plan.date}",
-        "tags:",
-        "  - daily-digest",
-        "  - AI-news",
-        "  - AI-solopreneur",
-        'type: "digest"',
-        'status: "inbox"',
-        f'aliases: ["Daily Digest {plan.date}"]',
-        "---",
-        "",
+    template = env.get_template("curated_daily_digest.md.j2")
+    content = template.render(
+        plan=plan,
+        top_sections=_build_top_sections(plan, digest_copy),
+        venture_section=_build_deep_section("创投洞见", plan.venture_story, digest_copy.get("venture_story")),
+        insight_section=_build_brief_section("洞见", plan.growth_story, digest_copy.get("insight_story")),
+        video_section=_build_video_section(plan.video_story, digest_copy.get("video_story")),
+        company_section=_build_brief_section("洞见", plan.solopreneur_story, digest_copy.get("ai_company_story")),
+    )
+    return filepath, content.rstrip() + "\n"
+
+
+def _build_raw_bucket_context(
+    items_by_source: dict[str, list[dict[str, Any]]]
+) -> list[dict[str, Any]]:
+    bucketed: dict[str, list[dict[str, Any]]] = {key: [] for key in AI_BUCKET_ORDER}
+    for source, items in items_by_source.items():
+        for item in items:
+            bucket = str(item.get("ai_bucket", "practice") or "practice")
+            if bucket not in bucketed:
+                bucket = "practice"
+            bucketed[bucket].append(_normalize_raw_item(source, item))
+
+    return [
+        {
+            "key": bucket,
+            "label": AI_BUCKET_LABELS[bucket],
+            "entries": bucketed[bucket],
+        }
+        for bucket in AI_BUCKET_ORDER
     ]
 
-    for idx, (source, item) in enumerate(plan.top_stories, start=1):
-        copy = digest_copy.get("top_stories", [])[idx - 1]
-        lines.extend(_render_deep_block(f"🔥 Top {idx}", source, item, copy))
 
-    if plan.venture_story:
-        lines.extend(_render_deep_block("💰 创投洞见", *plan.venture_story, digest_copy["venture_story"]))
-    if plan.growth_story:
-        lines.extend(_render_brief_block("🌱", *plan.growth_story, digest_copy["insight_story"]))
-    if plan.video_story:
-        lines.extend(_render_video_block(*plan.video_story, digest_copy["video_story"]))
-    if plan.solopreneur_story:
-        lines.extend(_render_brief_block("🤖", *plan.solopreneur_story, digest_copy["ai_company_story"]))
-
-    return filepath, "\n".join(lines).rstrip() + "\n"
+def _build_raw_source_context(
+    items_by_source: dict[str, list[dict[str, Any]]]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": source,
+            "entries": [_normalize_raw_item(source, item) for item in items],
+        }
+        for source, items in items_by_source.items()
+    ]
 
 
-def _render_deep_block(
+def _normalize_raw_item(source: str, item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": source,
+        "title": _story_title(item),
+        "link": str(item.get("link", "")).strip(),
+        "score": item.get("score"),
+        "score_reasons": list(item.get("score_reasons", []) or []),
+        "summary": _clean_text(str(item.get("summary", "")), max_len=500),
+    }
+
+
+def _build_top_sections(
+    plan: daily_curation.DailyDigestPlan,
+    digest_copy: dict[str, Any],
+) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    top_copy = list(digest_copy.get("top_stories", []))
+    for idx, story in enumerate(plan.top_stories):
+        copy = top_copy[idx] if idx < len(top_copy) else {}
+        section = _build_deep_section(f"Top {idx + 1}", story, copy)
+        if section:
+            sections.append(section)
+    return sections
+
+
+def _build_deep_section(
     label: str,
-    source: str,
-    item: dict[str, Any],
-    copy: dict[str, Any],
-) -> list[str]:
-    return [
-        f"## {label} - {copy['headline_cn']}",
-        "",
-        f"**来源**：{source}",
-        f"**原文**：[{_story_title(item)}]({item.get('link', '')})",
-        f"**核心概念**：{' '.join(copy['core_concepts'])}",
-        "",
-        "### 深度 Takeaways",
-        "",
-        f"**核心发现**：{copy['core_finding']}",
-        "",
-        "**关键细节**：",
-        *[f"- {point}" for point in copy["key_details"]],
-        "",
-        f"**行动启示**：{copy['actionable_insight']}",
-        "",
-        "---",
-        "",
-    ]
+    story: tuple[str, dict[str, Any]] | None,
+    copy: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not story or not copy:
+        return None
+    source, item = story
+    return {
+        "label": label,
+        "headline_cn": str(copy.get("headline_cn", "")).strip() or _story_title(item),
+        "source": source,
+        "link": str(item.get("link", "")).strip(),
+        "story_title": _story_title(item),
+        "core_concepts": _normalize_list(copy.get("core_concepts"), fallback=["#concept/AI-News"]),
+        "core_finding": str(copy.get("core_finding", "")).strip() or _clean_text(
+            str(item.get("summary", "")), max_len=120
+        ),
+        "key_details": _normalize_list(copy.get("key_details"), fallback=[_clean_text(str(item.get("summary", "")), max_len=140)]),
+        "actionable_insight": str(copy.get("actionable_insight", "")).strip() or "建议回看原文并提炼为可执行 SOP。",
+    }
 
 
-def _render_brief_block(
-    icon: str,
-    source: str,
-    item: dict[str, Any],
-    copy: dict[str, Any],
-) -> list[str]:
-    return [
-        f"## {icon} 洞见 - {copy['headline_cn']}",
-        "",
-        f"**来源**：{source}",
-        f"**原文**：[{_story_title(item)}]({item.get('link', '')})",
-        f"**核心概念**：{' '.join(copy['core_concepts'])}",
-        "",
-        f"**一句话**：{copy['one_line_summary']}",
-        "",
-        "**3 个要点**：",
-        *[f"- {point}" for point in copy["key_points"]],
-        "",
-        f"**行动启示**：{copy['actionable_insight']}",
-        "",
-        "---",
-        "",
-    ]
+def _build_brief_section(
+    label: str,
+    story: tuple[str, dict[str, Any]] | None,
+    copy: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not story or not copy:
+        return None
+    source, item = story
+    return {
+        "label": label,
+        "headline_cn": str(copy.get("headline_cn", "")).strip() or _story_title(item),
+        "source": source,
+        "link": str(item.get("link", "")).strip(),
+        "story_title": _story_title(item),
+        "core_concepts": _normalize_list(copy.get("core_concepts"), fallback=["#concept/AI-News"]),
+        "one_line_summary": str(copy.get("one_line_summary", "")).strip() or _clean_text(
+            str(item.get("summary", "")), max_len=80
+        ),
+        "key_points": _normalize_list(copy.get("key_points"), fallback=[_clean_text(str(item.get("summary", "")), max_len=140)]),
+        "actionable_insight": str(copy.get("actionable_insight", "")).strip() or "标记到后续选题池，结合原文再判断优先级。",
+    }
 
 
-def _render_video_block(
-    source: str,
-    item: dict[str, Any],
-    copy: dict[str, Any],
-) -> list[str]:
-    return [
-        f"## 📺 今日视频 - {copy['headline_cn']}",
-        "",
-        f"**频道**：{source}",
-        f"**链接**：[{_story_title(item)}]({item.get('link', '')})",
-        f"**时长**：{_video_duration_text(item)}",
-        f"**核心概念**：{' '.join(copy['core_concepts'])}",
-        "",
-        f"**核心结论**：{copy['core_conclusion']}",
-        "",
-        "**关键方法论**：",
-        *[f"- {point}" for point in copy["method_points"]],
-        "",
-        f"**行动启示**：{copy['actionable_insight']}",
-        "",
-        "---",
-        "",
-    ]
+def _build_video_section(
+    story: tuple[str, dict[str, Any]] | None,
+    copy: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not story or not copy:
+        return None
+    source, item = story
+    channel_name = str(item.get("channel_name") or source).strip() or source
+    return {
+        "label": "今日视频",
+        "headline_cn": str(copy.get("headline_cn", "")).strip() or _story_title(item),
+        "channel_name": channel_name,
+        "link": str(item.get("link", "")).strip(),
+        "story_title": _story_title(item),
+        "core_concepts": _normalize_list(copy.get("core_concepts"), fallback=["#concept/Visual-Learning"]),
+        "core_conclusion": str(copy.get("core_conclusion", "")).strip() or _clean_text(
+            str(item.get("summary", "")), max_len=120
+        ),
+        "method_points": _normalize_list(copy.get("method_points"), fallback=[_clean_text(str(item.get("summary", "")), max_len=140)]),
+        "actionable_insight": str(copy.get("actionable_insight", "")).strip() or "优先提炼可迁移的方法框架，而不是只记结论。",
+    }
+
+
+def _normalize_list(value: Any, *, fallback: list[str]) -> list[str]:
+    values = [str(item).strip() for item in (value or []) if str(item).strip()]
+    if values:
+        return values
+    return fallback
 
 
 def _story_title(item: dict[str, Any]) -> str:

@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 
 import formatter
 import writer
+from config_schema import PKMConfig, load_and_validate
 
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_PATH = SCRIPT_DIR / "pkm_config.json"
@@ -34,20 +35,19 @@ if callable(stderr_reconfigure):
 load_dotenv(SCRIPT_DIR / ".env")
 
 
-def load_config() -> dict:
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+def load_config() -> PKMConfig:
+    return load_and_validate(CONFIG_PATH)
 
 
-def resolve_runtime_config(config: dict) -> tuple[str, str, str]:
+def resolve_runtime_config(config: PKMConfig) -> tuple[str, str, str]:
     """Resolve (vault_path, api_base, api_key) from env/config/plugin fallback."""
-    vault_path = os.getenv("OBSIDIAN_VAULT_PATH", config.get("vault_path", "D:/personal/Obsidian"))
-    obsidian_api = config.get("obsidian_api", {})
+    vault_path = os.getenv("OBSIDIAN_VAULT_PATH", config.vault_path or "D:/personal/Obsidian")
+    obsidian_api = config.obsidian_api
 
     api_base = os.getenv(
-        "OBSIDIAN_API_BASE", obsidian_api.get("base_url", "http://localhost:27123")
+        "OBSIDIAN_API_BASE", obsidian_api.base_url or "http://localhost:27123"
     )
-    api_key = os.getenv("OBSIDIAN_API_KEY", obsidian_api.get("api_key", ""))
+    api_key = os.getenv("OBSIDIAN_API_KEY", obsidian_api.api_key or "")
 
     plugin_data = (
         Path(vault_path) / ".obsidian" / "plugins" / "obsidian-local-rest-api" / "data.json"
@@ -71,7 +71,7 @@ def resolve_runtime_config(config: dict) -> tuple[str, str, str]:
 
 CONFIG = load_config()
 VAULT_PATH, API_BASE, API_KEY = resolve_runtime_config(CONFIG)
-DOMAIN_MAP = CONFIG.get("domain_mapping", {})
+DOMAIN_MAP = CONFIG.domain_mapping
 VALID_ENTITY_TYPES = {"concept", "paper", "tool", "person", "synthesis"}
 
 

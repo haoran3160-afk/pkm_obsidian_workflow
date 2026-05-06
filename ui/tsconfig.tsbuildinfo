@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/shell.tsx","./src/lib/api.test.ts","./src/lib/api.ts","./src/routes/dashboard.test.tsx","./src/routes/dashboard.tsx","./src/routes/logs.tsx","./src/routes/output.tsx","./src/routes/settings.tsx","./src/routes/sources.tsx","./src/store/appstore.ts","./src/test/setup.ts"],"version":"5.9.3"}

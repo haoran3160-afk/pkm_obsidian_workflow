@@ -1,0 +1,14 @@
+{
+  "name": "obsidian-workflow-open",
+  "private": true,
+  "scripts": {
+    "build": "cd ui && npm run build",
+    "dev:ui": "cd ui && npm run dev -- --host 127.0.0.1",
+    "dev:api": "python ui_server.py",
+    "dev:full": "concurrently \"npm run dev:api\" \"npm run dev:ui\"",
+    "test:ui": "cd ui && npm run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

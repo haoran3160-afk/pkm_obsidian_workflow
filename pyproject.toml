@@ -32,6 +32,8 @@ dependencies = [
     "pydantic>=2.7.0",
     "rich>=13.7.0",
     "structlog>=24.1.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
 ]
 
 [project.scripts]
@@ -54,6 +56,8 @@ py-modules = [
     "llm_digest",
     "main",
     "pkm_bridge",
+    "state_schema",
+    "ui_server",
     "writer",
 ]
 
@@ -104,7 +108,17 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config_schema", "daily_curation", "digest_copy", "fetcher", "formatter", "llm_digest", "writer"]
+known-first-party = [
+    "config_schema",
+    "daily_curation",
+    "digest_copy",
+    "fetcher",
+    "formatter",
+    "llm_digest",
+    "state_schema",
+    "ui_server",
+    "writer",
+]
 
 [tool.mypy]
 python_version = "3.11"

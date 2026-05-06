@@ -1,0 +1,108 @@
+---
+title: "AI & Growth Digest - {{ plan.date }}"
+date: {{ plan.date }}
+tags:
+  - daily-digest
+  - AI-news
+  - AI-solopreneur
+type: "digest"
+status: "inbox"
+aliases: ["Daily Digest {{ plan.date }}"]
+---
+
+{% for section in top_sections %}
+## 🔟 {{ section.label }} - {{ section.headline_cn }}
+
+**来源**：{{ section.source }}
+**原文**：[{{ section.story_title }}]({{ section.link }})
+**核心概念**：{{ section.core_concepts | join(" ") }}
+
+### 深度 Takeaways
+
+**核心发现**：{{ section.core_finding }}
+
+**关键细节**
+{% for point in section.key_details %}
+- {{ point }}
+{% endfor %}
+
+**行动启示**：{{ section.actionable_insight }}
+
+---
+
+{% endfor %}
+{% if venture_section %}
+## 📵 {{ venture_section.label }} - {{ venture_section.headline_cn }}
+
+**来源**：{{ venture_section.source }}
+**原文**：[{{ venture_section.story_title }}]({{ venture_section.link }})
+**核心概念**：{{ venture_section.core_concepts | join(" ") }}
+
+### 深度 Takeaways
+
+**核心发现**：{{ venture_section.core_finding }}
+
+**关键细节**
+{% for point in venture_section.key_details %}
+- {{ point }}
+{% endfor %}
+
+**行动启示**：{{ venture_section.actionable_insight }}
+
+---
+
+{% endif %}
+{% if insight_section %}
+## 💡 {{ insight_section.label }} - {{ insight_section.headline_cn }}
+
+**来源**：{{ insight_section.source }}
+**原文**：[{{ insight_section.story_title }}]({{ insight_section.link }})
+**核心概念**：{{ insight_section.core_concepts | join(" ") }}
+
+**一句话**：{{ insight_section.one_line_summary }}
+
+**3 个要点**
+{% for point in insight_section.key_points %}
+- {{ point }}
+{% endfor %}
+
+**行动启示**：{{ insight_section.actionable_insight }}
+
+---
+
+{% endif %}
+{% if video_section %}
+## 📺 {{ video_section.label }} - {{ video_section.headline_cn }}
+
+**频道**：{{ video_section.channel_name }}
+**原视频**：[{{ video_section.story_title }}]({{ video_section.link }})
+**核心概念**：{{ video_section.core_concepts | join(" ") }}
+
+**核心结论**：{{ video_section.core_conclusion }}
+
+**方法要点**
+{% for point in video_section.method_points %}
+- {{ point }}
+{% endfor %}
+
+**行动启示**：{{ video_section.actionable_insight }}
+
+---
+
+{% endif %}
+{% if company_section %}
+## 🧠 {{ company_section.label }} - {{ company_section.headline_cn }}
+
+**来源**：{{ company_section.source }}
+**原文**：[{{ company_section.story_title }}]({{ company_section.link }})
+**核心概念**：{{ company_section.core_concepts | join(" ") }}
+
+**一句话**：{{ company_section.one_line_summary }}
+
+**3 个要点**
+{% for point in company_section.key_points %}
+- {{ point }}
+{% endfor %}
+
+**行动启示**：{{ company_section.actionable_insight }}
+{% endif %}

@@ -1,0 +1,50 @@
+# 原始信息流日报 - {{ today }}
+
+*由 PKM 工作流自动生成，供 Agent 或人工二次策展使用。*
+
+## AI 资讯分桶
+
+{% for bucket in buckets %}
+### {{ bucket.label }}
+
+{% if bucket.entries %}
+{% for entry in bucket.entries %}
+- **标题**：{{ entry.title }}
+  **链接**：{{ entry.link }}
+  **来源**：{{ entry.source }}
+{% if entry.score is not none %}
+  **兴趣分**：{{ entry.score }}
+{% endif %}
+{% if entry.score_reasons %}
+  **评分信号**：{{ entry.score_reasons | join(", ") }}
+{% endif %}
+{% if entry.summary %}
+  **摘要**：{{ entry.summary }}
+{% endif %}
+{% endfor %}
+{% else %}
+- *(今日为空)*
+{% endif %}
+
+{% endfor %}
+## 按来源展开
+
+{% for source in sources %}
+## {{ source.name }}
+
+{% for entry in source.entries %}
+- **标题**：{{ entry.title }}
+  **链接**：{{ entry.link }}
+  **来源**：{{ entry.source }}
+{% if entry.score is not none %}
+  **兴趣分**：{{ entry.score }}
+{% endif %}
+{% if entry.score_reasons %}
+  **评分信号**：{{ entry.score_reasons | join(", ") }}
+{% endif %}
+{% if entry.summary %}
+  **摘要**：{{ entry.summary }}
+{% endif %}
+{% endfor %}
+
+{% endfor %}

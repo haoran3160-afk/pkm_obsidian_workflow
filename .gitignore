@@ -38,6 +38,11 @@ venv/
 env/
 .env.local
 
+# Node / web UI artifacts
+node_modules/
+ui/node_modules/
+ui/dist/
+
 # IDE and OS
 .vscode/
 .idea/

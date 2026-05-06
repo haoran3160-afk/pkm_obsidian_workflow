@@ -69,6 +69,8 @@ nav:
   - Home: index.md
   - Getting Started:
     - Quickstart: quickstart.md
+    - Local UI Guide: local-ui.md
+    - HTTP API: api.md
     - Workflow Walkthrough: workthrough.md
   - Customization:
     - Source Plugins: plugins.md

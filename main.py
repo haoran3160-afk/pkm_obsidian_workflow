@@ -20,7 +20,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from dotenv import load_dotenv
@@ -31,6 +31,7 @@ import daily_curation
 import fetcher
 import formatter
 import llm_digest
+import state_schema
 import writer
 from config_schema import PKMConfig, load_and_validate
 
@@ -161,45 +162,18 @@ def _write_json_file(path: Path, payload: dict) -> None:
 
 
 def _compact_used_articles(path: Path, retention_days: int) -> None:
-    payload = _load_json_file(path, {"articles": []})
-    articles = payload.get("articles", [])
-    cutoff = (datetime.now() - timedelta(days=retention_days)).date()
-
-    normalized_latest: dict[str, dict] = {}
-    for item in articles:
-        raw_url = (item.get("url") or "").strip()
-        date_str = item.get("date") or ""
-        if not raw_url or not date_str:
-            continue
-        try:
-            item_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if item_date < cutoff:
-            continue
-
-        norm = fetcher.normalize_url(raw_url)
-        prev = normalized_latest.get(norm)
-        if prev is None or prev["date"] < date_str:
-            normalized_latest[norm] = {"date": date_str, "url": raw_url}
-
-    compacted = sorted(normalized_latest.values(), key=lambda x: (x["date"], x["url"]))
-    payload["articles"] = compacted
-    _write_json_file(path, payload)
-    log.info("used_articles.compacted", size=len(compacted), retention_days=retention_days)
+    compacted = state_schema.compact_used_articles_state(path, retention_days)
+    log.info("used_articles.compacted", size=len(compacted.articles), retention_days=retention_days)
 
 
 def _refresh_source_rotation_week(path: Path) -> None:
-    payload = _load_json_file(path, {"weekly_summary": {}})
-    weekly = payload.setdefault("weekly_summary", {})
-    current_monday = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime(
-        "%Y-%m-%d"
-    )
-    if weekly.get("week_start") != current_monday:
-        weekly["week_start"] = current_monday
-        weekly["3blue1brown_used_this_week"] = False
-        _write_json_file(path, payload)
-        log.info("source_rotation.week_reset", week_start=current_monday)
+    today = formatter.today_str()
+    previous = state_schema.load_source_rotation_state(path)
+    previous_week_start = previous.weekly_summary.week_start
+    state = state_schema.refresh_source_rotation_week(path, today)
+    current_week_start = state_schema.week_start_for_date(today)
+    if previous_week_start != current_week_start and state.weekly_summary.week_start == current_week_start:
+        log.info("source_rotation.week_reset", week_start=state.weekly_summary.week_start)
 
 
 def _record_source_health(
@@ -218,17 +192,383 @@ def _record_source_health(
 
 
 def _save_source_health(report: dict[str, Any]) -> None:
-    payload = _load_json_file(SOURCE_HEALTH_PATH, {"runs": []})
-    payload.setdefault("runs", []).append(
-        {
-            "run_date": formatter.today_str(),
-            "run_at": formatter.now_str(),
-            "entries": report.get("source_health_entries", []),
-        }
+    state_schema.append_source_health_run(
+        SOURCE_HEALTH_PATH,
+        run_date=formatter.today_str(),
+        run_at=formatter.now_str(),
+        entries=report.get("source_health_entries", []),
+        keep_runs=CONFIG.source_health_keep_runs,
     )
-    payload["runs"] = payload["runs"][-CONFIG.source_health_keep_runs :]
-    _write_json_file(SOURCE_HEALTH_PATH, payload)
     log.info("source_health.saved", entries=len(report.get("source_health_entries", [])))
+
+
+def _collect_items(
+    *,
+    report: dict[str, Any],
+    feed_cache: dict[str, str],
+    today: str,
+    raw_only: bool,
+) -> dict[str, Any]:
+    news_items: dict[str, list[dict]] = defaultdict(list)
+    paper_candidates: list[dict] = []
+    video_candidates: list[dict] = []
+
+    for feed in CONFIG.rss_feeds:
+        if not feed.enabled:
+            log.info("rss.skipped", feed=feed.name, reason="enabled=false")
+            continue
+
+        t0 = time.monotonic()
+        rss_meta: dict[str, Any] = {"status": "ok", "detail": "", "mode": "direct"}
+        try:
+            fetched = fetcher.fetch_rss_feed(
+                feed.model_dump(),
+                feed_cache,
+                today,
+                MAX_PAPERS,
+                raw_only,
+                quality_config=QUALITY_CONFIG,
+                return_meta=True,
+            )
+            if isinstance(fetched, tuple):
+                items, rss_meta = fetched
+            else:
+                items = fetched
+            ok = True
+        except Exception as exc:
+            log.error("rss.fail", feed=feed.name, error=str(exc))
+            report["rss_sources"].append(
+                {"name": feed.name, "items": 0, "ok": False, "elapsed": time.monotonic() - t0}
+            )
+            _record_source_health(report, feed.name, "rss", "error", 0, str(exc))
+            continue
+
+        report["rss_sources"].append(
+            {"name": feed.name, "items": len(items), "ok": ok, "elapsed": time.monotonic() - t0}
+        )
+        _record_source_health(
+            report,
+            feed.name,
+            "rss",
+            str(rss_meta.get("status", "ok")),
+            len(items),
+            str(rss_meta.get("detail", "")),
+        )
+
+        if _is_paper_feed(feed.url):
+            if raw_only:
+                news_items[feed.name].extend(items)
+            else:
+                for paper in items:
+                    paper_candidates.append({**paper, "_source_name": feed.name})
+        else:
+            news_items[feed.name].extend(items)
+
+    if raw_only:
+        yt_raw_list: list[dict] = []
+        for channel in CONFIG.youtube_channels:
+            if not channel.enabled:
+                log.info("youtube.skipped", channel=channel.name, reason="enabled=false")
+                continue
+
+            t0 = time.monotonic()
+            try:
+                videos = fetcher.fetch_youtube_channel_raw(channel.model_dump())
+                ok = True
+            except Exception as exc:
+                log.error("yt.fail", channel=channel.name, error=str(exc))
+                report["yt_sources"].append(
+                    {
+                        "name": channel.name,
+                        "items": 0,
+                        "ok": False,
+                        "elapsed": time.monotonic() - t0,
+                    }
+                )
+                _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
+                continue
+
+            report["yt_sources"].append(
+                {
+                    "name": channel.name,
+                    "items": len(videos),
+                    "ok": ok,
+                    "elapsed": time.monotonic() - t0,
+                }
+            )
+            _record_source_health(report, channel.name, "youtube", "ok", len(videos))
+            yt_raw_list.extend(videos)
+
+        if yt_raw_list:
+            news_items["YouTube"].extend(yt_raw_list)
+    else:
+        for channel in CONFIG.youtube_channels:
+            if not channel.enabled:
+                log.info("youtube.skipped", channel=channel.name, reason="enabled=false")
+                continue
+
+            t0 = time.monotonic()
+            try:
+                videos = fetcher.fetch_youtube_channel(
+                    channel.model_dump(), feed_cache, today, MAX_VIDEOS
+                )
+                ok = True
+            except Exception as exc:
+                log.error("yt.fail", channel=channel.name, error=str(exc))
+                report["yt_sources"].append(
+                    {
+                        "name": channel.name,
+                        "items": 0,
+                        "ok": False,
+                        "elapsed": time.monotonic() - t0,
+                    }
+                )
+                _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
+                continue
+
+            report["yt_sources"].append(
+                {
+                    "name": channel.name,
+                    "items": len(videos),
+                    "ok": ok,
+                    "elapsed": time.monotonic() - t0,
+                }
+            )
+            _record_source_health(report, channel.name, "youtube", "ok", len(videos))
+            for video in videos:
+                video_candidates.append({**video, "_source_name": channel.name})
+
+    return {
+        "news_items": news_items,
+        "paper_candidates": paper_candidates,
+        "video_candidates": video_candidates,
+    }
+
+
+def _flush_digest(
+    *,
+    report: dict[str, Any],
+    collection: dict[str, Any],
+    feed_cache: dict[str, str],
+    today: str,
+    raw_only: bool,
+    test_mode: bool,
+    dry_run: bool,
+    used_urls: set[str],
+    rotation_state: dict[str, Any],
+) -> None:
+    news_items: dict[str, list[dict]] = collection["news_items"]
+    paper_candidates: list[dict] = collection["paper_candidates"]
+    video_candidates: list[dict] = collection["video_candidates"]
+
+    if raw_only:
+        deduped: dict[str, list[dict]] = {}
+        for src, items in news_items.items():
+            dedup = _dedupe_items(items)
+            if dedup:
+                deduped[src] = dedup
+
+        if deduped:
+            path, content = formatter.format_daily_digest(deduped, raw_only=True)
+            if test_mode:
+                log.info("test.digest.preview", path=path, preview=content[:200])
+            else:
+                ok_write = _write(path, content, dry_run)
+                _record_write(report, path, ok_write)
+                if ok_write and not dry_run:
+                    report["archived_raw_files"] = _archive_old_raw_feeds(
+                        VAULT_PATH, RAW_FEED_KEEP_DAYS
+                    )
+        return
+
+    paper_written_refs: list[dict] = []
+    video_written_refs: list[dict] = []
+    selected_papers: list[dict[str, Any]]
+    deferred_papers: list[dict[str, Any]]
+    selected_videos: list[dict[str, Any]]
+    deferred_videos: list[dict[str, Any]]
+
+    if DAILY_DIGEST_ONLY_OUTPUT:
+        selected_papers, deferred_papers = list(paper_candidates), []
+        selected_videos, deferred_videos = list(video_candidates), []
+    else:
+        selected_papers, deferred_papers = _select_with_global_limit(
+            paper_candidates, "_source_name", MAX_PAPER_NOTES_PER_DAY
+        )
+        selected_videos, deferred_videos = _select_with_global_limit(
+            video_candidates, "_source_name", MAX_VIDEO_NOTES_PER_DAY
+        )
+
+    _remove_deferred_from_cache(feed_cache, deferred_papers, today)
+    _remove_deferred_from_cache(feed_cache, deferred_videos, today)
+
+    report["paper_candidates"] = len(paper_candidates)
+    report["paper_written"] = len(selected_papers)
+    report["paper_deferred"] = len(deferred_papers)
+    report["video_candidates"] = len(video_candidates)
+    report["video_written"] = len(selected_videos)
+    report["video_deferred"] = len(deferred_videos)
+
+    for paper in selected_papers:
+        source_name = str(paper.get("_source_name") or "paper-feed")
+        news_items[source_name].append(
+            {**paper, "content_type": paper.get("content_type", "paper")}
+        )
+        if DAILY_DIGEST_ONLY_OUTPUT:
+            paper_written_refs.append(
+                {
+                    "title": paper.get("title", "Untitled"),
+                    "link": paper.get("link", ""),
+                    "source": source_name,
+                    "summary": paper.get("summary", ""),
+                }
+            )
+            continue
+
+        path, content = formatter.format_paper_note(paper, source_name)
+        if test_mode:
+            log.info("test.paper.preview", path=path)
+        else:
+            _record_write(report, path, _write(path, content, dry_run))
+        paper_written_refs.append(
+            {
+                "title": paper.get("title", "Untitled"),
+                "link": paper.get("link", ""),
+                "source": source_name,
+                "note_path": path,
+                "summary": paper.get("summary", ""),
+            }
+        )
+
+    for video in selected_videos:
+        source_name = str(video.get("channel_name") or "YouTube")
+        news_items[source_name].append(
+            {**video, "content_type": video.get("content_type", "video")}
+        )
+        if DAILY_DIGEST_ONLY_OUTPUT:
+            video_written_refs.append(
+                {
+                    "title": video.get("title", "Untitled"),
+                    "link": video.get("link", ""),
+                    "source": source_name,
+                    "summary": video.get("summary", ""),
+                }
+            )
+            continue
+
+        path, content = formatter.format_video_note(video)
+        if test_mode:
+            log.info("test.video.preview", path=path)
+        else:
+            _record_write(report, path, _write(path, content, dry_run))
+        video_written_refs.append(
+            {
+                "title": video.get("title", "Untitled"),
+                "link": video.get("link", ""),
+                "source": source_name,
+                "note_path": path,
+                "summary": video.get("summary", ""),
+            }
+        )
+
+    paper_queue_refs = [
+        {
+            "title": p.get("title", "Untitled"),
+            "link": p.get("link", ""),
+            "source": p.get("_source_name", "paper-feed"),
+            "summary": p.get("summary", ""),
+        }
+        for p in deferred_papers[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
+    ]
+    video_queue_refs = [
+        {
+            "title": v.get("title", "Untitled"),
+            "link": v.get("link", ""),
+            "source": v.get("channel_name", "YouTube"),
+            "summary": v.get("summary", ""),
+        }
+        for v in deferred_videos[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
+    ]
+
+    if not (
+        news_items
+        or paper_written_refs
+        or video_written_refs
+        or paper_queue_refs
+        or video_queue_refs
+    ):
+        return
+
+    digest_stats = {
+        "sources_scanned": len(report["rss_sources"]) + len(report["yt_sources"]),
+        "papers_written": len(paper_written_refs),
+        "papers_deferred": len(deferred_papers),
+        "videos_written": len(video_written_refs),
+        "videos_deferred": len(deferred_videos),
+        "daily_only_output": DAILY_DIGEST_ONLY_OUTPUT,
+    }
+    curation_plan = daily_curation.plan_daily_digest(
+        dict(news_items),
+        today=today,
+        top_picks=DAILY_DIGEST_TOP_PICKS,
+        action_items=DAILY_DIGEST_ACTION_ITEMS,
+        max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
+        min_top_nonpaper=DAILY_DIGEST_MIN_TOP_NONPAPER,
+        min_top_content_types=DAILY_DIGEST_MIN_TOP_CONTENT_TYPES,
+        max_paper_in_top=DAILY_DIGEST_MAX_PAPER_IN_TOP,
+        paper_written=paper_written_refs,
+        video_written=video_written_refs,
+        paper_queue=paper_queue_refs,
+        video_queue=video_queue_refs,
+        stats=digest_stats,
+        used_urls=used_urls,
+        rotation_state=rotation_state,
+    )
+    digest_copy = None
+    if not test_mode and not dry_run and llm_digest.can_generate_digest_copy():
+        try:
+            digest_copy = llm_digest.generate_digest_copy(curation_plan)
+        except Exception as exc:
+            log.warning("digest.llm_copy.fail", error=str(exc))
+    path, content = formatter.format_daily_digest(
+        dict(news_items),
+        raw_only=False,
+        top_picks=DAILY_DIGEST_TOP_PICKS,
+        max_items_per_source=DAILY_DIGEST_MAX_ITEMS_PER_SOURCE,
+        action_items=DAILY_DIGEST_ACTION_ITEMS,
+        max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
+        include_mindmap=DAILY_DIGEST_INCLUDE_MINDMAP,
+        include_cognitive_lenses=DAILY_DIGEST_INCLUDE_COGNITIVE_LENSES,
+        cognitive_questions=DAILY_DIGEST_COGNITIVE_QUESTIONS,
+        quality_gate_enabled=DAILY_DIGEST_QUALITY_GATE_ENABLED,
+        tldr_min_quality_score=DAILY_DIGEST_TLDR_MIN_QUALITY_SCORE,
+        tldr_max_undisclosed=DAILY_DIGEST_TLDR_MAX_UNDISCLOSED,
+        tldr_min_items=DAILY_DIGEST_TLDR_MIN_ITEMS,
+        tldr_min_hard_signal_ratio=DAILY_DIGEST_TLDR_MIN_HARD_SIGNAL_RATIO,
+        tldr_max_undisclosed_ratio=DAILY_DIGEST_TLDR_MAX_UNDISCLOSED_RATIO,
+        min_top_nonpaper=DAILY_DIGEST_MIN_TOP_NONPAPER,
+        min_top_content_types=DAILY_DIGEST_MIN_TOP_CONTENT_TYPES,
+        max_paper_in_top=DAILY_DIGEST_MAX_PAPER_IN_TOP,
+        paper_written=paper_written_refs,
+        video_written=video_written_refs,
+        paper_queue=paper_queue_refs,
+        video_queue=video_queue_refs,
+        stats=digest_stats,
+        curation_plan=curation_plan,
+        digest_copy=digest_copy,
+    )
+    if test_mode:
+        log.info("test.digest.preview", path=path, preview=content[:200])
+    else:
+        ok_digest = _write(path, content, dry_run)
+        _record_write(report, path, ok_digest)
+        if ok_digest and not dry_run:
+            daily_curation.persist_daily_digest_selection(
+                curation_plan,
+                used_articles_path=USED_ARTICLES_PATH,
+                source_rotation_path=SOURCE_ROTATION_PATH,
+                retention_days=CONFIG.used_articles_retention_days,
+            )
 
 
 # 鈹€鈹€ Writer Dispatch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -240,7 +580,7 @@ def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
     In dry_run mode, only print the target path - no actual I/O.
     """
     if dry_run:
-        console.print(f"  [dim cyan][dry-run][/] would write 鈫?[bold]{filepath}[/]")
+        console.print(f"  [dim cyan][dry-run][/] would write -> [bold]{filepath}[/]")
         return True
 
     if WRITE_MODE == "disk":
@@ -398,13 +738,11 @@ def _backfill_digest_items(
     local_cache: dict[str, str] = {}
     added = 0
     backfill_quality = dict(QUALITY_CONFIG)
-    backfill_quality["min_ai_interest_score"] = max(
-        4, int(QUALITY_CONFIG.get("min_ai_interest_score", 6)) - 2
-    )
+    min_interest_score = QUALITY_CONFIG.get("min_ai_interest_score", 6)
+    fulltext_limit = QUALITY_CONFIG.get("fulltext_enrichment_per_feed", 2)
+    backfill_quality["min_ai_interest_score"] = max(4, int(cast(int, min_interest_score)) - 2)
     backfill_quality["max_ai_items_per_feed"] = 4
-    backfill_quality["fulltext_enrichment_per_feed"] = max(
-        2, int(QUALITY_CONFIG.get("fulltext_enrichment_per_feed", 2))
-    )
+    backfill_quality["fulltext_enrichment_per_feed"] = max(2, int(cast(int, fulltext_limit)))
 
     for feed in CONFIG.rss_feeds:
         if not feed.enabled:
@@ -421,12 +759,15 @@ def _backfill_digest_items(
         if inferred_type in {"paper", "video"}:
             continue
         try:
-            items = fetcher.fetch_rss_feed(
+            items = cast(
+                list[dict[str, Any]],
+                fetcher.fetch_rss_feed(
                 feed.model_dump(),
                 local_cache,
                 today,
                 raw_only=False,
                 quality_config=backfill_quality,
+                ),
             )
         except Exception as exc:
             log.warning("digest.backfill.feed_fail", feed=feed.name, error=str(exc))
@@ -667,343 +1008,23 @@ def run_daily_fetch(
     used_urls = daily_curation.load_used_urls(USED_ARTICLES_PATH)
     rotation_state = daily_curation.load_rotation_state(SOURCE_ROTATION_PATH)
     today = formatter.today_str()
-
-    news_items: dict[str, list[dict]] = defaultdict(list)
-    paper_candidates: list[dict] = []
-    video_candidates: list[dict] = []
-
-    paper_written_refs: list[dict] = []
-    video_written_refs: list[dict] = []
-    paper_queue_refs: list[dict] = []
-    video_queue_refs: list[dict] = []
-
-    # 1) RSS
-    for feed in CONFIG.rss_feeds:
-        if not feed.enabled:
-            log.info("rss.skipped", feed=feed.name, reason="enabled=false")
-            continue
-
-        t0 = time.monotonic()
-        rss_meta: dict[str, Any] = {"status": "ok", "detail": "", "mode": "direct"}
-        try:
-            fetched = fetcher.fetch_rss_feed(
-                feed.model_dump(),
-                feed_cache,
-                today,
-                MAX_PAPERS,
-                raw_only,
-                quality_config=QUALITY_CONFIG,
-                return_meta=True,
-            )
-            if isinstance(fetched, tuple):
-                items, rss_meta = fetched
-            else:
-                items = fetched
-            ok = True
-        except Exception as exc:
-            log.error("rss.fail", feed=feed.name, error=str(exc))
-            report["rss_sources"].append(
-                {"name": feed.name, "items": 0, "ok": False, "elapsed": time.monotonic() - t0}
-            )
-            _record_source_health(report, feed.name, "rss", "error", 0, str(exc))
-            continue
-
-        report["rss_sources"].append(
-            {"name": feed.name, "items": len(items), "ok": ok, "elapsed": time.monotonic() - t0}
-        )
-        _record_source_health(
-            report,
-            feed.name,
-            "rss",
-            str(rss_meta.get("status", "ok")),
-            len(items),
-            str(rss_meta.get("detail", "")),
-        )
-
-        if _is_paper_feed(feed.url):
-            if raw_only:
-                news_items[feed.name].extend(items)
-            else:
-                for paper in items:
-                    paper_candidates.append({**paper, "_source_name": feed.name})
-        else:
-            news_items[feed.name].extend(items)
-
-    # 2) YouTube
-    if raw_only:
-        yt_raw_list: list[dict] = []
-        for channel in CONFIG.youtube_channels:
-            if not channel.enabled:
-                log.info("youtube.skipped", channel=channel.name, reason="enabled=false")
-                continue
-
-            t0 = time.monotonic()
-            try:
-                videos = fetcher.fetch_youtube_channel_raw(channel.model_dump())
-                ok = True
-            except Exception as exc:
-                log.error("yt.fail", channel=channel.name, error=str(exc))
-                report["yt_sources"].append(
-                    {
-                        "name": channel.name,
-                        "items": 0,
-                        "ok": False,
-                        "elapsed": time.monotonic() - t0,
-                    }
-                )
-                _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
-                continue
-
-            report["yt_sources"].append(
-                {
-                    "name": channel.name,
-                    "items": len(videos),
-                    "ok": ok,
-                    "elapsed": time.monotonic() - t0,
-                }
-            )
-            _record_source_health(report, channel.name, "youtube", "ok", len(videos))
-            yt_raw_list.extend(videos)
-
-        if yt_raw_list:
-            news_items["YouTube"].extend(yt_raw_list)
-
-        deduped: dict[str, list[dict]] = {}
-        for src, items in news_items.items():
-            dedup = _dedupe_items(items)
-            if dedup:
-                deduped[src] = dedup
-
-        if deduped:
-            path, content = formatter.format_daily_digest(deduped, raw_only=True)
-            if test_mode:
-                log.info("test.digest.preview", path=path, preview=content[:200])
-            else:
-                ok_write = _write(path, content, dry_run)
-                _record_write(report, path, ok_write)
-                if ok_write and not dry_run:
-                    report["archived_raw_files"] = _archive_old_raw_feeds(
-                        VAULT_PATH, RAW_FEED_KEEP_DAYS
-                    )
-
-    else:
-        for channel in CONFIG.youtube_channels:
-            if not channel.enabled:
-                log.info("youtube.skipped", channel=channel.name, reason="enabled=false")
-                continue
-
-            t0 = time.monotonic()
-            try:
-                videos = fetcher.fetch_youtube_channel(
-                    channel.model_dump(), feed_cache, today, MAX_VIDEOS
-                )
-                ok = True
-            except Exception as exc:
-                log.error("yt.fail", channel=channel.name, error=str(exc))
-                report["yt_sources"].append(
-                    {
-                        "name": channel.name,
-                        "items": 0,
-                        "ok": False,
-                        "elapsed": time.monotonic() - t0,
-                    }
-                )
-                _record_source_health(report, channel.name, "youtube", "error", 0, str(exc))
-                continue
-
-            report["yt_sources"].append(
-                {
-                    "name": channel.name,
-                    "items": len(videos),
-                    "ok": ok,
-                    "elapsed": time.monotonic() - t0,
-                }
-            )
-            _record_source_health(report, channel.name, "youtube", "ok", len(videos))
-            for video in videos:
-                video_candidates.append({**video, "_source_name": channel.name})
-
-        # 3) Global write limits to avoid Obsidian overload
-        if DAILY_DIGEST_ONLY_OUTPUT:
-            selected_papers, deferred_papers = list(paper_candidates), []
-            selected_videos, deferred_videos = list(video_candidates), []
-        else:
-            selected_papers, deferred_papers = _select_with_global_limit(
-                paper_candidates, "_source_name", MAX_PAPER_NOTES_PER_DAY
-            )
-            selected_videos, deferred_videos = _select_with_global_limit(
-                video_candidates, "_source_name", MAX_VIDEO_NOTES_PER_DAY
-            )
-
-        _remove_deferred_from_cache(feed_cache, deferred_papers, today)
-        _remove_deferred_from_cache(feed_cache, deferred_videos, today)
-
-        report["paper_candidates"] = len(paper_candidates)
-        report["paper_written"] = len(selected_papers)
-        report["paper_deferred"] = len(deferred_papers)
-        report["video_candidates"] = len(video_candidates)
-        report["video_written"] = len(selected_videos)
-        report["video_deferred"] = len(deferred_videos)
-
-        for paper in selected_papers:
-            source_name = str(paper.get("_source_name") or "paper-feed")
-            news_items[source_name].append(
-                {**paper, "content_type": paper.get("content_type", "paper")}
-            )
-            if DAILY_DIGEST_ONLY_OUTPUT:
-                paper_written_refs.append(
-                    {
-                        "title": paper.get("title", "Untitled"),
-                        "link": paper.get("link", ""),
-                        "source": source_name,
-                        "summary": paper.get("summary", ""),
-                    }
-                )
-                continue
-
-            path, content = formatter.format_paper_note(paper, source_name)
-            if test_mode:
-                log.info("test.paper.preview", path=path)
-            else:
-                _record_write(report, path, _write(path, content, dry_run))
-            paper_written_refs.append(
-                {
-                    "title": paper.get("title", "Untitled"),
-                    "link": paper.get("link", ""),
-                    "source": source_name,
-                    "note_path": path,
-                    "summary": paper.get("summary", ""),
-                }
-            )
-
-        for video in selected_videos:
-            source_name = str(video.get("channel_name") or "YouTube")
-            news_items[source_name].append(
-                {**video, "content_type": video.get("content_type", "video")}
-            )
-            if DAILY_DIGEST_ONLY_OUTPUT:
-                video_written_refs.append(
-                    {
-                        "title": video.get("title", "Untitled"),
-                        "link": video.get("link", ""),
-                        "source": source_name,
-                        "summary": video.get("summary", ""),
-                    }
-                )
-                continue
-
-            path, content = formatter.format_video_note(video)
-            if test_mode:
-                log.info("test.video.preview", path=path)
-            else:
-                _record_write(report, path, _write(path, content, dry_run))
-            video_written_refs.append(
-                {
-                    "title": video.get("title", "Untitled"),
-                    "link": video.get("link", ""),
-                    "source": source_name,
-                    "note_path": path,
-                    "summary": video.get("summary", ""),
-                }
-            )
-
-        paper_queue_refs = [
-            {
-                "title": p.get("title", "Untitled"),
-                "link": p.get("link", ""),
-                "source": p.get("_source_name", "paper-feed"),
-                "summary": p.get("summary", ""),
-            }
-            for p in deferred_papers[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
-        ]
-        video_queue_refs = [
-            {
-                "title": v.get("title", "Untitled"),
-                "link": v.get("link", ""),
-                "source": v.get("channel_name", "YouTube"),
-                "summary": v.get("summary", ""),
-            }
-            for v in deferred_videos[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
-        ]
-
-        # 4) Daily digest
-        if (
-            news_items
-            or paper_written_refs
-            or video_written_refs
-            or paper_queue_refs
-            or video_queue_refs
-        ):
-            digest_stats = {
-                "sources_scanned": len(report["rss_sources"]) + len(report["yt_sources"]),
-                "papers_written": len(paper_written_refs),
-                "papers_deferred": len(deferred_papers),
-                "videos_written": len(video_written_refs),
-                "videos_deferred": len(deferred_videos),
-                "daily_only_output": DAILY_DIGEST_ONLY_OUTPUT,
-            }
-            curation_plan = daily_curation.plan_daily_digest(
-                dict(news_items),
-                today=today,
-                top_picks=DAILY_DIGEST_TOP_PICKS,
-                action_items=DAILY_DIGEST_ACTION_ITEMS,
-                max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
-                min_top_nonpaper=DAILY_DIGEST_MIN_TOP_NONPAPER,
-                min_top_content_types=DAILY_DIGEST_MIN_TOP_CONTENT_TYPES,
-                max_paper_in_top=DAILY_DIGEST_MAX_PAPER_IN_TOP,
-                paper_written=paper_written_refs,
-                video_written=video_written_refs,
-                paper_queue=paper_queue_refs,
-                video_queue=video_queue_refs,
-                stats=digest_stats,
-                used_urls=used_urls,
-                rotation_state=rotation_state,
-            )
-            digest_copy = None
-            if not test_mode and not dry_run and llm_digest.can_generate_digest_copy():
-                try:
-                    digest_copy = llm_digest.generate_digest_copy(curation_plan)
-                except Exception as exc:
-                    log.warning("digest.llm_copy.fail", error=str(exc))
-            path, content = formatter.format_daily_digest(
-                dict(news_items),
-                raw_only=False,
-                top_picks=DAILY_DIGEST_TOP_PICKS,
-                max_items_per_source=DAILY_DIGEST_MAX_ITEMS_PER_SOURCE,
-                action_items=DAILY_DIGEST_ACTION_ITEMS,
-                max_deferred_items=DAILY_DIGEST_MAX_DEFERRED_ITEMS,
-                include_mindmap=DAILY_DIGEST_INCLUDE_MINDMAP,
-                include_cognitive_lenses=DAILY_DIGEST_INCLUDE_COGNITIVE_LENSES,
-                cognitive_questions=DAILY_DIGEST_COGNITIVE_QUESTIONS,
-                quality_gate_enabled=DAILY_DIGEST_QUALITY_GATE_ENABLED,
-                tldr_min_quality_score=DAILY_DIGEST_TLDR_MIN_QUALITY_SCORE,
-                tldr_max_undisclosed=DAILY_DIGEST_TLDR_MAX_UNDISCLOSED,
-                tldr_min_items=DAILY_DIGEST_TLDR_MIN_ITEMS,
-                tldr_min_hard_signal_ratio=DAILY_DIGEST_TLDR_MIN_HARD_SIGNAL_RATIO,
-                tldr_max_undisclosed_ratio=DAILY_DIGEST_TLDR_MAX_UNDISCLOSED_RATIO,
-                min_top_nonpaper=DAILY_DIGEST_MIN_TOP_NONPAPER,
-                min_top_content_types=DAILY_DIGEST_MIN_TOP_CONTENT_TYPES,
-                max_paper_in_top=DAILY_DIGEST_MAX_PAPER_IN_TOP,
-                paper_written=paper_written_refs,
-                video_written=video_written_refs,
-                paper_queue=paper_queue_refs,
-                video_queue=video_queue_refs,
-                stats=digest_stats,
-                curation_plan=curation_plan,
-                digest_copy=digest_copy,
-            )
-            if test_mode:
-                log.info("test.digest.preview", path=path, preview=content[:200])
-            else:
-                ok_digest = _write(path, content, dry_run)
-                _record_write(report, path, ok_digest)
-                if ok_digest and not dry_run:
-                    daily_curation.persist_daily_digest_selection(
-                        curation_plan,
-                        used_articles_path=USED_ARTICLES_PATH,
-                        source_rotation_path=SOURCE_ROTATION_PATH,
-                        retention_days=CONFIG.used_articles_retention_days,
-                    )
+    collection = _collect_items(
+        report=report,
+        feed_cache=feed_cache,
+        today=today,
+        raw_only=raw_only,
+    )
+    _flush_digest(
+        report=report,
+        collection=collection,
+        feed_cache=feed_cache,
+        today=today,
+        raw_only=raw_only,
+        test_mode=test_mode,
+        dry_run=dry_run,
+        used_urls=used_urls,
+        rotation_state=rotation_state,
+    )
 
     # Finalize
     if not dry_run:

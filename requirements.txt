@@ -20,3 +20,7 @@ rich>=13.7.0
 
 # Structured Logging
 structlog>=24.1.0
+
+# Local control plane
+fastapi>=0.115.0
+uvicorn>=0.30.0
