@@ -183,6 +183,11 @@ python main.py
 python main.py --health-check
 ```
 
+Runtime safety:
+
+- `--dry-run` and `--test` do not persist feed cache, source health, source rotation, or used-article state.
+- If no renderable candidates remain after fetch, dedupe, and curation, the workflow reports a skipped output instead of writing a frontmatter-only digest.
+
 前端 / 本地控制面板：
 
 ```bash

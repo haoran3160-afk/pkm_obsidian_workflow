@@ -317,3 +317,109 @@ def test_flush_digest_raw_only_uses_single_render_path(monkeypatch):
     assert written == [("00-Inbox/Raw-Feeds/Raw-Daily-Feeds-2026-04-21.md", "raw", False)]
     assert report["writes_ok"] == 1
     assert report["archived_raw_files"] == 2
+
+
+def test_flush_digest_skips_empty_final_digest(monkeypatch):
+    report = main._build_run_report(test_mode=False, raw_only=False, dry_run=False)
+    collection = {
+        "news_items": {"OpenAI News": []},
+        "paper_candidates": [],
+        "video_candidates": [],
+    }
+    written: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(
+        main,
+        "_write",
+        lambda path, content, dry_run=False: written.append((path, content, dry_run)) or True,
+    )
+
+    main._flush_digest(
+        report=report,
+        collection=collection,
+        feed_cache={},
+        today="2026-04-21",
+        raw_only=False,
+        test_mode=False,
+        dry_run=False,
+        used_urls=set(),
+        rotation_state={},
+    )
+
+    assert written == []
+    assert report["writes_ok"] == 0
+    assert report["skipped_outputs"] == [
+        {
+            "path": "30-Daily/AI-News/AI-Daily-2026-04-21.md",
+            "reason": "No digest candidates were fetched.",
+        }
+    ]
+
+
+def test_run_daily_fetch_test_mode_does_not_persist_state(monkeypatch):
+    config = PKMConfig(
+        rss_feeds=[
+            RssFeed(
+                name="Disabled",
+                url="https://example.com/feed.xml",
+                note_folder="30-Daily/AI-News",
+                enabled=False,
+            )
+        ],
+        youtube_channels=[],
+    )
+    monkeypatch.setattr(main, "CONFIG", config)
+    monkeypatch.setattr(main, "load_feed_cache", lambda: {})
+    monkeypatch.setattr(main.daily_curation, "load_used_urls", lambda _path: set())
+    monkeypatch.setattr(
+        main.daily_curation,
+        "load_rotation_state",
+        lambda _path: {"sources": {}, "weekly_summary": {}},
+    )
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("state persistence should not run in test mode")
+
+    monkeypatch.setattr(main, "save_feed_cache", fail_if_called)
+    monkeypatch.setattr(main, "_save_source_health", fail_if_called)
+    monkeypatch.setattr(main, "_refresh_source_rotation_week", fail_if_called)
+    monkeypatch.setattr(main, "_compact_used_articles", fail_if_called)
+
+    report = main.run_daily_fetch(test_mode=True, raw_only=False, dry_run=False)
+
+    assert report["writes_ok"] == 0
+    assert report["skipped_outputs"][0]["path"].startswith("30-Daily/AI-News/AI-Daily-")
+
+
+def test_run_daily_fetch_dry_run_does_not_persist_state(monkeypatch):
+    config = PKMConfig(
+        rss_feeds=[
+            RssFeed(
+                name="Disabled",
+                url="https://example.com/feed.xml",
+                note_folder="30-Daily/AI-News",
+                enabled=False,
+            )
+        ],
+        youtube_channels=[],
+    )
+    monkeypatch.setattr(main, "CONFIG", config)
+    monkeypatch.setattr(main, "load_feed_cache", lambda: {})
+    monkeypatch.setattr(main.daily_curation, "load_used_urls", lambda _path: set())
+    monkeypatch.setattr(
+        main.daily_curation,
+        "load_rotation_state",
+        lambda _path: {"sources": {}, "weekly_summary": {}},
+    )
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("state persistence should not run in dry-run mode")
+
+    monkeypatch.setattr(main, "save_feed_cache", fail_if_called)
+    monkeypatch.setattr(main, "_save_source_health", fail_if_called)
+    monkeypatch.setattr(main, "_refresh_source_rotation_week", fail_if_called)
+    monkeypatch.setattr(main, "_compact_used_articles", fail_if_called)
+
+    report = main.run_daily_fetch(test_mode=False, raw_only=False, dry_run=True)
+
+    assert report["writes_ok"] == 0
+    assert report["skipped_outputs"][0]["path"].startswith("30-Daily/AI-News/AI-Daily-")

@@ -382,6 +382,13 @@ def _flush_digest(
                     report["archived_raw_files"] = _archive_old_raw_feeds(
                         VAULT_PATH, RAW_FEED_KEEP_DAYS
                     )
+        else:
+            _record_skip(
+                report,
+                f"00-Inbox/Raw-Feeds/Raw-Daily-Feeds-{today}.md",
+                "No raw feed items were fetched.",
+            )
+            log.warning("raw_digest.skip.empty", date=today)
         return
 
     paper_written_refs: list[dict] = []
@@ -493,6 +500,7 @@ def _flush_digest(
         for v in deferred_videos[:DAILY_DIGEST_MAX_DEFERRED_ITEMS]
     ]
 
+    news_items = _nonempty_item_buckets(news_items)
     if not (
         news_items
         or paper_written_refs
@@ -500,6 +508,12 @@ def _flush_digest(
         or paper_queue_refs
         or video_queue_refs
     ):
+        _record_skip(
+            report,
+            f"30-Daily/AI-News/AI-Daily-{today}.md",
+            "No digest candidates were fetched.",
+        )
+        log.warning("digest.skip.no_candidates", date=today)
         return
 
     digest_stats = {
@@ -511,7 +525,7 @@ def _flush_digest(
         "daily_only_output": DAILY_DIGEST_ONLY_OUTPUT,
     }
     curation_plan = daily_curation.plan_daily_digest(
-        dict(news_items),
+        news_items,
         today=today,
         top_picks=DAILY_DIGEST_TOP_PICKS,
         action_items=DAILY_DIGEST_ACTION_ITEMS,
@@ -527,6 +541,20 @@ def _flush_digest(
         used_urls=used_urls,
         rotation_state=rotation_state,
     )
+    if not _has_renderable_digest_content(curation_plan):
+        _record_skip(
+            report,
+            f"30-Daily/AI-News/AI-Daily-{today}.md",
+            "No eligible stories remained after dedupe, used-article filtering, and curation.",
+        )
+        log.warning(
+            "digest.skip.empty_selection",
+            date=today,
+            candidate_count=curation_plan.snapshot.get("candidate_count", 0),
+            filtered_duplicates=curation_plan.snapshot.get("filtered_duplicates", 0),
+        )
+        return
+
     digest_copy = None
     if not test_mode and not dry_run and llm_digest.can_generate_digest_copy():
         try:
@@ -534,7 +562,7 @@ def _flush_digest(
         except Exception as exc:
             log.warning("digest.llm_copy.fail", error=str(exc))
     path, content = formatter.format_daily_digest(
-        dict(news_items),
+        news_items,
         raw_only=False,
         top_picks=DAILY_DIGEST_TOP_PICKS,
         max_items_per_source=DAILY_DIGEST_MAX_ITEMS_PER_SOURCE,
@@ -835,6 +863,8 @@ def _build_run_report(test_mode: bool, raw_only: bool, dry_run: bool) -> dict[st
         "writes_ok": 0,
         "writes_failed": 0,
         "written_files": [],
+        "skipped_outputs": [],
+        "last_skip_reason": "",
         "paper_candidates": 0,
         "paper_written": 0,
         "paper_deferred": 0,
@@ -853,6 +883,25 @@ def _record_write(report: dict[str, Any], filepath: str, ok: bool) -> None:
         report["written_files"].append(filepath)
     else:
         report["writes_failed"] += 1
+
+
+def _record_skip(report: dict[str, Any], filepath: str, reason: str) -> None:
+    report.setdefault("skipped_outputs", []).append({"path": filepath, "reason": reason})
+    report["last_skip_reason"] = reason
+
+
+def _nonempty_item_buckets(items_by_source: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    return {source: list(items) for source, items in items_by_source.items() if items}
+
+
+def _has_renderable_digest_content(plan: daily_curation.DailyDigestPlan) -> bool:
+    return bool(
+        plan.top_stories
+        or plan.venture_story
+        or plan.growth_story
+        or plan.video_story
+        or plan.solopreneur_story
+    )
 
 
 def _print_rich_summary(report: dict[str, Any]) -> None:
@@ -903,6 +952,11 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
         preview = report["written_files"][:5]
         suffix = " ..." if len(report["written_files"]) > 5 else ""
         console.print(f"[dim]Output:[/] {', '.join(preview)}{suffix}")
+    if report.get("skipped_outputs"):
+        skipped = report["skipped_outputs"][:3]
+        preview = ", ".join(f"{item['path']} ({item['reason']})" for item in skipped)
+        suffix = " ..." if len(report["skipped_outputs"]) > 3 else ""
+        console.print(f"[yellow]Skipped output:[/] {preview}{suffix}")
 
 
 # 鈹€鈹€ Validation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -1006,8 +1060,10 @@ def run_daily_fetch(
 
     feed_cache = load_feed_cache()
     log.info("cache.loaded", guid_count=len(feed_cache))
-    _refresh_source_rotation_week(SOURCE_ROTATION_PATH)
-    _compact_used_articles(USED_ARTICLES_PATH, CONFIG.used_articles_retention_days)
+    mutates_state = not (test_mode or dry_run)
+    if mutates_state:
+        _refresh_source_rotation_week(SOURCE_ROTATION_PATH)
+        _compact_used_articles(USED_ARTICLES_PATH, CONFIG.used_articles_retention_days)
     used_urls = daily_curation.load_used_urls(USED_ARTICLES_PATH)
     rotation_state = daily_curation.load_rotation_state(SOURCE_ROTATION_PATH)
     today = formatter.today_str()
@@ -1030,7 +1086,7 @@ def run_daily_fetch(
     )
 
     # Finalize
-    if not dry_run:
+    if mutates_state:
         save_feed_cache(feed_cache)
         log.info("cache.saved", guid_count=len(feed_cache))
         _save_source_health(report)

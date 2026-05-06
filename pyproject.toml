@@ -73,7 +73,7 @@ omit = [
     "tests/*",
     ".venv/*",
     "setup.py",
-    "parse_ruff.py",
+    "dev-artifacts/parse_ruff.py",
     "fetcher_registry.py",
     "pkm_bridge.py",
     "main.py",
@@ -89,8 +89,8 @@ fail_under = 70
 line-length = 100
 target-version = "py310"
 exclude = [
-    "parse_ruff.py",
-    "git_log.txt",
+    "dev-artifacts/parse_ruff.py",
+    "dev-artifacts/git_log.txt",
 ]
 
 [tool.ruff.lint]
