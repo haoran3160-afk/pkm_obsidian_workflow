@@ -377,7 +377,7 @@ def _flush_digest(
                 log.info("test.digest.preview", path=path, preview=content[:200])
             else:
                 ok_write = _write(path, content, dry_run)
-                _record_write(report, path, ok_write)
+                _record_write(report, path, ok_write, dry_run=dry_run)
                 if ok_write and not dry_run:
                     report["archived_raw_files"] = _archive_old_raw_feeds(
                         VAULT_PATH, RAW_FEED_KEEP_DAYS
@@ -439,7 +439,7 @@ def _flush_digest(
         if test_mode:
             log.info("test.paper.preview", path=path)
         else:
-            _record_write(report, path, _write(path, content, dry_run))
+            _record_write(report, path, _write(path, content, dry_run), dry_run=dry_run)
         paper_written_refs.append(
             {
                 "title": paper.get("title", "Untitled"),
@@ -470,7 +470,7 @@ def _flush_digest(
         if test_mode:
             log.info("test.video.preview", path=path)
         else:
-            _record_write(report, path, _write(path, content, dry_run))
+            _record_write(report, path, _write(path, content, dry_run), dry_run=dry_run)
         video_written_refs.append(
             {
                 "title": video.get("title", "Untitled"),
@@ -592,7 +592,7 @@ def _flush_digest(
         log.info("test.digest.preview", path=path, preview=content[:200])
     else:
         ok_digest = _write(path, content, dry_run)
-        _record_write(report, path, ok_digest)
+        _record_write(report, path, ok_digest, dry_run=dry_run)
         if ok_digest and not dry_run:
             daily_curation.persist_daily_digest_selection(
                 curation_plan,
@@ -863,6 +863,7 @@ def _build_run_report(test_mode: bool, raw_only: bool, dry_run: bool) -> dict[st
         "writes_ok": 0,
         "writes_failed": 0,
         "written_files": [],
+        "planned_files": [],
         "skipped_outputs": [],
         "last_skip_reason": "",
         "paper_candidates": 0,
@@ -877,10 +878,15 @@ def _build_run_report(test_mode: bool, raw_only: bool, dry_run: bool) -> dict[st
     }
 
 
-def _record_write(report: dict[str, Any], filepath: str, ok: bool) -> None:
+def _record_write(
+    report: dict[str, Any], filepath: str, ok: bool, *, dry_run: bool = False
+) -> None:
     if ok:
-        report["writes_ok"] += 1
-        report["written_files"].append(filepath)
+        if dry_run:
+            report.setdefault("planned_files", []).append(filepath)
+        else:
+            report["writes_ok"] += 1
+            report["written_files"].append(filepath)
     else:
         report["writes_failed"] += 1
 
@@ -930,8 +936,12 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
     console.print(table)
 
     # Summary row
+    write_label = "Files planned" if mode_label == "DRY-RUN" else "Files written"
+    write_count = (
+        len(report.get("planned_files", [])) if mode_label == "DRY-RUN" else report["writes_ok"]
+    )
     console.print(
-        f"[bold]Files written:[/] {report['writes_ok']}  "
+        f"[bold]{write_label}:[/] {write_count}  "
         f"[red]Failed:[/] {report['writes_failed']}  "
         f"[dim]Archived raw files:[/] {report['archived_raw_files']}  "
         f"[dim]Duration:[/] {duration:.1f}s"
@@ -952,6 +962,10 @@ def _print_rich_summary(report: dict[str, Any]) -> None:
         preview = report["written_files"][:5]
         suffix = " ..." if len(report["written_files"]) > 5 else ""
         console.print(f"[dim]Output:[/] {', '.join(preview)}{suffix}")
+    if report.get("planned_files"):
+        preview = report["planned_files"][:5]
+        suffix = " ..." if len(report["planned_files"]) > 5 else ""
+        console.print(f"[dim]Planned output:[/] {', '.join(preview)}{suffix}")
     if report.get("skipped_outputs"):
         skipped = report["skipped_outputs"][:3]
         preview = ", ".join(f"{item['path']} ({item['reason']})" for item in skipped)

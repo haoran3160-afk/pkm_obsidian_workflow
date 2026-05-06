@@ -319,6 +319,16 @@ def test_flush_digest_raw_only_uses_single_render_path(monkeypatch):
     assert report["archived_raw_files"] == 2
 
 
+def test_record_write_tracks_dry_run_as_planned_output():
+    report = main._build_run_report(test_mode=False, raw_only=False, dry_run=True)
+
+    main._record_write(report, "30-Daily/AI-News/AI-Daily-2026-04-21.md", True, dry_run=True)
+
+    assert report["writes_ok"] == 0
+    assert report["written_files"] == []
+    assert report["planned_files"] == ["30-Daily/AI-News/AI-Daily-2026-04-21.md"]
+
+
 def test_flush_digest_skips_empty_final_digest(monkeypatch):
     report = main._build_run_report(test_mode=False, raw_only=False, dry_run=False)
     collection = {
