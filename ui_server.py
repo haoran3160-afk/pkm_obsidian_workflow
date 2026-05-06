@@ -275,7 +275,9 @@ def _recent_outputs(vault_path: str, *, limit: int = 8) -> list[dict[str, Any]]:
         {
             "name": path.name,
             "path": str(path),
-            "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%dT%H:%M:%S"),
+            "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            ),
         }
         for path in files[:limit]
     ]
@@ -337,7 +339,9 @@ def _start_background_run(mode: str) -> None:
         for line in process.stdout:
             RUN_STATE.append("run.log", line.rstrip())
         return_code = process.wait()
-        RUN_STATE.finish(return_code, "" if return_code == 0 else f"{mode} exited with {return_code}.")
+        RUN_STATE.finish(
+            return_code, "" if return_code == 0 else f"{mode} exited with {return_code}."
+        )
 
     threading.Thread(target=worker, name=f"pkm-ui-{mode}", daemon=True).start()
 

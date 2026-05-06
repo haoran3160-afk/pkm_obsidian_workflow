@@ -137,16 +137,22 @@ def _render_curated_daily_digest(
     content = template.render(
         plan=plan,
         top_sections=_build_top_sections(plan, digest_copy),
-        venture_section=_build_deep_section("创投洞见", plan.venture_story, digest_copy.get("venture_story")),
-        insight_section=_build_brief_section("洞见", plan.growth_story, digest_copy.get("insight_story")),
+        venture_section=_build_deep_section(
+            "创投洞见", plan.venture_story, digest_copy.get("venture_story")
+        ),
+        insight_section=_build_brief_section(
+            "洞见", plan.growth_story, digest_copy.get("insight_story")
+        ),
         video_section=_build_video_section(plan.video_story, digest_copy.get("video_story")),
-        company_section=_build_brief_section("洞见", plan.solopreneur_story, digest_copy.get("ai_company_story")),
+        company_section=_build_brief_section(
+            "洞见", plan.solopreneur_story, digest_copy.get("ai_company_story")
+        ),
     )
     return filepath, content.rstrip() + "\n"
 
 
 def _build_raw_bucket_context(
-    items_by_source: dict[str, list[dict[str, Any]]]
+    items_by_source: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     bucketed: dict[str, list[dict[str, Any]]] = {key: [] for key in AI_BUCKET_ORDER}
     for source, items in items_by_source.items():
@@ -167,7 +173,7 @@ def _build_raw_bucket_context(
 
 
 def _build_raw_source_context(
-    items_by_source: dict[str, list[dict[str, Any]]]
+    items_by_source: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     return [
         {
@@ -218,11 +224,14 @@ def _build_deep_section(
         "link": str(item.get("link", "")).strip(),
         "story_title": _story_title(item),
         "core_concepts": _normalize_list(copy.get("core_concepts"), fallback=["#concept/AI-News"]),
-        "core_finding": str(copy.get("core_finding", "")).strip() or _clean_text(
-            str(item.get("summary", "")), max_len=120
+        "core_finding": str(copy.get("core_finding", "")).strip()
+        or _clean_text(str(item.get("summary", "")), max_len=120),
+        "key_details": _normalize_list(
+            copy.get("key_details"),
+            fallback=[_clean_text(str(item.get("summary", "")), max_len=140)],
         ),
-        "key_details": _normalize_list(copy.get("key_details"), fallback=[_clean_text(str(item.get("summary", "")), max_len=140)]),
-        "actionable_insight": str(copy.get("actionable_insight", "")).strip() or "建议回看原文并提炼为可执行 SOP。",
+        "actionable_insight": str(copy.get("actionable_insight", "")).strip()
+        or "建议回看原文并提炼为可执行 SOP。",
     }
 
 
@@ -241,11 +250,14 @@ def _build_brief_section(
         "link": str(item.get("link", "")).strip(),
         "story_title": _story_title(item),
         "core_concepts": _normalize_list(copy.get("core_concepts"), fallback=["#concept/AI-News"]),
-        "one_line_summary": str(copy.get("one_line_summary", "")).strip() or _clean_text(
-            str(item.get("summary", "")), max_len=80
+        "one_line_summary": str(copy.get("one_line_summary", "")).strip()
+        or _clean_text(str(item.get("summary", "")), max_len=80),
+        "key_points": _normalize_list(
+            copy.get("key_points"),
+            fallback=[_clean_text(str(item.get("summary", "")), max_len=140)],
         ),
-        "key_points": _normalize_list(copy.get("key_points"), fallback=[_clean_text(str(item.get("summary", "")), max_len=140)]),
-        "actionable_insight": str(copy.get("actionable_insight", "")).strip() or "标记到后续选题池，结合原文再判断优先级。",
+        "actionable_insight": str(copy.get("actionable_insight", "")).strip()
+        or "标记到后续选题池，结合原文再判断优先级。",
     }
 
 
@@ -263,12 +275,17 @@ def _build_video_section(
         "channel_name": channel_name,
         "link": str(item.get("link", "")).strip(),
         "story_title": _story_title(item),
-        "core_concepts": _normalize_list(copy.get("core_concepts"), fallback=["#concept/Visual-Learning"]),
-        "core_conclusion": str(copy.get("core_conclusion", "")).strip() or _clean_text(
-            str(item.get("summary", "")), max_len=120
+        "core_concepts": _normalize_list(
+            copy.get("core_concepts"), fallback=["#concept/Visual-Learning"]
         ),
-        "method_points": _normalize_list(copy.get("method_points"), fallback=[_clean_text(str(item.get("summary", "")), max_len=140)]),
-        "actionable_insight": str(copy.get("actionable_insight", "")).strip() or "优先提炼可迁移的方法框架，而不是只记结论。",
+        "core_conclusion": str(copy.get("core_conclusion", "")).strip()
+        or _clean_text(str(item.get("summary", "")), max_len=120),
+        "method_points": _normalize_list(
+            copy.get("method_points"),
+            fallback=[_clean_text(str(item.get("summary", "")), max_len=140)],
+        ),
+        "actionable_insight": str(copy.get("actionable_insight", "")).strip()
+        or "优先提炼可迁移的方法框架，而不是只记结论。",
     }
 
 

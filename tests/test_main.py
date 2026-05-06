@@ -147,7 +147,9 @@ def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, 
     monkeypatch.setattr(main, "_archive_old_raw_feeds", lambda _vault, keep_days=7: 0)
     monkeypatch.setattr(main.daily_curation, "load_used_urls", lambda _path: set())
     monkeypatch.setattr(
-        main.daily_curation, "load_rotation_state", lambda _path: {"sources": {}, "weekly_summary": {}}
+        main.daily_curation,
+        "load_rotation_state",
+        lambda _path: {"sources": {}, "weekly_summary": {}},
     )
     monkeypatch.setattr(
         main.daily_curation,
@@ -220,7 +222,9 @@ def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, 
 def test_collect_items_raw_only_merges_rss_and_youtube(monkeypatch):
     config = PKMConfig(
         rss_feeds=[
-            RssFeed(name="News", url="https://example.com/feed.xml", note_folder="30-Daily/AI-News"),
+            RssFeed(
+                name="News", url="https://example.com/feed.xml", note_folder="30-Daily/AI-News"
+            ),
             RssFeed(
                 name="Papers",
                 url="https://arxiv.org/rss/cs.AI",
@@ -262,7 +266,9 @@ def test_collect_items_raw_only_merges_rss_and_youtube(monkeypatch):
     )
 
     report = main._build_run_report(test_mode=False, raw_only=True, dry_run=False)
-    collection = main._collect_items(report=report, feed_cache={}, today="2026-04-21", raw_only=True)
+    collection = main._collect_items(
+        report=report, feed_cache={}, today="2026-04-21", raw_only=True
+    )
 
     assert set(collection["news_items"]) == {"News", "Papers", "YouTube"}
     assert collection["paper_candidates"] == []

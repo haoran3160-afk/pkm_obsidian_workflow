@@ -153,7 +153,10 @@ def load_source_rotation_state(path: Path) -> SourceRotationState:
         return SourceRotationState()
     try:
         raw = json.loads(read_json_text(path))
-        if isinstance(raw.get("weekly_summary"), dict) and "3blue1brown_used_this_week" in raw["weekly_summary"]:
+        if (
+            isinstance(raw.get("weekly_summary"), dict)
+            and "3blue1brown_used_this_week" in raw["weekly_summary"]
+        ):
             raw["weekly_summary"]["threeblue1brown_used_this_week"] = raw["weekly_summary"].pop(
                 "3blue1brown_used_this_week"
             )

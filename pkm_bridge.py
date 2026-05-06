@@ -44,9 +44,7 @@ def resolve_runtime_config(config: PKMConfig) -> tuple[str, str, str]:
     vault_path = os.getenv("OBSIDIAN_VAULT_PATH", config.vault_path or "D:/personal/Obsidian")
     obsidian_api = config.obsidian_api
 
-    api_base = os.getenv(
-        "OBSIDIAN_API_BASE", obsidian_api.base_url or "http://localhost:27123"
-    )
+    api_base = os.getenv("OBSIDIAN_API_BASE", obsidian_api.base_url or "http://localhost:27123")
     api_key = os.getenv("OBSIDIAN_API_KEY", obsidian_api.api_key or "")
 
     plugin_data = (

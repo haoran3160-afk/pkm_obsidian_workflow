@@ -172,7 +172,10 @@ def _refresh_source_rotation_week(path: Path) -> None:
     previous_week_start = previous.weekly_summary.week_start
     state = state_schema.refresh_source_rotation_week(path, today)
     current_week_start = state_schema.week_start_for_date(today)
-    if previous_week_start != current_week_start and state.weekly_summary.week_start == current_week_start:
+    if (
+        previous_week_start != current_week_start
+        and state.weekly_summary.week_start == current_week_start
+    ):
         log.info("source_rotation.week_reset", week_start=state.weekly_summary.week_start)
 
 
@@ -762,11 +765,11 @@ def _backfill_digest_items(
             items = cast(
                 list[dict[str, Any]],
                 fetcher.fetch_rss_feed(
-                feed.model_dump(),
-                local_cache,
-                today,
-                raw_only=False,
-                quality_config=backfill_quality,
+                    feed.model_dump(),
+                    local_cache,
+                    today,
+                    raw_only=False,
+                    quality_config=backfill_quality,
                 ),
             )
         except Exception as exc:

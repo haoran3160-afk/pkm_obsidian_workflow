@@ -79,11 +79,7 @@ class DailyDigestPlan:
 
 def load_used_urls(path: Path) -> set[str]:
     payload = state_schema.load_used_articles_state(path)
-    return {
-        _normalize_url(article.url)
-        for article in payload.articles
-        if article.url.strip()
-    }
+    return {_normalize_url(article.url) for article in payload.articles if article.url.strip()}
 
 
 def load_rotation_state(path: Path) -> dict[str, Any]:
@@ -113,7 +109,9 @@ def plan_daily_digest(
     used_urls = {_normalize_url(url) for url in (used_urls or set()) if url}
     rotation_state = rotation_state or {"sources": {}, "weekly_summary": {}}
 
-    candidates = _build_candidates(items_by_source, today=today, used_urls=used_urls, rotation_state=rotation_state)
+    candidates = _build_candidates(
+        items_by_source, today=today, used_urls=used_urls, rotation_state=rotation_state
+    )
     selected_keys: set[str] = set()
     selection_notes: list[str] = []
 
@@ -164,9 +162,15 @@ def plan_daily_digest(
 
     selected_pairs = [
         *top_stories,
-        *(story for story in (venture_story, insight_story, video_story, ai_company_story) if story),
+        *(
+            story
+            for story in (venture_story, insight_story, video_story, ai_company_story)
+            if story
+        ),
     ]
-    selected_links = _unique_nonempty([_normalize_url(str(item.get("link", ""))) for _, item in selected_pairs])
+    selected_links = _unique_nonempty(
+        [_normalize_url(str(item.get("link", ""))) for _, item in selected_pairs]
+    )
     selected_sources = _unique_nonempty([source for source, _ in selected_pairs])
 
     snapshot = {
@@ -174,7 +178,9 @@ def plan_daily_digest(
         "filtered_duplicates": sum(1 for candidate in candidates if candidate.recent_duplicate),
         "selected_count": len(selected_pairs),
         "top_story_count": len(top_stories),
-        "rotation_hits": sum(1 for source in selected_sources if _source_age_days(source, today, rotation_state) >= 4),
+        "rotation_hits": sum(
+            1 for source in selected_sources if _source_age_days(source, today, rotation_state) >= 4
+        ),
         "content_type_counts": _count_content_types(candidates),
     }
 
@@ -195,7 +201,9 @@ def plan_daily_digest(
         selected_sources=selected_sources,
         snapshot=snapshot,
         selection_notes=selection_notes,
-        used_three_blue_one_brown=bool(video_story and THREE_BLUE_ONE_BROWN in video_story[0].lower()),
+        used_three_blue_one_brown=bool(
+            video_story and THREE_BLUE_ONE_BROWN in video_story[0].lower()
+        ),
     )
 
 
@@ -272,7 +280,9 @@ def _build_candidates(
                 link=link,
                 content_type=content_type or "news",
                 domain=domain,
-                priority=_candidate_priority(source, item, today=today, rotation_state=rotation_state),
+                priority=_candidate_priority(
+                    source, item, today=today, rotation_state=rotation_state
+                ),
                 source_age_days=_source_age_days(source, today, rotation_state),
                 recent_duplicate=bool(link and link in used_urls),
             )
@@ -347,12 +357,16 @@ def _pick_video_story(
         forced = _pick_first(
             candidates,
             selected_keys,
-            lambda candidate: candidate.content_type == "video"
-            and THREE_BLUE_ONE_BROWN in candidate.source.lower(),
+            lambda candidate: (
+                candidate.content_type == "video"
+                and THREE_BLUE_ONE_BROWN in candidate.source.lower()
+            ),
         )
         if forced is not None:
             return forced
-    return _pick_first(candidates, selected_keys, lambda candidate: candidate.content_type == "video")
+    return _pick_first(
+        candidates, selected_keys, lambda candidate: candidate.content_type == "video"
+    )
 
 
 def _build_action_queue(
@@ -366,7 +380,11 @@ def _build_action_queue(
 ) -> list[tuple[str, dict[str, Any]]]:
     ordered = [
         *top_stories,
-        *(story for story in (venture_story, insight_story, video_story, ai_company_story) if story),
+        *(
+            story
+            for story in (venture_story, insight_story, video_story, ai_company_story)
+            if story
+        ),
     ]
     result: list[tuple[str, dict[str, Any]]] = []
     seen: set[str] = set()
@@ -408,7 +426,10 @@ def _candidate_priority(
         source_bonus += 0.4
     if content_type == "paper":
         source_bonus += 0.3
-    if any(token in text for token in ("agent", "coding", "workflow", "evaluation", "tool", "prompt", "model")):
+    if any(
+        token in text
+        for token in ("agent", "coding", "workflow", "evaluation", "tool", "prompt", "model")
+    ):
         source_bonus += 0.8
     if any(token in text for token in VENTURE_TEXT_TOKENS):
         source_bonus += 0.5
@@ -417,24 +438,24 @@ def _candidate_priority(
 
 
 def _is_top_story(candidate: CandidateStory) -> bool:
-    return (
-        candidate.content_type not in {"paper", "video"}
-        and candidate.domain in TOP_NEWS_DOMAINS
-    )
+    return candidate.content_type not in {"paper", "video"} and candidate.domain in TOP_NEWS_DOMAINS
 
 
 def _is_top_story_fallback(candidate: CandidateStory) -> bool:
-    return (
-        candidate.content_type not in {"paper", "video"}
-        and candidate.domain in {"ai-news", "ai-company", "growth"}
-    )
+    return candidate.content_type not in {"paper", "video"} and candidate.domain in {
+        "ai-news",
+        "ai-company",
+        "growth",
+    }
 
 
 def _is_venture_story(candidate: CandidateStory) -> bool:
     if candidate.content_type in {"paper", "video"}:
         return False
     source_lower = candidate.source.lower()
-    return candidate.domain == "venture" or any(token in source_lower for token in VENTURE_SOURCE_TOKENS)
+    return candidate.domain == "venture" or any(
+        token in source_lower for token in VENTURE_SOURCE_TOKENS
+    )
 
 
 def _is_insight_story(candidate: CandidateStory) -> bool:

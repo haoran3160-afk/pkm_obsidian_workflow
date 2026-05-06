@@ -26,7 +26,10 @@ _CONCEPT_RULES = [
     (("browser", "chrome", "extension"), "#concept/Browser-Automation"),
     (("prompt", "skill", "template"), "#concept/Reusable-Workflows"),
     (("startup", "budget", "pricing", "market", "enterprise", "revenue"), "#concept/Go-To-Market"),
-    (("infrastructure", "compute", "cluster", "gpu", "power", "network"), "#concept/AI-Infrastructure"),
+    (
+        ("infrastructure", "compute", "cluster", "gpu", "power", "network"),
+        "#concept/AI-Infrastructure",
+    ),
     (("paper", "arxiv", "research"), "#concept/Research"),
     (("video", "visual", "geometry", "proof"), "#concept/Visual-Learning"),
 ]
@@ -64,9 +67,15 @@ _TOPIC_LABELS = {
 
 def build_digest_copy(plan: daily_curation.DailyDigestPlan) -> dict[str, Any]:
     return {
-        "top_stories": [_build_deep_story(source, item, section="top") for source, item in plan.top_stories],
-        "venture_story": _maybe(plan.venture_story, lambda s, i: _build_deep_story(s, i, section="venture")),
-        "insight_story": _maybe(plan.growth_story, lambda s, i: _build_brief_story(s, i, section="insight")),
+        "top_stories": [
+            _build_deep_story(source, item, section="top") for source, item in plan.top_stories
+        ],
+        "venture_story": _maybe(
+            plan.venture_story, lambda s, i: _build_deep_story(s, i, section="venture")
+        ),
+        "insight_story": _maybe(
+            plan.growth_story, lambda s, i: _build_brief_story(s, i, section="insight")
+        ),
         "video_story": _maybe(plan.video_story, _build_video_story),
         "ai_company_story": _maybe(
             plan.solopreneur_story,
@@ -217,7 +226,10 @@ def _core_finding(item: dict[str, Any], *, section: str) -> str:
     elif "prompt" in text or "skill" in text or "chrome" in text:
         finding = "关键变化是把一次性 Prompt 固化成可复用工具，而不是继续堆手工指令。"
     else:
-        finding = _first_sentence(_evidence_text(item), max_len=96) or "这条更新值得关注，但仍需结合原文判断真实增量。"
+        finding = (
+            _first_sentence(_evidence_text(item), max_len=96)
+            or "这条更新值得关注，但仍需结合原文判断真实增量。"
+        )
 
     if metrics:
         return f"{finding} 文中至少给出了 {metrics[0]} 这类硬信号。"
@@ -233,7 +245,10 @@ def _one_line_summary(item: dict[str, Any], *, section: str) -> str:
         return "这条 insight 更像研究信号，适合跟踪方法与边界，不适合直接当成结论。"
     if metrics:
         return f"这条更新至少给出了 {metrics[0]} 级别的硬信号，而不只是口号。"
-    return _first_sentence(_evidence_text(item), max_len=64) or "这条更新值得跟踪，但仍需结合原文判断含金量。"
+    return (
+        _first_sentence(_evidence_text(item), max_len=64)
+        or "这条更新值得跟踪，但仍需结合原文判断含金量。"
+    )
 
 
 def _key_details(item: dict[str, Any], *, evidence: str, limit: int) -> list[str]:
@@ -297,7 +312,9 @@ def _concepts(source: str, item: dict[str, Any], *, minimum: int) -> list[str]:
     if not concepts:
         concepts.extend(["#concept/Workflow", "#concept/Research"])
     while len(concepts) < minimum:
-        fallback = "#concept/AI-Infrastructure" if "#concept/Workflow" in concepts else "#concept/Workflow"
+        fallback = (
+            "#concept/AI-Infrastructure" if "#concept/Workflow" in concepts else "#concept/Workflow"
+        )
         if fallback not in concepts:
             concepts.append(fallback)
         else:
@@ -323,7 +340,15 @@ def _extract_metrics(text: str) -> list[str]:
 
 def _extract_benchmark(text: str) -> str:
     lowered = text.lower()
-    for token in ("pass@1", "arena", "benchmark", "grader", "latency", "error budget", "throughput"):
+    for token in (
+        "pass@1",
+        "arena",
+        "benchmark",
+        "grader",
+        "latency",
+        "error budget",
+        "throughput",
+    ):
         if token in lowered:
             return token
     return ""
