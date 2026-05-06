@@ -42,6 +42,11 @@ env/
 node_modules/
 ui/node_modules/
 ui/dist/
+ui/*.tsbuildinfo
+ui/tailwind.config.js
+ui/tailwind.config.d.ts
+ui/vite.config.js
+ui/vite.config.d.ts
 
 # IDE and OS
 .vscode/
