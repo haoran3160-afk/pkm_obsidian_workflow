@@ -68,3 +68,24 @@ export type LogEvent = {
   kind: string;
   message: string;
 };
+
+export type SettingsEnvConfig = {
+  obsidian_api_base: string;
+  obsidian_api_key: string;
+  openai_api_key: string;
+  openai_base_url: string;
+  curation_model: string;
+  curation_reasoning_effort: string;
+};
+
+export type SystemInfo = {
+  workspace_root: string;
+  python_executable: string;
+  python_version: string;
+  platform: string;
+  config: { path: string; exists: boolean; updated_at: string };
+  env: { path: string; exists: boolean; updated_at: string };
+  log: { path: string; exists: boolean; updated_at: string };
+  source_health: { path: string; exists: boolean; updated_at: string };
+  vault: { path: string; exists: boolean; is_dir: boolean; writable: boolean };
+};

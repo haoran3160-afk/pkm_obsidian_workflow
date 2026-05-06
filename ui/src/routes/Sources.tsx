@@ -83,6 +83,24 @@ export default function Sources() {
     setSaveState("idle");
   }
 
+  function bulkSetEnabled(kind: SourceKind, enabled: boolean) {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        [kind]: current[kind].map((item) => {
+          const matchesScope = scope === "all" ? true : scope === "enabled" ? item.enabled : !item.enabled;
+          const haystack = [item.name, item.url, item.channel_id, item.note_folder].join(" ").toLowerCase();
+          const matchesQuery = deferredQuery ? haystack.includes(deferredQuery) : true;
+          return matchesScope && matchesQuery ? { ...item, enabled } : item;
+        })
+      };
+    });
+    setSaveState("idle");
+  }
+
   const rss = draft?.rss_feeds ?? [];
   const yt = draft?.youtube_channels ?? [];
   const counts = {
@@ -158,6 +176,7 @@ export default function Sources() {
           items={draft?.rss_feeds ?? []}
           deferredQuery={deferredQuery}
           scope={scope}
+          onBulkSetEnabled={bulkSetEnabled}
           onChange={updateFeed}
           onRemove={removeFeed}
         />
@@ -167,6 +186,7 @@ export default function Sources() {
           items={draft?.youtube_channels ?? []}
           deferredQuery={deferredQuery}
           scope={scope}
+          onBulkSetEnabled={bulkSetEnabled}
           onChange={updateFeed}
           onRemove={removeFeed}
         />
@@ -181,6 +201,7 @@ function SourceColumn({
   items,
   deferredQuery,
   scope,
+  onBulkSetEnabled,
   onChange,
   onRemove
 }: {
@@ -189,6 +210,7 @@ function SourceColumn({
   items: FeedSource[];
   deferredQuery: string;
   scope: SourceScope;
+  onBulkSetEnabled: (kind: SourceKind, enabled: boolean) => void;
   onChange: (kind: SourceKind, index: number, next: FeedSource) => void;
   onRemove: (kind: SourceKind, index: number) => void;
 }) {
@@ -206,6 +228,21 @@ function SourceColumn({
       aside={`${filtered.length} shown out of ${items.length} configured entries.`}
     >
       <div className="space-y-4">
+        {filtered.length ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-black/5 bg-parchment/85 px-4 py-3">
+            <SectionBlurb>
+              Visible set: {filtered.filter((item) => item.enabled).length} enabled / {filtered.length} shown.
+            </SectionBlurb>
+            <div className="flex flex-wrap gap-2">
+              <GhostButton className="px-3 py-2" onClick={() => onBulkSetEnabled(kind, true)}>
+                Enable Shown
+              </GhostButton>
+              <GhostButton className="px-3 py-2" onClick={() => onBulkSetEnabled(kind, false)}>
+                Disable Shown
+              </GhostButton>
+            </div>
+          </div>
+        ) : null}
         {filtered.length ? (
           filtered.map((item) => {
             const originalIndex = items.indexOf(item);

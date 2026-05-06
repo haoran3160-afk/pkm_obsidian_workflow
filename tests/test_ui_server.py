@@ -119,6 +119,61 @@ def test_get_logs_history_reads_fetch_log(monkeypatch, tmp_path: Path):
     assert response.json()["history"][-1]["message"] == "line-2"
 
 
+def test_settings_env_round_trip(monkeypatch, tmp_path: Path):
+    client = TestClient(ui_server.app)
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_API_KEY=old-key\n", encoding="utf-8")
+    monkeypatch.setattr(ui_server, "ENV_PATH", env_path)
+
+    response = client.put(
+        "/api/settings/env",
+        json={
+            "obsidian_api_base": "http://127.0.0.1:27123",
+            "obsidian_api_key": "obsidian-secret",
+            "openai_api_key": "new-key",
+            "openai_base_url": "https://api.openai.com/v1",
+            "curation_model": "gpt-5.4-mini",
+            "curation_reasoning_effort": "high",
+        },
+    )
+
+    assert response.status_code == 200
+    saved_text = env_path.read_text(encoding="utf-8")
+    assert "OPENAI_API_KEY=new-key" in saved_text
+    assert response.json()["curation_reasoning_effort"] == "high"
+
+
+def test_settings_system_reports_paths(monkeypatch):
+    client = TestClient(ui_server.app)
+    monkeypatch.setattr(
+        ui_server,
+        "_load_config",
+        lambda: ui_server.PKMConfig(
+            rss_feeds=[
+                ui_server.RssFeed(
+                    name="OpenAI News",
+                    url="https://example.com/feed.xml",
+                    note_folder="30-Daily/AI-News",
+                )
+            ],
+            youtube_channels=[],
+            vault_path="D:/vault",
+        ),
+    )
+    monkeypatch.setattr(ui_server, "_load_env_values", lambda: {"OBSIDIAN_VAULT_PATH": "D:/vault"})
+    monkeypatch.setattr(
+        ui_server,
+        "_validate_vault_path",
+        lambda vault_path: {"exists": True, "is_dir": True, "writable": True},
+    )
+
+    response = client.get("/api/settings/system")
+
+    assert response.status_code == 200
+    assert response.json()["vault"]["writable"] is True
+    assert response.json()["config"]["path"].endswith("pkm_config.json")
+
+
 def test_validate_vault_reports_filesystem_state(tmp_path: Path):
     client = TestClient(ui_server.app)
     vault = tmp_path / "vault"

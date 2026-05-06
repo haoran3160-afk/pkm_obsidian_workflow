@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -67,6 +68,15 @@ class OutputConfigPayload(BaseModel):
     daily_digest_max_deferred_items: int = Field(ge=1, le=30)
     daily_digest_only_output: bool = True
     enable_llm_copy: bool = False
+    openai_api_key: str = ""
+    openai_base_url: str = ""
+    curation_model: str = "gpt-5.4-mini"
+    curation_reasoning_effort: str = "medium"
+
+
+class EnvSettingsPayload(BaseModel):
+    obsidian_api_base: str = ""
+    obsidian_api_key: str = ""
     openai_api_key: str = ""
     openai_base_url: str = ""
     curation_model: str = "gpt-5.4-mini"
@@ -194,6 +204,17 @@ def _build_output_payload(config: PKMConfig, env_values: dict[str, str]) -> dict
     }
 
 
+def _build_env_settings_payload(env_values: dict[str, str]) -> dict[str, Any]:
+    return {
+        "obsidian_api_base": env_values.get("OBSIDIAN_API_BASE", ""),
+        "obsidian_api_key": env_values.get("OBSIDIAN_API_KEY", ""),
+        "openai_api_key": env_values.get("OPENAI_API_KEY", ""),
+        "openai_base_url": env_values.get("OPENAI_BASE_URL", ""),
+        "curation_model": env_values.get("PKM_CURATION_MODEL", "gpt-5.4-mini"),
+        "curation_reasoning_effort": env_values.get("PKM_CURATION_REASONING_EFFORT", "medium"),
+    }
+
+
 def _env_truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -250,6 +271,22 @@ def _save_output(payload: OutputConfigPayload) -> dict[str, Any]:
     return _build_output_payload(validated, env_values)
 
 
+def _save_env_settings(payload: EnvSettingsPayload) -> dict[str, Any]:
+    env_values = _load_env_values()
+    env_values.update(
+        {
+            "OBSIDIAN_API_BASE": payload.obsidian_api_base,
+            "OBSIDIAN_API_KEY": payload.obsidian_api_key,
+            "OPENAI_API_KEY": payload.openai_api_key,
+            "OPENAI_BASE_URL": payload.openai_base_url,
+            "PKM_CURATION_MODEL": payload.curation_model,
+            "PKM_CURATION_REASONING_EFFORT": payload.curation_reasoning_effort,
+        }
+    )
+    _write_env_atomic(env_values)
+    return _build_env_settings_payload(env_values)
+
+
 def _validate_vault_path(vault_path: str) -> dict[str, Any]:
     vault = Path(vault_path)
     return {
@@ -304,6 +341,41 @@ def _log_history(limit: int = 200) -> list[dict[str, Any]]:
         return []
     lines = deque(LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines(), maxlen=limit)
     return [{"kind": "log", "message": line} for line in lines]
+
+
+def _file_meta(path: Path) -> dict[str, Any]:
+    exists = path.exists()
+    return {
+        "path": str(path),
+        "exists": exists,
+        "updated_at": (
+            datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%dT%H:%M:%S")
+            if exists
+            else ""
+        ),
+    }
+
+
+def _system_info(config: PKMConfig, env_values: dict[str, str]) -> dict[str, Any]:
+    vault_path = env_values.get("OBSIDIAN_VAULT_PATH") or config.vault_path or ""
+    return {
+        "workspace_root": str(SCRIPT_DIR),
+        "python_executable": str(PYTHON_EXE),
+        "python_version": sys.version.split()[0],
+        "platform": sys.platform,
+        "config": _file_meta(CONFIG_PATH),
+        "env": _file_meta(ENV_PATH),
+        "log": _file_meta(LOG_PATH),
+        "source_health": _file_meta(SCRIPT_DIR / "source_health.json"),
+        "vault": {
+            "path": vault_path,
+            **(
+                _validate_vault_path(vault_path)
+                if vault_path
+                else {"exists": False, "is_dir": False, "writable": False}
+            ),
+        },
+    }
 
 
 def _command_for_mode(mode: str) -> list[str]:
@@ -458,6 +530,23 @@ def put_config_output(payload: OutputConfigPayload) -> dict[str, Any]:
 @app.post("/api/validate/vault")
 def post_validate_vault(payload: VaultValidationRequest) -> dict[str, Any]:
     return _validate_vault_path(payload.vault_path)
+
+
+@app.get("/api/settings/env")
+def get_settings_env() -> dict[str, Any]:
+    return _build_env_settings_payload(_load_env_values())
+
+
+@app.put("/api/settings/env")
+def put_settings_env(payload: EnvSettingsPayload) -> dict[str, Any]:
+    return {"ok": True, **_save_env_settings(payload)}
+
+
+@app.get("/api/settings/system")
+def get_settings_system() -> dict[str, Any]:
+    config = _load_config()
+    env_values = _load_env_values()
+    return _system_info(config, env_values)
 
 
 if __name__ == "__main__":

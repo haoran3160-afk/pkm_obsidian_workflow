@@ -1,4 +1,12 @@
-import type { LogEvent, OutputConfig, RunMode, SourcesResponse, StatusResponse } from "../types";
+import type {
+  LogEvent,
+  OutputConfig,
+  RunMode,
+  SettingsEnvConfig,
+  SourcesResponse,
+  StatusResponse,
+  SystemInfo
+} from "../types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -41,6 +49,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload)
     }),
+  getSettingsEnv: () => request<SettingsEnvConfig>("/api/settings/env"),
+  updateSettingsEnv: (payload: SettingsEnvConfig) =>
+    request<SettingsEnvConfig & { ok: boolean }>("/api/settings/env", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
+  getSystemInfo: () => request<SystemInfo>("/api/settings/system"),
   validateVault: (vaultPath: string) =>
     request<{ exists: boolean; is_dir: boolean; writable: boolean }>("/api/validate/vault", {
       method: "POST",
