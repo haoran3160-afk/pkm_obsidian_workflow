@@ -425,10 +425,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#features-at-a-glance" class="md-nav__link">
+  <a href="#release-surface" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Features at a Glance
+        Release Surface
       
     </span>
   </a>
@@ -510,6 +510,62 @@
     
   
     Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="local-ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local UI Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
   
 
     
@@ -849,10 +905,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#features-at-a-glance" class="md-nav__link">
+  <a href="#release-surface" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Features at a Glance
+        Release Surface
       
     </span>
   </a>
@@ -882,101 +938,90 @@
 
 
 <h1 id="pkm-obsidian-workflow">PKM Obsidian Workflow<a class="headerlink" href="#pkm-obsidian-workflow" title="Permanent link">&para;</a></h1>
-<blockquote>
-<p>本地优先的 AI 日报工作流，把抓取、筛选、策展、写入放进一个可复现的 Obsidian 流程。</p>
-</blockquote>
-<p>这个项目不是“多抓一点 RSS”，而是“每天稳定生成一份值得看的 AI 日报”。</p>
+<p>本项目把 AI 资讯抓取、候选筛选、最终策展和 Vault 写入放进一条<strong>本地优先</strong>的 Obsidian 工作流。</p>
 <p>默认产出两层内容：</p>
 <ul>
-<li><code>Raw Daily Feeds</code>：保留原始证据，方便 Agent 或人工二次策展。</li>
-<li><code>AI Daily</code>：按固定栏目输出一份高信息密度日报，而不是散乱的碎片笔记。</li>
+<li><code>Raw Daily Feeds</code>：保留当天原始证据流</li>
+<li><code>AI Daily</code>：按固定栏目输出一份可读、可执行、可回溯的每日 digest</li>
 </ul>
+<p>它不是“抓更多 feed”，而是“每天稳定得到一份值得读的 AI 日报”。</p>
 <div class="grid cards">
 <ul>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M338.8-9.9c11.9 8.6 16.3 24.2 10.9 37.8L271.3 224H416c13.5 0 25.5 8.4 30.1 21.1s.7 26.9-9.6 35.5l-288 240c-11.3 9.4-27.4 9.9-39.3 1.3s-16.3-24.2-10.9-37.8L176.7 288H32c-13.5 0-25.5-8.4-30.1-21.1s-.7-26.9 9.6-35.5l288-240c11.3-9.4 27.4-9.9 39.3-1.3"/></svg></span> <strong><a href="quickstart/">Quickstart</a></strong><br />
-  从安装、配置到首个日报产出，最短路径跑通。</p>
+  从安装、配置到第一次 dry-run，最短路径跑通。</p>
+</li>
+<li>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M448 96v256H64V96zM64 32C28.7 32 0 60.7 0 96v256c0 35.3 28.7 64 64 64h144l-16 48h-72c-13.3 0-24 10.7-24 24s10.7 24 24 24h272c13.3 0 24-10.7 24-24s-10.7-24-24-24h-72l-16-48h144c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64z"/></svg></span> <strong><a href="local-ui/">Local UI Guide</a></strong><br />
+  使用本地控制面板管理 sources、output、logs 和 quick run。</p>
+</li>
+<li>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M360.8 1.2c-17-4.9-34.7 5-39.6 22l-128 448c-4.9 17 5 34.7 22 39.6s34.7-5 39.6-22l128-448c4.9-17-5-34.7-22-39.6m64.6 136.1c-12.5 12.5-12.5 32.8 0 45.3l73.4 73.4-73.4 73.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l96-96c12.5-12.5 12.5-32.8 0-45.3l-96-96c-12.5-12.5-32.8-12.5-45.3 0zm-274.7 0c-12.5-12.5-32.8-12.5-45.3 0l-96 96c-12.5 12.5-12.5 32.8 0 45.3l96 96c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256l73.3-73.4c12.5-12.5 12.5-32.8 0-45.3z"/></svg></span> <strong><a href="api/">HTTP API</a></strong><br />
+  查看本地 FastAPI 接口、请求体和调用方式。</p>
 </li>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="m263.4-27 14.8 36.8L315 24.6c3 1.2 5 4.2 5 7.4s-2 6.2-5 7.4l-36.8 14.8L263.4 91c-1.2 3-4.2 5-7.4 5s-6.2-2-7.4-5l-14.8-36.8L197 39.4c-3-1.2-5-4.2-5-7.4s2-6.2 5-7.4l36.8-14.8L248.6-27c1.2-3 4.2-5 7.4-5s6.2 2 7.4 5M110.7 41.7l21.5 50.1 50.1 21.5c5.9 2.5 9.7 8.3 9.7 14.7s-3.8 12.2-9.7 14.7l-50.1 21.5-21.5 50.1c-2.5 5.9-8.3 9.7-14.7 9.7s-12.2-3.8-14.7-9.7l-21.5-50.1-50.1-21.5C3.8 140.2 0 134.4 0 128s3.8-12.2 9.7-14.7l50.1-21.5 21.5-50.1C83.8 35.8 89.6 32 96 32s12.2 3.8 14.7 9.7M464 304c6.4 0 12.2 3.8 14.7 9.7l21.5 50.1 50.1 21.5c5.9 2.5 9.7 8.3 9.7 14.7s-3.8 12.2-9.7 14.7l-50.1 21.5-21.5 50.1c-2.5 5.9-8.3 9.7-14.7 9.7s-12.2-3.8-14.7-9.7l-21.5-50.1-50.1-21.5c-5.9-2.5-9.7-8.3-9.7-14.7s3.8-12.2 9.7-14.7l50.1-21.5 21.5-50.1c2.5-5.9 8.3-9.7 14.7-9.7M460 0c11 0 21.6 4.4 29.5 12.2l42.3 42.3C539.6 62.4 544 73 544 84s-4.4 21.6-12.2 29.5l-88.2 88.2-101.3-101.3 88.2-88.2C438.4 4.4 449 0 460 0M44.2 398.5l264.2-264.2 101.3 101.3-264.2 264.2C137.6 507.6 127 512 116 512s-21.6-4.4-29.5-12.2l-42.3-42.3C36.4 449.6 32 439 32 428s4.4-21.6 12.2-29.5"/></svg></span> <strong><a href="workthrough/">Workflow Walkthrough</a></strong><br />
-  了解抓取层、策展层和最终日报是怎么串起来的。</p>
+  理解抓取层、策展层、状态文件与最终日报如何衔接。</p>
 </li>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M224 0c35.3 0 64 21.5 64 48 0 10.4-4.4 20-12 27.9-6.6 6.9-12 15.3-12 24.9 0 15 12.2 27.2 27.2 27.2H336c26.5 0 48 21.5 48 48v44.8c0 15 12.2 27.2 27.2 27.2 9.5 0 18-5.4 24.9-12 7.9-7.5 17.5-12 27.9-12 26.5 0 48 28.7 48 64s-21.5 64-48 64c-10.4 0-20.1-4.4-27.9-12-6.9-6.6-15.3-12-24.9-12-15 0-27.2 12.2-27.2 27.2V464c0 26.5-21.5 48-48 48h-56.8c-12.8 0-23.2-10.4-23.2-23.2 0-9.2 5.8-17.3 13.2-22.8 11.6-8.7 18.8-20.7 18.8-34 0-26.5-28.7-48-64-48s-64 21.5-64 48c0 13.3 7.2 25.3 18.8 34 7.4 5.5 13.2 13.5 13.2 22.8 0 12.8-10.4 23.2-23.2 23.2H48c-26.5 0-48-21.5-48-48V343.2C0 330.4 10.4 320 23.2 320c9.2 0 17.3 5.8 22.8 13.2 8.7 11.6 20.7 18.8 34 18.8 26.5 0 48-28.7 48-64s-21.5-64-48-64c-13.3 0-25.3 7.2-34 18.8-5.5 7.4-13.5 13.2-22.8 13.2C10.4 256 0 245.6 0 232.8V176c0-26.5 21.5-48 48-48h108.8c15 0 27.2-12.2 27.2-27.2 0-9.5-5.4-18-12-24.9-7.5-7.9-12-17.5-12-27.9 0-26.5 28.7-48 64-48"/></svg></span> <strong><a href="plugins/">Source Plugins</a></strong><br />
-  扩展抓取器，接入你自己的 Reddit、API 或内部信息源。</p>
+  扩展抓取层，接入 Reddit、API 或你自己的内部源。</p>
 </li>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M0 64C0 28.7 28.7 0 64 0h149.5c17 0 33.3 6.7 45.3 18.7l106.5 106.6c12 12 18.7 28.3 18.7 45.3V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64zm208-5.5V152c0 13.3 10.7 24 24 24h93.5zM120 256c-13.3 0-24 10.7-24 24s10.7 24 24 24h144c13.3 0 24-10.7 24-24s-10.7-24-24-24zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24h144c13.3 0 24-10.7 24-24s-10.7-24-24-24z"/></svg></span> <strong><a href="sample_outputs/ai-daily-brief-sample/">AI Daily Sample</a></strong><br />
-  查看最终日报结构和写作风格示例。</p>
-</li>
-<li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M256 141.3v309.3l.5-.2A449 449 0 0 1 428.8 416H448V96h-19.2c-42.2 0-84.1 8.4-123.1 24.6-16.8 7-33.4 13.9-49.7 20.7m-25.1-79.8L256 72l25.1-10.5C327.9 42 378.1 32 428.8 32H464c26.5 0 48 21.5 48 48v352c0 26.5-21.5 48-48 48h-35.2c-50.7 0-100.9 10-147.7 29.5l-12.8 5.3c-7.9 3.3-16.7 3.3-24.6 0l-12.8-5.3C184.1 490 133.9 480 83.2 480H48c-26.5 0-48-21.5-48-48V80c0-26.5 21.5-48 48-48h35.2c50.7 0 100.9 10 147.7 29.5"/></svg></span> <strong><a href="sample_outputs/paper-note-sample/">Paper Note Sample</a></strong><br />
-  查看论文条目的独立笔记格式。</p>
-</li>
-<li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M96 64c-35.3 0-64 28.7-64 64v256c0 35.3 28.7 64 64 64h256c35.3 0 64-28.7 64-64V128c0-35.3-28.7-64-64-64zm368 272 73.5 58.8c4.2 3.4 9.4 5.2 14.8 5.2 13.1 0 23.7-10.6 23.7-23.7V135.7c0-13.1-10.6-23.7-23.7-23.7-5.4 0-10.6 1.8-14.8 5.2L464 176z"/></svg></span> <strong><a href="sample_outputs/video-note-sample/">Video Note Sample</a></strong><br />
-  查看视频类条目的落地格式。</p>
+  查看最终日报的结构和输出风格。</p>
 </li>
 </ul>
 </div>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph LR
-    A["RSS / YouTube / Plugins"] --&gt;|Extract| B["fetcher.py"]
-    B --&gt;|Candidates| C["daily_curation.py"]
-    C --&gt;|Plan| D["formatter.py / llm_digest.py"]
-    D --&gt;|Markdown| E["writer.py"]
-    E --&gt;|disk / api| F["Obsidian Vault"]</code></pre>
-<h2 id="features-at-a-glance">Features at a Glance<a class="headerlink" href="#features-at-a-glance" title="Permanent link">&para;</a></h2>
+    A["RSS / YouTube / Local Sources"] --&gt; B["fetcher.py"]
+    B --&gt; C["daily_curation.py"]
+    C --&gt; D["formatter.py / digest_copy.py / llm_digest.py"]
+    D --&gt; E["writer.py"]
+    E --&gt; F["Obsidian Vault"]
+    G["ui_server.py"] --&gt; A
+    G --&gt; C
+    G --&gt; E</code></pre>
+<h2 id="release-surface">Release Surface<a class="headerlink" href="#release-surface" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Feature</th>
+<th>Surface</th>
 <th>Status</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>RSS / Atom feed parsing</td>
+<td>CLI workflow</td>
 <td>Yes</td>
 </tr>
 <tr>
-<td>YouTube via RSS</td>
+<td><code>--doctor</code> / <code>--dry-run</code> / <code>--raw-only</code></td>
 <td>Yes</td>
 </tr>
 <tr>
-<td>Raw capture mode</td>
+<td>Deterministic digest fallback</td>
 <td>Yes</td>
 </tr>
 <tr>
-<td>Local-parity curated digest</td>
+<td>Optional LLM copy layer</td>
 <td>Yes</td>
 </tr>
 <tr>
-<td>Pydantic config validation</td>
+<td>Local FastAPI control plane</td>
 <td>Yes</td>
 </tr>
 <tr>
-<td>Write mode: <code>disk</code> / <code>api</code> / <code>both</code></td>
+<td>React/Vite local dashboard</td>
 <td>Yes</td>
 </tr>
 <tr>
-<td><code>--dry-run</code> and <code>--doctor</code></td>
+<td>Pydantic config + state schema</td>
 <td>Yes</td>
 </tr>
 <tr>
-<td>Source plugin registry</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Structured logging</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>GitHub Actions CI</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Daily scheduler</td>
+<td>Pytest + Ruff + Mypy + UI tests</td>
 <td>Yes</td>
 </tr>
 </tbody>
