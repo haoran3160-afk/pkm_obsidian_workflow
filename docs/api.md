@@ -1,5 +1,8 @@
 # Local API
 
+> [!CAUTION]
+> Legacy documentation only. Local API 已退出当前产品范围，ASGI 面应保持全局 503；不得据此启动服务或恢复 Vault/配置/日志路由。当前规范见 [agentic/README.md](agentic/README.md)。
+
 `ui_server.py` 暴露的是**本地控制面板 API**，不是公网服务接口。  
 默认监听：`http://127.0.0.1:8000`
 

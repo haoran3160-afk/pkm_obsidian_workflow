@@ -1,9 +1,12 @@
 from pathlib import Path
 
+import pytest
+
 import daily_curation
+import state_schema
 
 
-def test_plan_daily_digest_respects_recently_used_urls_and_weekly_video_rule():
+def test_plan_daily_digest_rejects_underfilled_top_stories_after_deduplication():
     items = {
         "OpenAI News": [
             {
@@ -38,21 +41,16 @@ def test_plan_daily_digest_respects_recently_used_urls_and_weekly_video_rule():
         ],
     }
 
-    plan = daily_curation.plan_daily_digest(
-        items,
-        today="2026-04-17",
-        used_urls={"https://example.com/dup"},
-        rotation_state={"sources": {}, "weekly_summary": {"3blue1brown_used_this_week": False}},
-    )
-
-    assert any(item["title"] == "Fresh eval post" for _, item in plan.top_stories)
-    assert all(item["title"] != "Duplicate post" for _, item in plan.top_stories)
-    assert plan.video_story is not None
-    assert plan.video_story[0] == "3Blue1Brown"
-    assert plan.used_three_blue_one_brown is True
+    with pytest.raises(daily_curation.CurationPolicyError, match="requires 3 stories"):
+        daily_curation.plan_daily_digest(
+            items,
+            today="2026-04-17",
+            used_urls={"https://example.com/dup"},
+            rotation_state={"sources": {}, "weekly_summary": {"3blue1brown_used_this_week": False}},
+        )
 
 
-def test_plan_daily_digest_uses_paper_as_insight_fallback():
+def test_plan_daily_digest_does_not_publish_a_single_paper_as_a_complete_digest():
     items = {
         "arXiv cs.AI": [
             {
@@ -67,13 +65,11 @@ def test_plan_daily_digest_uses_paper_as_insight_fallback():
         ]
     }
 
-    plan = daily_curation.plan_daily_digest(items, today="2026-04-17")
-
-    assert plan.growth_story is not None
-    assert plan.growth_story[0] == "arXiv cs.AI"
+    with pytest.raises(daily_curation.CurationPolicyError, match="requires 3 stories"):
+        daily_curation.plan_daily_digest(items, today="2026-04-17")
 
 
-def test_persist_daily_digest_selection_updates_used_articles_and_rotation(tmp_path: Path):
+def test_persist_daily_digest_selection_cannot_mutate_legacy_state_files(tmp_path: Path):
     used_articles = tmp_path / "used_articles.json"
     source_rotation = tmp_path / "source_rotation.json"
 
@@ -84,16 +80,13 @@ def test_persist_daily_digest_selection_updates_used_articles_and_rotation(tmp_p
         used_three_blue_one_brown=True,
     )
 
-    daily_curation.persist_daily_digest_selection(
-        plan,
-        used_articles_path=used_articles,
-        source_rotation_path=source_rotation,
-        retention_days=30,
-    )
+    with pytest.raises(state_schema.LegacyStateImportError, match="read-only"):
+        daily_curation.persist_daily_digest_selection(
+            plan,
+            used_articles_path=used_articles,
+            source_rotation_path=source_rotation,
+            retention_days=30,
+        )
 
-    assert used_articles.exists()
-    assert source_rotation.exists()
-    assert "https://example.com/a" in used_articles.read_text(encoding="utf-8")
-    rotation_text = source_rotation.read_text(encoding="utf-8")
-    assert "OpenAI News" in rotation_text
-    assert '"3blue1brown_used_this_week": true' in rotation_text.lower()
+    assert not used_articles.exists()
+    assert not source_rotation.exists()

@@ -1,15 +1,31 @@
 #!/usr/bin/env python3
 """
-state_schema.py - Typed state files for digest history and health tracking.
+state_schema.py - Read-only legacy state importer and typed legacy schemas.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-from datetime import datetime, timedelta
+from collections.abc import Mapping
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
+
+from run_store import RunStore
+
+
+class LegacyStateImportError(RuntimeError):
+    """Legacy state was invalid, changed during import, or requested mutation."""
+
+
+class LegacyStateKind(str, Enum):
+    FEED_CACHE = "feed_cache"
+    USED_ARTICLES = "used_articles"
+    SOURCE_ROTATION = "source_rotation"
+    SOURCE_HEALTH = "source_health"
 
 
 def read_json_text(path: Path) -> str:
@@ -21,7 +37,10 @@ def read_json_text(path: Path) -> str:
 
 
 def write_json_file(path: Path, payload: dict) -> None:
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    del path, payload
+    raise LegacyStateImportError(
+        "legacy state is read-only; write append-only runtime events instead"
+    )
 
 
 class UsedArticleEntry(BaseModel):
@@ -121,8 +140,8 @@ def load_used_articles_state(path: Path) -> UsedArticlesState:
         return UsedArticlesState()
     try:
         return UsedArticlesState.model_validate(json.loads(read_json_text(path)))
-    except Exception:
-        return UsedArticlesState()
+    except Exception as exc:
+        raise LegacyStateImportError(f"invalid legacy state: {path}") from exc
 
 
 def save_used_articles_state(path: Path, state: UsedArticlesState) -> None:
@@ -130,22 +149,10 @@ def save_used_articles_state(path: Path, state: UsedArticlesState) -> None:
 
 
 def compact_used_articles_state(path: Path, retention_days: int) -> UsedArticlesState:
-    state = load_used_articles_state(path)
-    cutoff = datetime.now().date() - timedelta(days=retention_days)
-    latest: dict[str, UsedArticleEntry] = {}
-    for article in state.articles:
-        item_date = datetime.strptime(article.date, "%Y-%m-%d").date()
-        if item_date < cutoff:
-            continue
-        previous = latest.get(article.url)
-        if previous is None or previous.date < article.date:
-            latest[article.url] = article
-    compacted = UsedArticlesState(
-        description=state.description,
-        articles=sorted(latest.values(), key=lambda row: (row.date, row.url)),
+    del path, retention_days
+    raise LegacyStateImportError(
+        "legacy state is read-only; retention is retain-all under no-delete"
     )
-    save_used_articles_state(path, compacted)
-    return compacted
 
 
 def load_source_rotation_state(path: Path) -> SourceRotationState:
@@ -161,8 +168,8 @@ def load_source_rotation_state(path: Path) -> SourceRotationState:
                 "3blue1brown_used_this_week"
             )
         return SourceRotationState.model_validate(raw)
-    except Exception:
-        return SourceRotationState()
+    except Exception as exc:
+        raise LegacyStateImportError(f"invalid legacy state: {path}") from exc
 
 
 def save_source_rotation_state(path: Path, state: SourceRotationState) -> None:
@@ -174,13 +181,8 @@ def save_source_rotation_state(path: Path, state: SourceRotationState) -> None:
 
 
 def refresh_source_rotation_week(path: Path, today: str) -> SourceRotationState:
-    state = load_source_rotation_state(path)
-    week_start = week_start_for_date(today)
-    if state.weekly_summary.week_start != week_start:
-        state.weekly_summary.week_start = week_start
-        state.weekly_summary.threeblue1brown_used_this_week = False
-        save_source_rotation_state(path, state)
-    return state
+    del path, today
+    raise LegacyStateImportError("legacy state is read-only; write a source-rotation event instead")
 
 
 def load_source_health_state(path: Path) -> SourceHealthState:
@@ -188,8 +190,8 @@ def load_source_health_state(path: Path) -> SourceHealthState:
         return SourceHealthState()
     try:
         return SourceHealthState.model_validate(json.loads(read_json_text(path)))
-    except Exception:
-        return SourceHealthState()
+    except Exception as exc:
+        raise LegacyStateImportError(f"invalid legacy state: {path}") from exc
 
 
 def append_source_health_run(
@@ -200,20 +202,113 @@ def append_source_health_run(
     entries: list[dict],
     keep_runs: int,
 ) -> SourceHealthState:
-    state = load_source_health_state(path)
-    state.runs.append(
-        SourceHealthRun(
-            run_date=run_date,
-            run_at=run_at,
-            entries=[SourceHealthEntry.model_validate(entry) for entry in entries],
-        )
-    )
-    state.runs = state.runs[-keep_runs:]
-    write_json_file(path, state.model_dump())
-    return state
+    del path, run_date, run_at, entries, keep_runs
+    raise LegacyStateImportError("legacy state is read-only; write a source-health event instead")
 
 
 def week_start_for_date(date_str: str) -> str:
     current = datetime.strptime(date_str, "%Y-%m-%d").date()
-    monday = current - timedelta(days=current.weekday())
+    monday = current.fromordinal(current.toordinal() - current.weekday())
     return monday.strftime("%Y-%m-%d")
+
+
+class LegacyStateImporter:
+    """Import exact legacy files into immutable events without mutating sources."""
+
+    def __init__(
+        self,
+        *,
+        store: RunStore,
+        sources: Mapping[LegacyStateKind, Path],
+    ) -> None:
+        self.store = store
+        self.sources = {kind: Path(path).resolve(strict=True) for kind, path in sources.items()}
+        if not self.sources:
+            raise ValueError("at least one legacy state source is required")
+        if any(not path.is_file() for path in self.sources.values()):
+            raise ValueError("every legacy state source must be a regular file")
+
+    def import_all(
+        self,
+        *,
+        legacy_retention_days: tuple[int, ...] = (7, 30),
+    ) -> dict[LegacyStateKind, dict[str, object]]:
+        return {
+            kind: self.import_one(
+                kind,
+                legacy_retention_days=legacy_retention_days,
+            )
+            for kind in self.sources
+        }
+
+    def import_one(
+        self,
+        kind: LegacyStateKind,
+        *,
+        legacy_retention_days: tuple[int, ...] = (7, 30),
+    ) -> dict[str, object]:
+        if kind not in self.sources:
+            raise LegacyStateImportError(
+                f"legacy state kind is not bound to an exact source: {kind.value}"
+            )
+        if any(days <= 0 for days in legacy_retention_days):
+            raise ValueError("legacy retention values must be positive")
+        source = self.sources[kind]
+        before = source.stat()
+        raw = source.read_bytes()
+        try:
+            payload = json.loads(raw.decode("utf-8-sig"))
+            record_count = self._validate_payload(kind, payload)
+        except Exception as exc:
+            if isinstance(exc, LegacyStateImportError):
+                raise
+            raise LegacyStateImportError(f"invalid legacy state: {source}") from exc
+        after_raw = source.read_bytes()
+        after = source.stat()
+        if (
+            raw != after_raw
+            or before.st_dev != after.st_dev
+            or before.st_ino != after.st_ino
+            or before.st_size != after.st_size
+        ):
+            raise LegacyStateImportError(f"legacy state changed during read-only import: {source}")
+        source_sha256 = hashlib.sha256(raw).hexdigest()
+        retention_values = sorted(set(legacy_retention_days))
+        return self.store.record_legacy_state_import(
+            state_kind=kind.value,
+            source_path=str(source),
+            source_sha256=source_sha256,
+            legacy_payload=payload,
+            record_count=record_count,
+            retention_resolution={
+                "legacy_values_days": retention_values,
+                "effective_policy": "retain_all_no_delete",
+            },
+        )
+
+    @staticmethod
+    def _validate_payload(kind: LegacyStateKind, payload: object) -> int:
+        if not isinstance(payload, dict):
+            raise LegacyStateImportError(
+                f"invalid legacy state: {kind.value} must be a JSON object"
+            )
+        if kind is LegacyStateKind.FEED_CACHE:
+            if not all(
+                isinstance(key, str) and isinstance(value, str) for key, value in payload.items()
+            ):
+                raise LegacyStateImportError(
+                    "invalid legacy state: feed_cache must map strings to strings"
+                )
+            return len(payload)
+        if kind is LegacyStateKind.USED_ARTICLES:
+            used_model = UsedArticlesState.model_validate(payload)
+            return len(used_model.articles)
+        if kind is LegacyStateKind.SOURCE_ROTATION:
+            compatible = json.loads(json.dumps(payload, ensure_ascii=False))
+            weekly = compatible.get("weekly_summary")
+            if isinstance(weekly, dict) and "3blue1brown_used_this_week" in weekly:
+                weekly["threeblue1brown_used_this_week"] = weekly["3blue1brown_used_this_week"]
+            rotation_model = SourceRotationState.model_validate(compatible)
+            return len(rotation_model.sources)
+        health_model = SourceHealthState.model_validate(payload)
+        return len(health_model.runs)

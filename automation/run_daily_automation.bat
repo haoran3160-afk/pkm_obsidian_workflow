@@ -1,6 +1,9 @@
 @ECHO OFF
 SETLOCAL
 
+ECHO [BLOCKED] Legacy automation is disabled. Use the qualified pkm-stage0 Task bundle.
+EXIT /B 3
+
 REM ── PKM Daily Automation ──────────────────────────────────────────────────
 REM  Portable script: uses %~dp0 to locate itself regardless of install path.
 REM  Requires Python to be available on PATH (set via system environment or

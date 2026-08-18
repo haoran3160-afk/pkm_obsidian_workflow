@@ -1,8 +1,11 @@
 ---
-description: PKM Add Note - process user-uploaded content and write to Obsidian knowledge base
+description: Legacy disabled - direct PKM note creation is outside the current workflow scope
 ---
 
 # PKM: 整理知识并写入 Obsidian（AI Focus）
+
+> [!CAUTION]
+> **Legacy / permanently disabled for the current project.** 本流程会写入非白名单知识目录，违反当前“只优化资讯 workflow、不扫描或修改其他知识库内容”的边界。不得执行下方命令或写入步骤。当前唯一规范见 `docs/agentic/README.md`。
 
 当用户说“整理进知识库”“加入知识库”“记录这个”时执行本流程。
 

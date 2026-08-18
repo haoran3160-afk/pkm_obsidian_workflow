@@ -1,0 +1,306 @@
+# Completed Development Goal — T1.3a Deterministic Curation Contract
+
+状态：`DONE`（2026-08-18）
+
+目标编号：`T1.3a`
+
+本文件记录已经完成的 T1.3a 开发指令。当前没有可自动认领的后继 Goal；T1.3b 仍为
+`BLOCKED_PREQUALIFICATION`。不要调用 Codex、访问互联网、写 runtime/Vault 或启用生产。
+
+## 先读
+
+1. `AGENTS.md`
+2. `docs/agentic/spec.md` 的 2.2、2.3、3.2 节
+3. `docs/agentic/architecture.md` 的“数据流与证明”“Codex 调用策略”
+4. `docs/agentic/decisions.md` 的 D-002、D-004、D-006、D-008
+5. `src/pkm_workflow/provenance.py`
+6. `src/pkm_workflow/source_governance.py`
+7. `src/pkm_workflow/fetch_service.py`
+8. `src/pkm_workflow/evidence.py`
+
+## Goal
+
+实现一个纯确定性的 curation/review contract，把 T1.1/T1.2 的完整、真实 proof
+closure 转换为稳定 event clusters、模型安全 evidence view、可解释排序、排除记录和
+review requirements。
+
+正常 seam 不能在不失败的情况下接受伪造 Coverage、遗漏上游对象、跨窗口 evidence、
+错误 UserContext、任意 policy、自报“无需 review”、候选静默截断或把 feed item URL
+伪装成已验证原始链接。
+
+本任务不调用模型。它使用 synthetic `CurationPolicyGeneration` 和 synthetic
+Generator draft 验证未来 T1.3b 所需的生产 contract；synthetic generation 永远没有
+live qualification 资格。
+
+## 公开 seam
+
+```python
+result = CurationEngine().curate(
+    source_policy=policy,
+    snapshot=snapshot,
+    fetch_batch=batch,
+    evidence_package=package,
+    coverage_proof=proof,
+    claimed_coverage=coverage,
+    user_context_json=user_context_bytes,
+    curation_policy=curation_policy,
+)
+
+requirements = ReviewContract().derive(
+    curation=result,
+    draft=synthetic_generator_draft,
+)
+```
+
+公开对象至少包括：
+
+- `UserContextContract`
+- `CurationPolicyGeneration`
+- `CurationExclusion`
+- `EventCluster`
+- `CurationResult`
+- `ModelEvidenceItem`
+- `SourceExcerpt`
+- `AssertiveClaim`
+- `ReviewRequirement`
+
+所有 canonical digest 统一使用 `sha256:<64 lowercase hex>`。
+
+## 必须实现
+
+### 1. 完整 proof closure
+
+按以下顺序使用生产验证器，不复制第二套弱校验：
+
+1. `fetch_batch.validate(source_policy, snapshot)`
+2. `evidence_package.validate(source_policy, snapshot, fetch_batch)`
+3. `coverage_proof.validate()`
+4. proof 内的 policy、snapshot、observation set 必须分别与传入对象及 evidence package
+   全等。
+5. `CoverageEvaluator().evaluate(coverage_proof)` 现场重算，结果必须与
+   `claimed_coverage` 全等，不能只比较 hash。
+6. registry、source policy、snapshot、fetch batch、observation、coverage proof/result
+   和 evidence registry hashes 全部进入 curation payload/hash。
+
+Coverage 不足时返回 `COVERAGE_INSUFFICIENT` 且 model candidates 为空；本任务不创建
+no-news，也不把失败 endpoint 从 denominator 移除。
+
+### 2. UserContext 与 curation policy
+
+UserContext canonical JSON 算法固定为：
+
+```python
+json.dumps(
+    parsed_object,
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+).encode("utf-8")
+```
+
+当前用户批准 contract 的 expected digest 是：
+
+`sha256:ce307d029565fe20659ec9e43561d949ac1ec7d7ec67720bad25c7ad73460e3f`
+
+只允许对显式提供的 JSON bytes 做 schema/字段验证和 hash 重算；不得接收任意文件路径，
+不得扫描 Vault。真实只读资格核对只读取
+`D:\personal\obsidian_workflow\UserContextContract-v7.3.json` 这一精确文件。
+
+`CurationPolicyGeneration` 必须 canonical 化并绑定：
+
+- policy state（本任务只能是 `SYNTHETIC_QUALIFICATION`）
+- expected UserContext hash
+- 上海窗口规则与 event-time precedence
+- title normalization、clustering algorithm/version 和 72 小时阈值
+- profile topic matching 规则
+- evidence-role 完整顺序
+- cluster 排序键与 cap=24
+- `POLICY_OVERFLOW` 行为
+- model names、prompt/schema hashes 和 repair budget 的 synthetic placeholders
+- story/claim 上限和 all-assertive-review 规则
+- policy generation hash
+
+每个 active source 的 `evidence_role` 必须存在于 policy 的完整 role ordering；未知 role
+不得被静默放到末尾。T1.3b 冻结真实 prompt/schema/model/CLI 后必须创建新的 live
+generation，禁止复用本任务的 synthetic generation。
+
+### 3. 时间资格与完整记账
+
+对每个 evidence item：
+
+1. 若 `updated_at` 在 snapshot 的上海窗口
+   `[window_start, cutoff_at)`，event time 取 `updated_at`。
+2. 否则若 `published_at` 在窗口，取 `published_at`。
+3. 否则排除，reason 必须是 `MISSING_EVENT_TIME` 或
+   `EVENT_TIME_OUTSIDE_WINDOW`。
+
+每个 evidence ID 必须恰好出现一次：属于一个 cluster，或属于一个 exclusion。不得因
+去重、cap、来源、topic 不匹配而消失。
+
+### 4. 跨 origin 无损 event clusters
+
+title normalization 固定为 Unicode NFKC、casefold、非字母数字字符替换为空格并折叠
+空白。候选按 `evidence_id` 排序后，用稳定 pair order 与 union-find 聚类；满足任一
+条件即可合并：
+
+- 相同非空 `item_url`；
+- 相同且 `content_text` 非空的 `content_hash`；
+- 相同 normalized title；
+- event time 相差不超过 72 小时，且 title token similarity ≥85%。
+
+Latin title token 是空白分词后的集合；含 CJK 的 title token 是去空白后所有重叠
+3-character grams（不足 3 字时用整个 title）。similarity 使用整数 Jaccard：
+`100 * intersection >= 85 * union`，不使用 float。
+
+cluster 必须保留所有成员 evidence、source、origin group 和 locator，不能只留代表项。
+启发式误合并不得导致数据丢失；未来 Generator 可以把一个 cluster 拆成多个 story。
+
+### 5. 可解释排序与 overflow
+
+只允许以下稳定排序键，按顺序比较：
+
+1. UserContext `priorities[*].topics[*]` 在 normalized title/content 中的精确
+   casefold substring 命中，priority rank 越小越前。
+2. curation policy 中 evidence-role rank 的最佳值。
+3. cluster 最新 event time 降序。
+4. `cluster_hash` 升序。
+
+profile 命中必须生成 `PROFILE_TOPIC_MATCH` 和精确字段路径（例如
+`priorities[0].topics[2]`）。没有命中时不得获得“对你重要”的排序加成，只能标为
+`GENERAL_POSSIBLE_IMPACT`。
+
+cap 按 cluster 计数，固定为 24。超过 24 时：
+
+- disposition 为非瞬态 `POLICY_OVERFLOW`；
+- model candidates 为空；
+- 完整有序 clusters、数量和 reason 保留在 audit payload；
+- 相同 policy/input 不进行自动重试；
+- 只有新 policy generation 或输入窗口变化后才可再次尝试。
+
+不得截取前 24 后继续模型阶段。
+
+### 6. 模型安全 evidence view
+
+`ModelEvidenceItem` 只能从已验证 EvidenceItem 确定性派生，包含 evidence/source/
+origin identity、title、feed content、event time 和 proof hashes。
+
+`item_url` 不进入模型可引用 evidence 字段；它只在 audit sidecar 中以
+`UNVERIFIED_LOCATOR` 保存。T1.3 不得使用 “canonical”“article 正文已验证”“原始链接”
+或同义标签。
+
+feed title/content 只能支持其明确包含的事实。需要打开 article 才能确认的机制、价格、
+能力、安全、availability 或政策 claim 必须由后续模型 abstain，不能靠模型常识补齐。
+
+### 7. Review contract
+
+T1.3 qualification 阶段采用最保守规则：
+
+- 所有可能进入 story 的 assertive claim 都产生 `ReviewRequirement(required=True)`；
+  不信任 Generator 自报的 fact class、risk 或“是否影响总体结论”。
+- Generator draft 最多 8 stories、每 story 最多 4 assertive claims、总计最多
+  24 assertive claims；超限为 `SCHEMA_INVALID`。
+- 未审内容只能使用独立 `SourceExcerpt` 类型，并且必须是单一 evidence title/content
+  的 normalized 精确 span。
+- `SourceExcerpt` 不得出现在 title、Top、ranking、conclusion、recommendation、
+  impact 或任何最终事实字段。
+- 每个 evidence ref 必须存在于 curation result；任意伪造、遗漏、跨 cluster 引用或
+  同一 claim 引用不完整都失败。
+- Review input 绑定 source/coverage/evidence/UserContext/curation policy 与 draft
+  hashes。
+
+本任务只派生 review requirements，不产生伪造 ReviewDecision 或 accepted story。
+
+## 非目标
+
+- 不调用 Codex，不下载/安装/升级 CLI，不登录或复制认证缓存。
+- 不访问互联网，不执行真实 Generator/Reviewer，不做 schema repair。
+- 不实现 article 正文抓取、canonical/link verification 或最终日报。
+- 不把产物计入 M3 内容质量、用户注意力或原始证据验收。
+- 不修改 T1.1/T1.2 seam、旧 `review_policy_v73.py`、renderer、orchestrator、CLI、
+  publisher、Task、native、私有仓或 Vault。
+- 不新增依赖，不写 runtime，不启用旧 main/UI/fetcher。
+
+## 允许修改的文件
+
+实现代码与测试最多只修改以下 5 个文件：
+
+1. `src/pkm_workflow/curation.py`（新）
+2. `src/pkm_workflow/review_contract.py`（新）
+3. `tests/test_v8_curation.py`（新）
+4. `tests/test_v8_review_contract.py`（新）
+5. `tests/fixtures/v8_curation_manifest.json`（新）
+
+全部验证通过后，允许额外只更新 `docs/agentic/tasks.md` 的 T1.3a 状态/证据与本文件
+状态；不授权修改其他生产模块、私有仓或 Vault。
+
+## TDD 顺序
+
+1. 真实 T1.1/T1.2 closure 成功；伪造/遗漏/重算任一层失败。
+2. Coverage 现场重算不等于 claimed 时失败；Coverage 不足不产生 candidates。
+3. UserContext canonicalization 稳定；错字段、错 hash、Vault path 输入失败。
+4. source role 未在完整 ordering 中失败；synthetic/live generation 不可混用。
+5. event-time precedence、边界、缺失与窗口外 reason。
+6. URL/content/title exact clusters；跨 origin 成员全部保留。
+7. 72 小时与 Latin/CJK Jaccard 边界；输入重排 hash 不变。
+8. 每个 evidence 恰好 cluster/exclusion 二选一；mutation 不能制造 omission。
+9. profile topic hit 产生精确 field path；无 hit 无个性化加分。
+10. role/freshness/hash tie-break 字节级稳定。
+11. 24 clusters 成功；25 返回非瞬态 `POLICY_OVERFLOW` 且不截断。
+12. ModelEvidenceItem 不含 URL/Markdown/URI 字段；locator 只在 audit sidecar。
+13. 所有 assertive claims 均 review-required；自报低风险不能降级。
+14. 8/4/24 边界；超限 schema invalid。
+15. exact source excerpt 成功；伪 span、伪 evidence、excerpt 注入结论字段失败。
+16. 每个 proof/context/policy/evidence binding 的 mutation 都由生产 seam 杀死。
+
+禁止用 hardcoded final shortlist、test-only branch 或直接复制 expected output 通过测试。
+
+## 验证命令
+
+```powershell
+cd D:\Agent_programs\obsidian_workflow_open
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider tests\test_v8_curation.py tests\test_v8_review_contract.py -q
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider tests\test_v73_source_import.py tests\test_v73_source_governance.py tests\test_v8_source_proof.py tests\test_v8_fetch_service.py tests\test_v8_evidence.py -q
+.\.venv\Scripts\python.exe -m ruff check src\pkm_workflow\curation.py src\pkm_workflow\review_contract.py tests\test_v8_curation.py tests\test_v8_review_contract.py
+.\.venv\Scripts\python.exe -m mypy src\pkm_workflow\curation.py src\pkm_workflow\review_contract.py
+git diff --check
+git diff --name-status --diff-filter=DR
+```
+
+目标测试、T1.1/T1.2 回归、Ruff、Mypy 必须通过；新生产模块 line+branch ≥90%，
+关键 proof/omission/review-downgrade/overflow 分支 100%；tracked delete/rename 为空。
+
+另做一次只读资格核对，证明精确 UserContext 文件按上述算法得到批准 digest；命令不得
+输出 contract 正文或读取同目录其他文件。
+
+## 完成定义
+
+- 完整上游 closure 只能经生产验证器进入 curation，Coverage 不能由调用方伪造。
+- 相同有效输入得到字节级稳定 clusters/order/hash，输入重排不改变结果。
+- 跨 origin 聚类不丢 evidence；每个 item 都有唯一 cluster 或 exclusion 归宿。
+- 个性化加成精确引用批准 contract 字段；一般影响不冒充个人相关性。
+- overflow、Coverage 不足和所有 contract 失败均 fail-closed，不产生模型输入。
+- 模型 evidence view 不暴露可引用 URL，不夸大 feed 摘要的证据能力。
+- 所有 assertive claims 都生成 Reviewer requirement，Generator 不能自报降级。
+- synthetic policy 明确不可用于 live qualification。
+- 没有 Codex、网络、runtime、Vault、删除、移动、重命名或旧入口副作用。
+- 只有全部条件满足才把 T1.3a 改为 `DONE`；T1.3b 仍保持
+  `BLOCKED_PREQUALIFICATION`，不得自动认领。
+
+## 完成证据（2026-08-18）
+
+- 23 个目标行为测试通过；T1.1/T1.2 的 182 个回归测试通过。
+- 新生产模块 line+branch 合计 93.51%；Ruff、Mypy 通过。
+- 精确 UserContext 只读资格 hash 与本文件批准 digest 一致。
+- 三轮独立对抗性代码审查后无 P0/P1；所有审查发现均先以失败测试复现，再修复。
+- 未调用 Codex/网络，未写 runtime/Vault/私有仓，未删除、移动或重命名文件，未启用生产。
+
+## 必须停止并汇报的情况
+
+- 需要修改 T1.1/T1.2 production seam 才能验证 closure。
+- 无法在 5 个实现/测试文件内表达公开 contract。
+- 需要第三方依赖、网络、Codex、runtime、私有仓写入或 Vault 访问。
+- event clustering 只能通过丢弃 evidence 才能满足 cap。
+- 任一 assertive claim 可以绕过 review requirement。
+- 测试要求放宽真实 hash/proof/window/overflow 规则才能通过。
+
+遇到以上情况保持测试红或返回明确 blocker，先报告证据，不擅自扩大范围。

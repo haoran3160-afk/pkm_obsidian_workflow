@@ -18,6 +18,7 @@ from jinja2 import Environment, FileSystemLoader
 
 import daily_curation
 import digest_copy as digest_copy_builder
+from workflow_contracts import CurationPlan
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)), trim_blocks=True, lstrip_blocks=True)
@@ -28,6 +29,34 @@ AI_BUCKET_LABELS = {
     "practice": "工程实践",
     "tooling": "工具更新",
 }
+
+
+class FormatterQualityError(ValueError):
+    """Configured output quality thresholds were not satisfied."""
+
+
+def render_curation_plan(plan: CurationPlan) -> str:
+    """Render only schema-validated claims and their declared evidence."""
+
+    evidence = {row.evidence_id: row for row in plan.evidence}
+    lines = [
+        "---",
+        f"run_id: {plan.run_id}",
+        f"model: {plan.model}",
+        f"prompt_version: {plan.prompt_version}",
+        f"policy_version: {plan.policy_version}",
+        f"input_hash: {plan.input_hash}",
+        "---",
+        "",
+    ]
+    for section in plan.sections:
+        lines.extend([f"## {section.title}", ""])
+        for claim in section.claims:
+            links = " ".join(
+                f"[{ref}]({evidence[ref].canonical_url})" for ref in claim.evidence_refs
+            )
+            lines.extend([f"- {claim.text} {links}", ""])
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def today_str() -> str:
@@ -77,24 +106,32 @@ def format_daily_digest(
     rotation_state: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Format the raw digest or the final curated daily digest."""
-    del (
-        max_items_per_source,
-        include_mindmap,
-        include_cognitive_lenses,
-        cognitive_questions,
-        quality_gate_enabled,
-        tldr_min_quality_score,
-        tldr_max_undisclosed,
-        tldr_min_items,
-        tldr_min_hard_signal_ratio,
-        tldr_max_undisclosed_ratio,
+    bounded_items = _limit_items_per_source(
+        items_by_source,
+        max_items_per_source=max_items_per_source,
     )
+    if quality_gate_enabled:
+        bounded_items = _apply_quality_gate(
+            bounded_items,
+            min_quality_score=tldr_min_quality_score,
+            max_undisclosed=tldr_max_undisclosed,
+            min_items=tldr_min_items,
+            min_hard_signal_ratio=tldr_min_hard_signal_ratio,
+            max_undisclosed_ratio=tldr_max_undisclosed_ratio,
+        )
 
     if raw_only:
-        return _render_raw_digest(items_by_source)
+        path, content = _render_raw_digest(bounded_items)
+        return path, _append_optional_sections(
+            content,
+            bounded_items,
+            include_mindmap=include_mindmap,
+            include_cognitive_lenses=include_cognitive_lenses,
+            cognitive_questions=cognitive_questions,
+        )
 
     plan = curation_plan or daily_curation.plan_daily_digest(
-        dict(items_by_source),
+        dict(bounded_items),
         today=today_str(),
         top_picks=top_picks,
         action_items=action_items,
@@ -113,7 +150,119 @@ def format_daily_digest(
 
     base_copy = digest_copy_builder.build_digest_copy(plan)
     final_copy = digest_copy_builder.merge_digest_copy(base_copy, digest_copy)
-    return _render_curated_daily_digest(plan, final_copy)
+    path, content = _render_curated_daily_digest(plan, final_copy)
+    return path, _append_optional_sections(
+        content,
+        bounded_items,
+        include_mindmap=include_mindmap,
+        include_cognitive_lenses=include_cognitive_lenses,
+        cognitive_questions=cognitive_questions,
+    )
+
+
+def _limit_items_per_source(
+    items_by_source: dict[str, list[dict[str, Any]]],
+    *,
+    max_items_per_source: int,
+) -> dict[str, list[dict[str, Any]]]:
+    if max_items_per_source < 1:
+        raise ValueError("max_items_per_source must be at least 1")
+    return {
+        source: [dict(item) for item in items[:max_items_per_source]]
+        for source, items in items_by_source.items()
+    }
+
+
+def _apply_quality_gate(
+    items_by_source: dict[str, list[dict[str, Any]]],
+    *,
+    min_quality_score: int,
+    max_undisclosed: int,
+    min_items: int,
+    min_hard_signal_ratio: float,
+    max_undisclosed_ratio: float,
+) -> dict[str, list[dict[str, Any]]]:
+    if min_quality_score < 0 or max_undisclosed < 0 or min_items < 0:
+        raise ValueError("quality gate counts cannot be negative")
+    if not 0 <= min_hard_signal_ratio <= 1:
+        raise ValueError("min_hard_signal_ratio must be between 0 and 1")
+    if not 0 <= max_undisclosed_ratio <= 1:
+        raise ValueError("max_undisclosed_ratio must be between 0 and 1")
+
+    qualified: dict[str, list[dict[str, Any]]] = {}
+    flattened: list[dict[str, Any]] = []
+    for source, items in items_by_source.items():
+        accepted = [item for item in items if _item_quality_score(item) >= min_quality_score]
+        qualified[source] = accepted
+        flattened.extend(accepted)
+    if len(flattened) < min_items:
+        raise FormatterQualityError(
+            f"quality gate minimum items requires {min_items}, only {len(flattened)} qualified"
+        )
+    if not flattened:
+        return qualified
+
+    undisclosed_count = sum(_is_undisclosed(item) for item in flattened)
+    undisclosed_ratio = undisclosed_count / len(flattened)
+    if undisclosed_count > max_undisclosed:
+        raise FormatterQualityError("quality gate undisclosed count exceeds configured maximum")
+    if undisclosed_ratio > max_undisclosed_ratio:
+        raise FormatterQualityError("quality gate undisclosed ratio exceeds configured maximum")
+    hard_signal_ratio = sum(_has_hard_signal(item) for item in flattened) / len(flattened)
+    if hard_signal_ratio < min_hard_signal_ratio:
+        raise FormatterQualityError("quality gate hard-signal ratio is below configured minimum")
+    return qualified
+
+
+def _item_quality_score(item: dict[str, Any]) -> float:
+    value = item.get("quality_score", item.get("score", 1))
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _is_undisclosed(item: dict[str, Any]) -> bool:
+    if bool(item.get("undisclosed", False)):
+        return True
+    summary = str(item.get("summary", "")).strip()
+    return not summary or "未披露" in summary
+
+
+def _has_hard_signal(item: dict[str, Any]) -> bool:
+    if "hard_signal" in item:
+        return bool(item["hard_signal"])
+    if item.get("evidence_refs"):
+        return True
+    text = f"{item.get('title', '')} {item.get('summary', '')}"
+    return bool(re.search(r"\d", text))
+
+
+def _append_optional_sections(
+    content: str,
+    items_by_source: dict[str, list[dict[str, Any]]],
+    *,
+    include_mindmap: bool,
+    include_cognitive_lenses: bool,
+    cognitive_questions: list[str] | None,
+) -> str:
+    sections: list[str] = [content.rstrip()]
+    if include_mindmap:
+        lines = ["## 思维导图", "", "```mermaid", "mindmap", "  root((今日情报))"]
+        for source in items_by_source:
+            safe_source = re.sub(r"[\r\n()]", " ", source).strip() or "未命名来源"
+            lines.append(f"    {safe_source}")
+        lines.append("```")
+        sections.append("\n".join(lines))
+    if include_cognitive_lenses:
+        questions = cognitive_questions or [
+            "这条信息改变了哪个既有判断？",
+            "下一步最小可验证行动是什么？",
+        ]
+        lines = ["## 认知透镜", ""]
+        lines.extend(f"- {question.strip()}" for question in questions if question.strip())
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections).rstrip() + "\n"
 
 
 def _render_raw_digest(items_by_source: dict[str, list[dict[str, Any]]]) -> tuple[str, str]:

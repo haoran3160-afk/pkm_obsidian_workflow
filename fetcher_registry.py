@@ -25,50 +25,72 @@ from collections.abc import Callable
 
 log = logging.getLogger("pkm.registry")
 
-# Registry: source_type (str) → fetch function
-_FETCHERS: dict[str, Callable[..., list[dict]]] = {}
+FetcherCallable = Callable[..., object]
 
 
-def register_fetcher(source_type: str) -> Callable:
-    """
-    Decorator to register a fetcher function for a given source type.
+class FetcherRegistry:
+    """Additive adapter registry used by every ingest and probe path."""
 
-    Example:
-        @register_fetcher("rss")
-        def fetch_rss(config, cache, today, **kwargs) -> list[dict]:
-            ...
-    """
+    def __init__(self) -> None:
+        self._fetchers: dict[str, FetcherCallable] = {}
 
-    def decorator(fn: Callable[..., list[dict]]) -> Callable[..., list[dict]]:
-        if source_type in _FETCHERS:
-            log.warning("Fetcher already registered for '%s', overwriting.", source_type)
-        _FETCHERS[source_type] = fn
-        log.debug("Registered fetcher for source type: '%s'", source_type)
-        return fn
+    def register(self, source_type: str) -> Callable[[FetcherCallable], FetcherCallable]:
+        normalized = source_type.strip().lower()
+        if not normalized or not normalized.replace("_", "").replace("-", "").isalnum():
+            raise ValueError("source_type contains unsafe characters")
 
-    return decorator
+        def decorator(fn: FetcherCallable) -> FetcherCallable:
+            if normalized in self._fetchers:
+                raise ValueError(f"fetcher is already registered for '{normalized}'")
+            self._fetchers[normalized] = fn
+            log.debug("Registered fetcher for source type: '%s'", normalized)
+            return fn
+
+        return decorator
+
+    def get(self, source_type: str) -> FetcherCallable:
+        normalized = source_type.strip().lower()
+        if normalized not in self._fetchers:
+            available = ", ".join(sorted(self._fetchers)) or "(none)"
+            raise KeyError(
+                f"No fetcher registered for source type '{normalized}'. Available: {available}"
+            )
+        return self._fetchers[normalized]
+
+    def list_registered(self) -> list[str]:
+        return sorted(self._fetchers)
 
 
-def get_fetcher(source_type: str) -> Callable[..., list[dict]]:
-    """
-    Retrieve the registered fetcher function for a source type.
+DEFAULT_REGISTRY = FetcherRegistry()
 
-    Raises:
-        KeyError: if no fetcher is registered for the given source type.
-    """
-    if source_type not in _FETCHERS:
-        available = ", ".join(sorted(_FETCHERS.keys())) or "(none)"
-        raise KeyError(
-            f"No fetcher registered for source type '{source_type}'. "
-            f"Available: {available}\n"
-            "To add a custom fetcher, use @register_fetcher('<type>') decorator."
-        )
-    return _FETCHERS[source_type]
+
+def register_fetcher(source_type: str) -> Callable[[FetcherCallable], FetcherCallable]:
+    """Backward-compatible decorator bound to the canonical registry."""
+
+    return DEFAULT_REGISTRY.register(source_type)
+
+
+def get_fetcher(source_type: str) -> FetcherCallable:
+    return DEFAULT_REGISTRY.get(source_type)
 
 
 def list_registered() -> list[str]:
-    """Return a sorted list of all registered source type names."""
-    return sorted(_FETCHERS.keys())
+    return DEFAULT_REGISTRY.list_registered()
+
+
+def dispatch_source(
+    *,
+    adapter: str,
+    config: dict,
+    cache: dict,
+    today: str,
+    registry: FetcherRegistry = DEFAULT_REGISTRY,
+    **kwargs,
+) -> object:
+    """Resolve the adapter before invoking any source/network implementation."""
+
+    fetch = registry.get(adapter)
+    return fetch(config, cache, today, **kwargs)
 
 
 # ── Register Built-in Fetchers ────────────────────────────────────────────────
@@ -78,17 +100,19 @@ def _register_builtins() -> None:
     """Lazy import and register the built-in fetcher functions."""
     import fetcher as _fetcher  # avoid circular import
 
-    @register_fetcher("rss")
-    def _fetch_rss(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
+    @DEFAULT_REGISTRY.register("rss")
+    def _fetch_rss(config: dict, cache: dict, today: str, **kwargs) -> object:
         return _fetcher.fetch_rss_feed(
             config,
             cache,
             today,
             max_papers=kwargs.get("max_papers", 10),
             raw_only=kwargs.get("raw_only", False),
+            quality_config=kwargs.get("quality_config"),
+            return_meta=kwargs.get("return_meta", False),
         )
 
-    @register_fetcher("youtube")
+    @DEFAULT_REGISTRY.register("youtube")
     def _fetch_youtube(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
         return _fetcher.fetch_youtube_channel(
             config,
@@ -97,9 +121,30 @@ def _register_builtins() -> None:
             max_videos=kwargs.get("max_videos", 3),
         )
 
-    @register_fetcher("youtube_raw")
+    @DEFAULT_REGISTRY.register("youtube_raw")
     def _fetch_youtube_raw(config: dict, cache: dict, today: str, **kwargs) -> list[dict]:
-        return _fetcher.fetch_youtube_channel_raw(config)
+        del cache, today
+        return _fetcher.fetch_youtube_channel_raw(
+            config,
+            max_videos=kwargs.get("max_videos", 2),
+        )
+
+    @DEFAULT_REGISTRY.register("rss_probe")
+    def _probe_rss(config: dict, cache: dict, today: str, **kwargs) -> list[object]:
+        del cache, today, kwargs
+        parsed = _fetcher._parse_feed(config["url"])
+        return list(getattr(parsed, "entries", []))
+
+    @DEFAULT_REGISTRY.register("youtube_probe")
+    def _probe_youtube(
+        config: dict,
+        cache: dict,
+        today: str,
+        **kwargs,
+    ) -> list[object]:
+        del cache, today, kwargs
+        parsed = _fetcher._parse_youtube_feed(config["channel_id"])
+        return list(getattr(parsed, "entries", []))
 
 
 _register_builtins()

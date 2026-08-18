@@ -32,7 +32,33 @@ jobs:
         run: ruff format --check .
 
       - name: Mypy type check
-        run: mypy main.py fetcher.py formatter.py writer.py config_schema.py pkm_bridge.py state_schema.py ui_server.py llm_digest.py daily_curation.py digest_copy.py --ignore-missing-imports
+        run: mypy main.py fetcher.py formatter.py writer.py config_schema.py pkm_bridge.py state_schema.py ui_server.py llm_digest.py daily_curation.py digest_copy.py path_policy.py src/pkm_workflow --ignore-missing-imports
+
+  native:
+    name: Native Safety Stubs (Rust)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust format check
+        run: cargo fmt --all -- --check
+
+      - name: Rust compile check
+        run: cargo check --locked --all-targets
+
+      - name: Rust Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --locked --all-targets
 
   frontend:
     name: Frontend Build & UI Tests
@@ -64,6 +90,8 @@ jobs:
   test:
     name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      PKM_TEST_ROOT: ${{ runner.temp }}/pkm-tests
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -79,8 +107,11 @@ jobs:
       - name: Install dev dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run pytest with coverage
-        run: pytest --cov=. --cov-report=xml --cov-report=term-missing -q
+      - name: Create no-delete test root
+        run: mkdir -p "$PKM_TEST_ROOT"
+
+      - name: Run all tests with production coverage
+        run: pytest --cov=src/pkm_workflow --cov-branch --cov-report=xml --cov-report=term-missing -q
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'

@@ -1,8 +1,11 @@
 ---
-description: PKM Commit Daily - promote reviewed AI daily content to permanent notes
+description: Legacy disabled - promotion into permanent Vault notes is out of scope
 ---
 
 # PKM: 提交今日 AI 内容到正式 Vault
+
+> [!CAUTION]
+> **Legacy / permanently disabled for the current project.** 当前工作流不得写入 `10-Notes/*`、`20-Sources/*` 或修改已有日报；下方内容仅保留作历史资料。当前唯一规范见 `docs/agentic/README.md`。
 
 当用户说“提交今日日报”“收录今天”“我看完了”时执行本流程。
 

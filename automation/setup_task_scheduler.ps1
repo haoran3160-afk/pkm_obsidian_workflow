@@ -4,6 +4,9 @@
 #
 # 路径自动从脚本所在目录（$PSScriptRoot）推断，无需手动修改。
 
+Write-Error "Legacy Task installer is disabled. Use the signed v7.3 Task bundle after qualification."
+exit 3
+
 $TaskName    = "PKM-Daily-Fetcher"
 $BatchFile   = Join-Path $PSScriptRoot "run_daily_automation.bat"
 $TriggerTime = "07:00AM"   # ← 可修改为你希望的每日触发时间 (24h: "06:30AM" 等)

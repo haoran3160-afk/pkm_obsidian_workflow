@@ -8,10 +8,11 @@ Validates configuration at startup and provides typed access to settings.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class RssFeed(BaseModel):
@@ -78,7 +79,7 @@ class ObsidianAPIConfig(BaseModel):
     """Obsidian Local REST API connection settings."""
 
     base_url: str = "http://localhost:27123"
-    api_key: str = ""
+    api_key: str = Field(default="", exclude=True, repr=False)
 
 
 class PKMConfig(BaseModel):
@@ -166,6 +167,76 @@ class PKMConfig(BaseModel):
             raise ValueError(
                 "pkm_config.json must define at least one rss_feeds or youtube_channels entry."
             )
+        return self
+
+
+class ConfigSourceRecord(BaseModel):
+    """One immutable source observation from one origin record."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_id: str = Field(min_length=1)
+    observed_record_id: str = Field(min_length=1)
+    legacy_record_id: str = Field(min_length=1)
+    origin: str = Field(min_length=1)
+    collection: str = Field(min_length=1)
+    origin_record_index: int = Field(ge=0)
+    adapter: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    endpoint: str = Field(min_length=1)
+    enabled: bool
+    raw_record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_record: dict[str, Any]
+
+
+class CapacityPolicyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    warning_free_ratio: float = Field(default=0.15, gt=0, lt=1)
+    blocked_free_ratio: float = Field(default=0.05, gt=0, lt=1)
+    blocked_min_free_gib: int = Field(default=2, ge=1)
+    critical_event_floor_bytes: int = Field(default=65536, ge=1024)
+    max_blocked_event_bytes: int = Field(default=8192, ge=512)
+
+
+class SourcePolicyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    degraded_after_failures: int = Field(default=3, ge=1)
+    probe_interval_hours: int = Field(default=24, ge=1)
+    per_source_timeout_sec: int = Field(default=8, ge=1)
+
+
+class PKMConfigV3(BaseModel):
+    """Additive, secret-free configuration generation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[3] = 3
+    migration_id: str = Field(min_length=1)
+    generation_id: str = Field(min_length=1)
+    created_at: datetime
+    initial_mode: Literal["shadow"] = "shadow"
+    allowed_modes: tuple[Literal["shadow", "observed", "unattended"], ...] = (
+        "shadow",
+        "observed",
+        "unattended",
+    )
+    settings: dict[str, Any]
+    setting_origins: dict[str, list[str]]
+    source_records: list[ConfigSourceRecord]
+    credential_refs: dict[str, str] = Field(default_factory=dict)
+    source_policy: SourcePolicyConfig = Field(default_factory=SourcePolicyConfig)
+    capacity_policy: CapacityPolicyConfig = Field(default_factory=CapacityPolicyConfig)
+
+    @model_validator(mode="after")
+    def source_observation_ids_are_unique(self) -> PKMConfigV3:
+        legacy_ids = [record.legacy_record_id for record in self.source_records]
+        observed_ids = [record.observed_record_id for record in self.source_records]
+        if len(legacy_ids) != len(set(legacy_ids)):
+            raise ValueError("legacy source records cannot be merged")
+        if len(observed_ids) != len(set(observed_ids)):
+            raise ValueError("observed source identities must be unique")
         return self
 
 

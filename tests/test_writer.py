@@ -1,3 +1,7 @@
+import os
+import uuid
+from pathlib import Path
+
 import pytest
 import requests
 
@@ -14,13 +18,43 @@ class DummyResponse:
             raise requests.HTTPError(f"HTTP {self.status_code}")
 
 
-def test_write_and_append_to_obsidian_disk(tmp_path):
-    vault = tmp_path / "vault"
-    filepath = "10-Notes/demo.md"
+def _case_root(name: str) -> Path:
+    parent_value = os.environ.get("PKM_TEST_ROOT")
+    if not parent_value:
+        pytest.skip("PKM_TEST_ROOT is required by the no-delete test contract")
+    parent = Path(parent_value).resolve(strict=True)
+    root = parent / f"{name}-{uuid.uuid4().hex}"
+    root.mkdir()
+    return root
 
-    assert writer.write_to_obsidian_disk(str(vault), filepath, "hello")
-    assert writer.append_to_obsidian_disk(str(vault), filepath, "\nworld")
-    assert (vault / filepath).read_text(encoding="utf-8") == "hello\nworld"
+
+def test_legacy_disk_writer_and_append_are_both_disabled():
+    root = _case_root("writer-create-new")
+    vault = root / "vault"
+    parent = vault / "30-Daily" / "AI-News"
+    parent.mkdir(parents=True)
+    filepath = "30-Daily/AI-News/AI-Daily-2026-07-26.md"
+
+    assert writer.write_to_obsidian_disk(str(vault), filepath, "hello") is False
+    assert writer.write_to_obsidian_disk(str(vault), filepath, "replacement") is False
+    assert writer.append_to_obsidian_disk(str(vault), filepath, "\nworld") is False
+    assert not (vault / filepath).exists()
+
+
+def test_disk_writer_rejects_non_workflow_vault_path():
+    root = _case_root("writer-scope")
+    vault = root / "vault"
+    (vault / "20-Knowledge").mkdir(parents=True)
+
+    assert (
+        writer.write_to_obsidian_disk(
+            str(vault),
+            "20-Knowledge/should-not-write.md",
+            "blocked",
+        )
+        is False
+    )
+    assert not (vault / "20-Knowledge" / "should-not-write.md").exists()
 
 
 def test_vault_endpoint_encodes_unicode_and_spaces():
@@ -57,8 +91,7 @@ def test_note_exists_api_raises_custom_error_on_server_error(monkeypatch):
         writer.note_exists_api("http://localhost:27123", "test.md", {})
 
 
-def test_write_via_api_skips_existing_note(monkeypatch):
-    monkeypatch.setattr(writer, "note_exists_api", lambda *args, **kwargs: True)
+def test_write_via_api_is_fail_closed_even_when_target_is_new(monkeypatch):
     called = {"put": False}
 
     def _fake_put(*args, **kwargs):
@@ -67,33 +100,53 @@ def test_write_via_api_skips_existing_note(monkeypatch):
 
     monkeypatch.setattr(writer, "_api_put", _fake_put)
 
-    ok = writer.write_via_api("http://localhost:27123", "note.md", "content", {}, overwrite=False)
+    ok = writer.write_via_api(
+        "http://localhost:27123",
+        "30-Daily/AI-News/new.md",
+        "content",
+        {},
+        overwrite=False,
+    )
 
     assert ok is False
     assert called["put"] is False
 
 
-def test_write_via_api_uses_encoded_vault_endpoint(monkeypatch):
-    monkeypatch.setattr(writer, "note_exists_api", lambda *args, **kwargs: False)
-    capture = {}
-
-    def _fake_put(api_base, endpoint, headers, data):
-        capture["api_base"] = api_base
-        capture["endpoint"] = endpoint
-        capture["payload"] = data
-        return DummyResponse(status_code=200)
-
-    monkeypatch.setattr(writer, "_api_put", _fake_put)
-
-    ok = writer.write_via_api(
-        "http://localhost:27123",
-        "10-Notes/中文 标题.md",
-        "hello",
-        {"Authorization": "Bearer test"},
+def test_write_via_api_rejects_overwrite_flag(monkeypatch):
+    monkeypatch.setattr(
+        writer,
+        "_api_put",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("API PUT must not run")),
     )
 
-    assert ok is True
-    assert capture["api_base"] == "http://localhost:27123"
-    assert capture["endpoint"].startswith("/vault/10-Notes/")
-    assert "%E4%B8%AD%E6%96%87%20%E6%A0%87%E9%A2%98.md" in capture["endpoint"]
-    assert capture["payload"] == b"hello"
+    assert (
+        writer.write_via_api(
+            "http://localhost:27123",
+            "30-Daily/AI-News/existing.md",
+            "replacement",
+            {},
+            overwrite=True,
+        )
+        is False
+    )
+
+
+def test_append_via_api_is_fail_closed_without_network(monkeypatch):
+    called = {"post": False}
+
+    def _fake_post(*_args, **_kwargs):
+        called["post"] = True
+        return DummyResponse()
+
+    monkeypatch.setattr(writer, "_api_post", _fake_post)
+
+    assert (
+        writer.append_via_api(
+            "http://localhost:27123",
+            "30-Daily/AI-News/existing.md",
+            "append",
+            {},
+        )
+        is False
+    )
+    assert called["post"] is False

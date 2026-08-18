@@ -1,0 +1,9 @@
+[package]
+name = "pkm-stage0"
+version = "7.3.0-alpha.1"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+windows-sys.workspace = true

@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-"""
-knowledge_health_check.py - PKM knowledge base health check.
+"""Fail-closed archive of the retired full-Vault validator.
 
-Scans 10-Notes for:
-1) Missing required frontmatter
-2) Unsourced pages
-3) Orphan pages
-4) Ghost wikilinks
-5) Stale pages (updated > 60 days)
-6) One-way links and thin-source pages
-
-Outputs:
-- 40-MOC/lint-report-YYYY-MM-DD.md
-- Optional append to 40-MOC/log.md
+The legacy 10-Notes scanner and score/report writer below are retained only as
+inert historical implementation detail.  v7.3 may not scan any Vault content
+outside the workflow allowlist, so both the importable API and CLI are blocked.
 """
 
 from __future__ import annotations
@@ -20,12 +11,34 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 REQUIRED_FIELDS = {"title", "domain", "status", "tags", "source_count"}
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+CANONICAL_VAULT = Path(r"D:\personal\ObsidianVault")
+CANONICAL_VALIDATOR = CANONICAL_VAULT / "99-System" / "知识库治理" / "_tools" / "validate_vault.py"
+CANONICAL_CONFIG = (
+    CANONICAL_VAULT / "99-System" / "知识库治理" / "_config" / "vault-validation.json"
+)
+CANONICAL_OUTPUT_DIR = CANONICAL_VAULT / "99-System" / "知识库治理" / "_qa"
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return str(left.resolve()).casefold() == str(right.resolve()).casefold()
+
+
+def run_validator(label: str = "legacy-open-pkm-lint") -> int:
+    """Refuse the legacy cross-Vault scan even when called by import."""
+    _ = label
+    print(
+        "[BLOCKED] legacy full-Vault validator is outside the workflow read boundary",
+        file=sys.stderr,
+    )
+    return 3
 
 
 @dataclass
@@ -148,6 +161,11 @@ def build_records(vault_path: Path) -> list[NoteRecord]:
 def generate_report(
     vault_path: Path, max_items: int = 30, write_log: bool = True
 ) -> tuple[Path, dict]:
+    raise RuntimeError(
+        "Legacy score/report generation is disabled. "
+        "Use run_validator(); canonical validator output is the only quality fact source."
+    )
+
     records = build_records(vault_path)
     now = datetime.now()
 
@@ -288,28 +306,38 @@ date: {today}
     return report_path, summary
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="PKM Knowledge Health Check")
+def main(argv: list[str] | None = None) -> int:
+    _ = argv
+    print("[BLOCKED] legacy full-Vault validator is outside the v7.3 read boundary")
+    return 3
+
+    # Historical CLI retained below under the no-delete rule.
+    _ = argv
+    print("[BLOCKED] legacy full-Vault validator is outside the v7.3 read boundary")
+    return 3
+
+    # Historical CLI retained below under the no-delete rule.
+    parser = argparse.ArgumentParser(
+        description="Compatibility wrapper for the canonical Vault validator"
+    )
     parser.add_argument("--vault-path", default="", help="Obsidian vault path")
-    parser.add_argument("--max-items", type=int, default=30, help="max items per section")
-    parser.add_argument("--no-log", action="store_true", help="do not append 40-MOC/log.md")
-    args = parser.parse_args()
+    parser.add_argument("--max-items", type=int)
+    parser.add_argument("--no-log", action="store_true")
+    parser.add_argument("--incremental", action="store_true")
+    parser.add_argument("--target", default="")
+    args = parser.parse_args(argv)
 
-    script_dir = Path(__file__).parent
-    config = load_config(script_dir)
-    vault_path = Path(args.vault_path or config.get("vault_path", "D:/personal/Obsidian"))
-
-    report_path, summary = generate_report(
-        vault_path,
-        max_items=args.max_items,
-        write_log=not args.no_log,
-    )
-    print(
-        f"[OK] lint done | score={summary['score']}/100 "
-        f"| critical={summary['critical']} warning={summary['warning']} suggestion={summary['suggestion']}"
-    )
-    print(f"[OK] report: {report_path}")
+    if args.incremental or args.target:
+        parser.error(
+            "incremental/hot lint is not implemented by the canonical validator; "
+            "no validation was claimed"
+        )
+    if args.max_items is not None:
+        parser.error("--max-items has no canonical equivalent; no validation was run")
+    if args.vault_path and not _same_path(Path(args.vault_path), CANONICAL_VAULT):
+        parser.error(f"only the canonical vault is allowed: {CANONICAL_VAULT}")
+    return run_validator()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

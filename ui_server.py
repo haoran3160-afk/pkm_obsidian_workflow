@@ -17,11 +17,10 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Literal
 
-import uvicorn
 from dotenv import dotenv_values
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, ValidationError
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 import state_schema
 from config_schema import PKMConfig, RssFeed, YouTubeChannel, load_and_validate
@@ -148,6 +147,23 @@ class RunState:
 RUN_STATE = RunState()
 
 app = FastAPI(title="Obsidian PKM Workflow UI", version="0.1.0")
+
+
+@app.middleware("http")
+async def _seal_legacy_asgi_app(
+    _request: Request,
+    _call_next: Any,
+) -> JSONResponse:
+    """Keep every legacy route unreachable, including import via uvicorn."""
+
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": (
+                "legacy UI is globally disabled by PKM v7.3; use the sealed doctor/shadow CLI"
+            )
+        },
+    )
 
 
 def _now_iso() -> str:
@@ -300,8 +316,9 @@ def _recent_outputs(vault_path: str, *, limit: int = 8) -> list[dict[str, Any]]:
     vault = Path(vault_path)
     targets = [
         vault / "30-Daily" / "AI-News",
-        vault / "00-Inbox" / "Raw-Feeds",
-        vault / "40-MOC",
+        vault / "30-Daily" / "Weekly",
+        vault / "30-Daily" / "IELTS-Preview",
+        vault / "30-Daily" / "PKM-Workflow-Status",
     ]
     files: list[Path] = []
     for target in targets:
@@ -455,8 +472,11 @@ def get_status() -> dict[str, Any]:
 
 @app.post("/api/run")
 def post_run(payload: RunRequest) -> dict[str, Any]:
-    _start_background_run(payload.mode)
-    return {"ok": True, "run": RUN_STATE.snapshot()}
+    del payload
+    raise HTTPException(
+        status_code=503,
+        detail="v7.3 production engine is not activated; legacy UI run is disabled",
+    )
 
 
 @app.post("/api/doctor")
@@ -503,28 +523,28 @@ def get_config_sources() -> dict[str, Any]:
 
 @app.put("/api/config/sources")
 def put_config_sources(payload: SourcesConfigPayload) -> dict[str, Any]:
-    try:
-        config = _save_sources(payload)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-    return {
-        "ok": True,
-        "rss_feeds": [feed.model_dump() for feed in config.rss_feeds],
-        "youtube_channels": [channel.model_dump() for channel in config.youtube_channels],
-    }
+    del payload
+    raise HTTPException(
+        status_code=503,
+        detail="legacy config mutation is disabled; append-only policy generation required",
+    )
 
 
 @app.get("/api/config/output")
 def get_config_output() -> dict[str, Any]:
-    return _build_output_payload(_load_config(), _load_env_values())
+    raise HTTPException(
+        status_code=503,
+        detail="legacy output/config readback is disabled under the v7.3 boundary",
+    )
 
 
 @app.put("/api/config/output")
 def put_config_output(payload: OutputConfigPayload) -> dict[str, Any]:
-    try:
-        return {"ok": True, **_save_output(payload)}
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    del payload
+    raise HTTPException(
+        status_code=503,
+        detail="legacy output mutation is disabled under the v7.3 boundary",
+    )
 
 
 @app.post("/api/validate/vault")
@@ -534,12 +554,19 @@ def post_validate_vault(payload: VaultValidationRequest) -> dict[str, Any]:
 
 @app.get("/api/settings/env")
 def get_settings_env() -> dict[str, Any]:
-    return _build_env_settings_payload(_load_env_values())
+    raise HTTPException(
+        status_code=503,
+        detail="legacy credential readback is disabled under the v7.3 boundary",
+    )
 
 
 @app.put("/api/settings/env")
 def put_settings_env(payload: EnvSettingsPayload) -> dict[str, Any]:
-    return {"ok": True, **_save_env_settings(payload)}
+    del payload
+    raise HTTPException(
+        status_code=503,
+        detail="legacy credential/config mutation is disabled under v7.3",
+    )
 
 
 @app.get("/api/settings/system")
@@ -550,4 +577,4 @@ def get_settings_system() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    uvicorn.run("ui_server:app", host="127.0.0.1", port=int(os.getenv("PKM_UI_PORT", "8000")))
+    raise SystemExit("legacy UI server is disabled; use the sealed v7.3 doctor/shadow CLI")

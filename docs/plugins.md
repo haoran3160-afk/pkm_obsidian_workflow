@@ -1,5 +1,7 @@
 # Writing Custom Source Plugins
 
+> **Legacy documentation only.** 当前生产来源只能通过 append-only registry、probe 与人工审批追加；运行时插件不得自行扩展网络范围。当前规范见 [agentic/spec.md](agentic/spec.md)。
+
 The **Source Plugin Registry** (`fetcher_registry.py`) lets you add new data sources - like Reddit, Twitter, or any web API - without modifying any core files.
 
 ## How It Works

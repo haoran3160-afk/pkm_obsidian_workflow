@@ -1,10 +1,13 @@
 ---
-description: PKM Weekly Digest — 科研论文 + AI 周报 + 3Blue1Brown（每周日执行）
+description: Legacy disabled - use docs/agentic/tasks.md for current development
 ---
 
 # PKM: 每周智能摘要 (Weekly Digest)
 
-当用户说「周报」、「本周汇总」、「weekly digest」时，或每周日自动触发时执行。
+> [!CAUTION]
+> **Legacy 入口已停用。** 本文件仅保留作历史设计证据；不得执行下方任何 Vault 写入、追加、移动、全库读取或结构校验步骤。当前开发只遵循 `docs/agentic/README.md` 与 `docs/agentic/tasks.md`。
+
+当用户说「周报」、「本周汇总」、「weekly digest」时执行。现有调度配置为周日，但相关 Codex automation 当前为 `PAUSED`，本工作流不得自行启用或恢复调度。
 
 > [!IMPORTANT]
 > **产出暂存在 `30-Daily/Weekly/` 目录，不含 `[[wikilinks]]`。**
@@ -24,9 +27,9 @@ D:\anacoda\python.exe daily_fetch.py --raw-only
 
 ## Step 2: 收集本周日报
 
-读取 `D:\personal\Obsidian\30-Daily\AI-News\` 目录下本周（周一至周六）的所有 `AI-Daily-*.md` 文件，提取各日的精选内容。
+读取 `D:\personal\ObsidianVault\30-Daily\AI-News\` 目录下本周（周一至周六）的所有 `AI-Daily-*.md` 文件，提取各日的精选内容。
 
-同时读取 `D:\personal\Obsidian\00-Inbox\Raw-Daily-Feeds.md` 中的 arXiv 论文数据。
+同时读取 `D:\personal\ObsidianVault\00-Inbox\Raw-Daily-Feeds.md` 中的 arXiv 论文数据。
 
 ---
 
@@ -116,7 +119,7 @@ Write-Host "URL:   $($latest.link.href)"
 
 ## Step 4: 输出
 
-写入 `D:\personal\Obsidian\30-Daily\Weekly\AI-Weekly-{YYYY-MM-DD}.md`
+写入 `D:\personal\ObsidianVault\30-Daily\Weekly\AI-Weekly-{YYYY-MM-DD}.md`
 （**文件内不含任何 `[[wikilinks]]`，所有链接使用 `[标题](URL)` 格式**）：
 
 ```markdown
@@ -135,25 +138,43 @@ aliases: ["Weekly Digest YYYY-MM-DD"]
 
 ---
 
-## Step 5: 知识库健康检查（自动联动）
+## Step 5: Vault 结构校验（canonical validator）
+
+> 只有退出码为 `0`、最终 JSON 的 `pass=true` 且 `markdown_scanned > 0` 时，周报才能声明结构校验 PASS。
 
 // turbo
 ```powershell
-cd d:\personal\obsidian_workflow\pkm_workflow
-D:\anacoda\python.exe knowledge_health_check.py
+$validatorOutput = & 'D:\anacoda\python.exe' `
+  'D:\personal\ObsidianVault\99-System\知识库治理\_tools\validate_vault.py' `
+  --vault 'D:\personal\ObsidianVault' `
+  --config 'D:\personal\ObsidianVault\99-System\知识库治理\_config\vault-validation.json' `
+  --output-dir 'D:\personal\ObsidianVault\99-System\知识库治理\_qa' `
+  --label 'weekly-digest-open'
+
+$validatorExit = $LASTEXITCODE
+$validatorOutput | ForEach-Object { Write-Output $_ }
+if ($validatorExit -ne 0) {
+    throw "Vault validation failed with exit code $validatorExit; do not claim PASS or continue to Git/cleanup."
+}
+
+$validatorSummary = $validatorOutput | Select-Object -Last 1 | ConvertFrom-Json
+if (-not [bool]$validatorSummary.pass -or [int]$validatorSummary.markdown_scanned -le 0) {
+    throw "Validator contract failed; do not claim PASS or continue to Git/cleanup."
+}
 ```
 
 ---
 
-## Step 5: 清理并报告
+## Step 6: 非破坏性交接
 
-// turbo
-```powershell
-Remove-Item "D:\personal\Obsidian\00-Inbox\Raw-Daily-Feeds.md"
-```
+- 本工作流不自动暂存、提交、删除或清理文件。
+- validator FAIL 时立即停止，不得声明通过，也不得继续 Git 或清理动作。
+- `Raw-Daily-Feeds.md` 保留；删除需要另行显式授权。
 
 告知用户：
 - 周报已暂存至 `30-Daily/Weekly/AI-Weekly-{date}.md`
 - 包含：科研论文 2-3 篇 + AI 周报 + 3Blue1Brown 视频
-- 🩺 知识库健康检查已完成（报告位于 `40-MOC/lint-report-{date}.md`）
+- Vault 结构校验：{PASS/FAIL}；扫描 {N} 篇；errors {N}；warnings {N}；报告 {本次 validator 实际路径}
 - ⚠️ 不含 wikilinks，学习后运行 `/pkm-commit-daily` 收录
+
+禁止输出健康评分或 `/100`。PASS 只代表结构与链接门禁，不代表内容质量或知识深度。

@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta
 
+import pytest
+
+import knowledge_health_check
 import main
 from config_schema import PKMConfig, RssFeed, YouTubeChannel
 
@@ -22,7 +25,7 @@ def test_dedupe_items_removes_duplicate_guid_and_link():
     assert deduped[2]["title"] == "C"
 
 
-def test_archive_old_raw_feeds_moves_files_older_than_keep_days(tmp_path):
+def test_archive_old_raw_feeds_is_disabled_and_never_moves_files(tmp_path):
     vault = tmp_path / "vault"
     raw_dir = vault / "00-Inbox" / "Raw-Feeds"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -37,10 +40,24 @@ def test_archive_old_raw_feeds_moves_files_older_than_keep_days(tmp_path):
 
     archived = main._archive_old_raw_feeds(str(vault), keep_days=7)
 
-    assert archived == 1
-    assert not old_file.exists()
+    assert archived == 0
+    assert old_file.exists()
     assert fresh_file.exists()
-    assert (raw_dir / "archive" / old_file.name).exists()
+    assert not (raw_dir / "archive").exists()
+
+
+def test_legacy_main_entry_is_fail_closed_before_argument_dispatch():
+    import pytest
+
+    with pytest.raises(SystemExit) as error:
+        main.main()
+
+    assert error.value.code == 3
+
+
+def test_legacy_full_vault_validator_is_fail_closed_when_imported(capsys):
+    assert knowledge_health_check.run_validator() == 3
+    assert "outside the workflow read boundary" in capsys.readouterr().err
 
 
 def test_run_doctor_passes_without_network_when_config_and_vault_are_valid(monkeypatch, tmp_path):
@@ -85,7 +102,7 @@ def test_load_feed_cache_accepts_utf8_bom(monkeypatch, tmp_path):
     assert main.load_feed_cache() == {"a": "2099-01-01"}
 
 
-def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, tmp_path):
+def test_run_daily_fetch_does_not_write_an_underfilled_legacy_digest(monkeypatch, tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir(parents=True, exist_ok=True)
 
@@ -210,13 +227,10 @@ def test_run_daily_fetch_daily_only_outputs_single_digest_tmp_path(monkeypatch, 
 
     monkeypatch.setattr(main, "_write", fake_write)
 
-    report = main.run_daily_fetch(test_mode=False, raw_only=False, dry_run=False)
+    with pytest.raises(main.daily_curation.CurationPolicyError, match="requires 5 stories"):
+        main.run_daily_fetch(test_mode=False, raw_only=False, dry_run=False)
 
-    assert report["writes_ok"] == 1
-    assert len(written_paths) == 1
-    assert written_paths[0].startswith("30-Daily/AI-News/AI-Daily-")
-    assert not any(path.startswith("20-Sources/Papers/") for path in written_paths)
-    assert not any(path.startswith("20-Sources/Videos/") for path in written_paths)
+    assert written_paths == []
 
 
 def test_collect_items_raw_only_merges_rss_and_youtube(monkeypatch):

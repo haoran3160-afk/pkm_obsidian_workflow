@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from html import unescape
 from typing import Any
@@ -21,6 +22,9 @@ import requests
 from requests.adapters import HTTPAdapter
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from urllib3.util.retry import Retry
+
+from source_registry import SourceRegistry
+from workflow_contracts import FetchDiagnostic, FetchReasonCode, SourceHealth
 
 log = logging.getLogger("pkm.fetcher")
 
@@ -116,6 +120,53 @@ FEED_HEADERS = {
     "User-Agent": FULLTEXT_HEADERS["User-Agent"],
     "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.8",
 }
+
+
+def classify_fetch_result(
+    *,
+    entries_count: int,
+    status_code: int | None = None,
+    content_type: str = "",
+    bozo: bool = False,
+    exception: Exception | None = None,
+) -> FetchDiagnostic:
+    """Map transport/parser/yield outcomes to stable machine reason codes."""
+
+    if entries_count < 0:
+        raise ValueError("entries_count cannot be negative")
+    if isinstance(exception, requests.exceptions.Timeout):
+        reason = FetchReasonCode.TIMEOUT
+        retryable = True
+    elif isinstance(exception, requests.exceptions.SSLError):
+        reason = FetchReasonCode.SSL_ERROR
+        retryable = False
+    elif exception is not None:
+        reason = FetchReasonCode.NETWORK_ERROR
+        retryable = True
+    elif status_code == 404:
+        reason = FetchReasonCode.HTTP_404
+        retryable = False
+    elif (
+        entries_count == 0 and "html" in content_type.lower() and "xml" not in content_type.lower()
+    ):
+        reason = FetchReasonCode.HTML_NOT_FEED
+        retryable = False
+    elif bozo:
+        reason = FetchReasonCode.BOZO
+        retryable = True
+    elif entries_count == 0:
+        reason = FetchReasonCode.ZERO_YIELD
+        retryable = True
+    else:
+        reason = FetchReasonCode.OK
+        retryable = False
+    detail = exception.__class__.__name__ if exception is not None else ""
+    return FetchDiagnostic(
+        reason_code=reason,
+        retryable=retryable,
+        yield_count=entries_count,
+        detail=detail,
+    )
 
 
 def _build_http_session() -> requests.Session:
@@ -260,11 +311,21 @@ def _parse_feed_with_fallback(
     last_url = candidate_urls[0] if candidate_urls else ""
     parse_notes: list[str] = []
 
-    def _meta(mode: str, status: str = "ok") -> dict[str, Any]:
+    last_diagnostic = classify_fetch_result(entries_count=0)
+
+    def _meta(
+        mode: str,
+        status: str = "ok",
+        diagnostic: FetchDiagnostic | None = None,
+    ) -> dict[str, Any]:
+        selected = diagnostic or last_diagnostic
         return {
             "mode": mode,
             "status": status,
             "notes": "; ".join(parse_notes)[:320],
+            "reason_code": selected.reason_code.value,
+            "retryable": selected.retryable,
+            "yield_count": selected.yield_count,
         }
 
     if not candidate_urls:
@@ -275,6 +336,10 @@ def _parse_feed_with_fallback(
         try:
             parsed = _parse_feed(candidate_url)
         except Exception as exc:
+            last_diagnostic = classify_fetch_result(
+                entries_count=0,
+                exception=exc,
+            )
             parse_notes.append(f"direct-exception={candidate_url}:{exc}")
             log.warning(f"rss.parse.fail | feed={name} url={candidate_url} error={exc}")
             continue
@@ -286,9 +351,28 @@ def _parse_feed_with_fallback(
             parse_notes.append(f"bozo={candidate_url}:{direct_warning}")
         entries = list(getattr(parsed, "entries", []))
         if entries:
+            diagnostic = classify_fetch_result(
+                entries_count=len(entries),
+                bozo=bool(getattr(parsed, "bozo", False)),
+            )
             mode = "direct" if idx == 0 else "fallback-url"
             status = "warn" if direct_warning or idx > 0 else "ok"
-            return parsed, candidate_url, _meta(mode, status=status)
+            return (
+                parsed,
+                candidate_url,
+                _meta(
+                    mode,
+                    status=status,
+                    diagnostic=diagnostic,
+                ),
+            )
+        if getattr(parsed, "bozo", False):
+            last_diagnostic = classify_fetch_result(
+                entries_count=0,
+                bozo=True,
+            )
+        else:
+            last_diagnostic = classify_fetch_result(entries_count=0)
 
         # HTTP-content fallback for feeds that parse empty directly.
         try:
@@ -298,7 +382,13 @@ def _parse_feed_with_fallback(
                 timeout=FEED_REQUEST_TIMEOUT_SECONDS,
             )
             status_code = int(response.status_code)
+            content_type = response.headers.get("content-type", "")
             if status_code >= 400:
+                last_diagnostic = classify_fetch_result(
+                    entries_count=0,
+                    status_code=status_code,
+                    content_type=content_type,
+                )
                 parse_notes.append(f"http-status={candidate_url}:{status_code}")
             else:
                 parsed_http = feedparser.parse(response.content)
@@ -307,10 +397,34 @@ def _parse_feed_with_fallback(
                     parse_notes.append(f"http-bozo={candidate_url}:{bozo}")
                 http_entries = list(getattr(parsed_http, "entries", []))
                 if http_entries:
+                    diagnostic = classify_fetch_result(
+                        entries_count=len(http_entries),
+                        status_code=status_code,
+                        content_type=content_type,
+                        bozo=bool(getattr(parsed_http, "bozo", False)),
+                    )
                     mode = f"fallback-http-{status_code}"
                     status = "warn" if idx > 0 or direct_warning else "ok"
-                    return parsed_http, candidate_url, _meta(mode, status=status)
+                    return (
+                        parsed_http,
+                        candidate_url,
+                        _meta(
+                            mode,
+                            status=status,
+                            diagnostic=diagnostic,
+                        ),
+                    )
+                last_diagnostic = classify_fetch_result(
+                    entries_count=0,
+                    status_code=status_code,
+                    content_type=content_type,
+                    bozo=bool(getattr(parsed_http, "bozo", False)),
+                )
         except Exception as exc:
+            last_diagnostic = classify_fetch_result(
+                entries_count=0,
+                exception=exc,
+            )
             parse_notes.append(f"http-exception={candidate_url}:{exc}")
 
         if idx < len(candidate_urls) - 1:
@@ -561,6 +675,7 @@ def fetch_rss_feed(
     fetch_mode = str(fetch_meta.get("mode", "direct"))
     fetch_status = str(fetch_meta.get("status", "ok"))
     fetch_notes = str(fetch_meta.get("notes", ""))
+    fetch_reason = str(fetch_meta.get("reason_code", FetchReasonCode.NETWORK_ERROR.value))
     if fetch_mode != "direct":
         log.info(f"rss.fallback.used | feed={name} mode={fetch_mode} resolved_url={resolved_url}")
     if d is None:
@@ -574,7 +689,12 @@ def fetch_rss_feed(
             ]
             if x
         )
-        meta = {"status": "error", "detail": detail[:320], "mode": fetch_mode}
+        meta = {
+            "status": "error",
+            "detail": detail[:320],
+            "mode": fetch_mode,
+            "reason_code": fetch_reason,
+        }
         return ([], meta) if return_meta else []
 
     is_paper_feed = "arxiv" in resolved_url.lower() or "paperswithcode" in resolved_url.lower()
@@ -592,7 +712,12 @@ def fetch_rss_feed(
             ]
             if x
         )
-        meta = {"status": "warn", "detail": detail[:320], "mode": fetch_mode}
+        meta = {
+            "status": "warn",
+            "detail": detail[:320],
+            "mode": fetch_mode,
+            "reason_code": fetch_reason,
+        }
         return ([], meta) if return_meta else []
 
     results = []
@@ -726,7 +851,14 @@ def fetch_rss_feed(
         ]
         if x
     )
-    meta = {"status": status, "detail": detail[:320], "mode": fetch_mode}
+    if not results and fetch_reason == FetchReasonCode.OK.value:
+        fetch_reason = FetchReasonCode.ZERO_YIELD.value
+    meta = {
+        "status": status,
+        "detail": detail[:320],
+        "mode": fetch_mode,
+        "reason_code": fetch_reason,
+    }
     if return_meta:
         return results, meta
     return results
@@ -828,3 +960,155 @@ def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
 
     log.info(f"  [ok] {name}: {len(results)} videos (raw)")
     return results
+
+
+@dataclass(frozen=True)
+class LaneSourceResult:
+    source_id: str
+    lane: str
+    success: bool
+    items: list[dict[str, Any]]
+    reason_code: str
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True)
+class FetchLaneResult:
+    main_results: tuple[LaneSourceResult, ...]
+    probe_results: tuple[LaneSourceResult, ...]
+    skipped_disabled: tuple[str, ...]
+
+
+class FetchLaneRunner:
+    """Keep degraded probes outside the active source critical path."""
+
+    def __init__(
+        self,
+        *,
+        source_registry: SourceRegistry,
+        adapter_registry: Any,
+        per_source_timeout_seconds: float,
+    ) -> None:
+        if per_source_timeout_seconds <= 0:
+            raise ValueError("per_source_timeout_seconds must be positive")
+        self.source_registry = source_registry
+        self.adapter_registry = adapter_registry
+        self.per_source_timeout_seconds = per_source_timeout_seconds
+
+    def run(
+        self,
+        *,
+        configs: dict[str, dict[str, Any]],
+        cache: dict,
+        today: str,
+        at: datetime,
+    ) -> FetchLaneResult:
+        if at.tzinfo is None:
+            raise ValueError("at must be timezone-aware")
+        states = self.source_registry.list_sources()
+        missing_configs = [state.source_id for state in states if state.source_id not in configs]
+        if missing_configs:
+            raise ValueError("source configs are missing: " + ", ".join(missing_configs))
+
+        main_results: list[LaneSourceResult] = []
+        probe_results: list[LaneSourceResult] = []
+        disabled: list[str] = []
+
+        for state in states:
+            if not state.enabled:
+                disabled.append(state.source_id)
+                continue
+            if state.health is not SourceHealth.ACTIVE:
+                continue
+            result = self._dispatch(
+                source_id=state.source_id,
+                adapter=state.adapter,
+                config=configs[state.source_id],
+                cache=cache,
+                today=today,
+                lane="main",
+            )
+            self.source_registry.record_fetch_result(
+                state.source_id,
+                success=result.success,
+                occurred_at=at,
+                detail=result.reason_code,
+            )
+            main_results.append(result)
+
+        for state in states:
+            if not state.enabled or state.health is SourceHealth.ACTIVE:
+                continue
+            if not self.source_registry.probe_due(state.source_id, at=at):
+                continue
+            self.source_registry.mark_probe_started(
+                state.source_id,
+                occurred_at=at,
+            )
+            result = self._dispatch(
+                source_id=state.source_id,
+                adapter=state.adapter,
+                config=configs[state.source_id],
+                cache=cache,
+                today=today,
+                lane="probe",
+            )
+            self.source_registry.record_probe_result(
+                state.source_id,
+                success=result.success,
+                occurred_at=at,
+                detail=result.reason_code,
+            )
+            probe_results.append(result)
+
+        return FetchLaneResult(
+            main_results=tuple(main_results),
+            probe_results=tuple(probe_results),
+            skipped_disabled=tuple(disabled),
+        )
+
+    def _dispatch(
+        self,
+        *,
+        source_id: str,
+        adapter: str,
+        config: dict[str, Any],
+        cache: dict,
+        today: str,
+        lane: str,
+    ) -> LaneSourceResult:
+        started = time.monotonic()
+        try:
+            fetch = self.adapter_registry.get(adapter)
+            raw = fetch(
+                config,
+                cache,
+                today,
+                timeout_seconds=self.per_source_timeout_seconds,
+                probe=lane == "probe",
+            )
+            items = raw[0] if isinstance(raw, tuple) else raw
+            if not isinstance(items, list):
+                raise TypeError("fetch adapter must return a list or (list, meta)")
+            reason = FetchReasonCode.OK.value if items else FetchReasonCode.ZERO_YIELD.value
+            success = True
+        except Exception as exc:
+            items = []
+            if isinstance(
+                exc,
+                (TimeoutError, requests.exceptions.Timeout),
+            ):
+                reason = FetchReasonCode.TIMEOUT.value
+            elif isinstance(exc, requests.exceptions.SSLError):
+                reason = FetchReasonCode.SSL_ERROR.value
+            else:
+                reason = FetchReasonCode.NETWORK_ERROR.value
+            success = False
+        return LaneSourceResult(
+            source_id=source_id,
+            lane=lane,
+            success=success,
+            items=items,
+            reason_code=reason,
+            elapsed_seconds=time.monotonic() - started,
+        )

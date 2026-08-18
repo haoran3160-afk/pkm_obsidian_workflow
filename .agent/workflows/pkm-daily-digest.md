@@ -1,10 +1,13 @@
 ---
-description: PKM Daily Digest - local-parity AI & Growth curation workflow
+description: Legacy disabled - use docs/agentic/tasks.md for current development
 ---
 
 # PKM: 每日 AI & Growth Digest
 
-当用户说“每日抓取”“今日 AI 日报”“更新知识库”时，严格按这套工作流执行。  
+> [!CAUTION]
+> **Legacy 入口已停用。** 本文件仅保留作历史设计证据；不得执行下方任何 Vault 写入、追加或覆盖步骤。当前开发只遵循 `docs/agentic/README.md` 与 `docs/agentic/tasks.md`；轻量规格验收和用户批准完成前不得宣称已发布。
+
+当用户说“每日抓取”“今日 AI 日报”“更新知识库”时，严格按这套工作流执行。
 目标不是“把抓到的东西全都总结一遍”，而是输出一份和本地工作流尽量一致的日报，栏目固定为：
 
 - `Top 1`

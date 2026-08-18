@@ -5,6 +5,9 @@ hide:
 
 # PKM Obsidian Workflow
 
+> [!IMPORTANT]
+> 当前规范入口是 [Agentic Development Context](agentic/README.md)。项目正在按轻量化规格开发，现有生产入口仍保持 blocked；本页旧 UI/API 卡片与后续架构仅作历史索引，不代表受支持的运行面。
+
 本项目把 AI 资讯抓取、候选筛选、最终策展和 Vault 写入放进一条**本地优先**的 Obsidian 工作流。
 
 默认产出两层内容：
@@ -15,6 +18,9 @@ hide:
 它不是“抓更多 feed”，而是“每天稳定得到一份值得读的 AI 日报”。
 
 <div class="grid cards" markdown>
+
+- :fontawesome-solid-diagram-project: **[Current Agentic Spec](agentic/README.md)**
+  唯一事实源、轻量架构、开发任务和验收门。
 
 - :fontawesome-solid-bolt: **[Quickstart](quickstart.md)**  
   从安装、配置到第一次 dry-run，最短路径跑通。

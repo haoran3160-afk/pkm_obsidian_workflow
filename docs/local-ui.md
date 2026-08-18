@@ -1,5 +1,8 @@
 # Local UI Guide
 
+> [!CAUTION]
+> Legacy documentation only. Local UI 不在当前轻量产品范围，旧后端必须保持 fail-closed；不得运行本页命令。当前规范见 [agentic/README.md](agentic/README.md)。
+
 `ui_server.py` + `ui/` 提供了一个**本地单用户控制面板**。  
 它不替代 CLI，而是给现有工作流加上：
 

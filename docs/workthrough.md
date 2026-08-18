@@ -1,5 +1,8 @@
 ﻿# Obsidian Workflow Open 改造 Walkthrough
 
+> [!CAUTION]
+> 本文记录旧 formatter/fetcher 改造，不是当前实现指南。禁止运行其中的 `main.py` 命令；当前开发流程见 [agentic/development.md](agentic/development.md)。
+
 ## 1. 本次改造目标
 
 本轮改造聚焦三个问题：

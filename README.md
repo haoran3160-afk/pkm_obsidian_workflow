@@ -1,5 +1,11 @@
 # PKM Obsidian Workflow
 
+> [!IMPORTANT]
+> 当前唯一规范是 [Agentic Development Context](docs/agentic/README.md) 与 [轻量规格](docs/agentic/spec.md)。方向已从 v7.3 的 Rust/native 企业级资格路线收敛为“单一 Python orchestrator + 固定来源证据链 + 高风险双审 + `os.link` create-new 发布”。规格已可开发，但实现仍是 **shadow-only / production blocked**。
+
+> [!CAUTION]
+> 本警告以下的大部分 README 是 2.x/v7.3 以前的历史产品说明，不是可执行指南。不得运行旧 `main.py`、REST/UI writer、旧 Task installer 或把它们重新接入 Vault。当前只可运行 `scripts/run_workflow.py --doctor` / `--dry-run` 来确认阻断状态；实际开发从 [Current Goal](docs/agentic/goal.md) 开始，顺序见 [Implementation Tasks](docs/agentic/tasks.md)。
+
 > 一个面向 AI 信息获取、策展、沉淀的 Obsidian 本地优先工作流。  
 > 目标不是“抓更多”，而是每天稳定产出一份高信息密度、可执行、可回溯的 `AI Daily`。
 

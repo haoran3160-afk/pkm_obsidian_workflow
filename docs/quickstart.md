@@ -1,109 +1,47 @@
 # Quickstart
 
-这份指南把第一次跑通拆成两条路线：
+当前实现是 `shadow-only / production blocked`。本指南只用于建立开发环境和确认安全基线，不会写入 Obsidian。
 
-- `CLI-only`：只使用 Python 工作流
-- `Local UI`：启用本地控制面板
+开始前先读：
 
-## Prerequisites
+- [Agentic Development Context](agentic/README.md)
+- [Lightweight Specification](agentic/spec.md)
+- [Implementation Tasks](agentic/tasks.md)
 
+## 1. 环境
+
+- Windows
 - Python 3.10+
-- Node.js 20+（仅控制面板需要）
-- 一个可写的 Obsidian Vault
+- 仓库：`D:/Agent_programs/obsidian_workflow_open`
 
-## 1. Clone
+按仓库现有环境安装开发依赖；不要安装或启动旧 React/FastAPI UI，不要运行根目录 `main.py`。
 
-```bash
-git clone https://github.com/haoran3160-afk/pkm_obsidian_workflow.git
-cd pkm_obsidian_workflow
+## 2. 确认当前阻断
+
+```powershell
+cd D:\Agent_programs\obsidian_workflow_open
+.\.venv\Scripts\python.exe scripts\run_workflow.py --doctor --json
+.\.venv\Scripts\python.exe scripts\run_workflow.py --dry-run --workflow ai --json
 ```
 
-## 2. Install Python Dependencies
+在 M1 实现完成前，两条命令预期返回退出码 `3`，并明确包含 `BLOCKED`、`vault_write=false` 或等价信息。非零是当前正确行为。
 
-```bash
-pip install -r requirements.txt
+doctor 当前仍显示 native broker、AppContainer/WFP 等 v7.3 遗留 blocker。这反映的是现有代码尚未迁移，不表示轻量首发仍需完成这些重型组件；目标资格门以 [spec.md](agentic/spec.md) 为准。
+
+## 3. 运行开发验证
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider tests -q
+.\.venv\Scripts\python.exe -m ruff check src tests
+.\.venv\Scripts\python.exe -m mypy src/pkm_workflow
 ```
 
-如果你也要跑测试和静态检查：
+全历史测试仍包含要求旧覆盖写/旧路径的 retired expectations。开发 Agent 应完成 [tasks.md](agentic/tasks.md) 中的一个任务及其目标测试，不得通过重新启用旧行为来追求全历史绿色。
 
-```bash
-pip install -r requirements-dev.txt
-```
+## 4. 开始开发
 
-## 3. Configure `.env`
+[T1.1–T1.3a](agentic/tasks.md) 已完成；T1.3b 当前为 `BLOCKED_PREQUALIFICATION`，尚无可自动认领的后继 Goal。[Current Development Goal](agentic/goal.md) 仅记录已完成的 T1.3a，不能作为新的开发任务执行。待 T1.3b 的固定原生 Codex CLI、专用套餐登录与 Windows sandbox 预资格全部通过并由任务文档明确改为 `NEXT` 后，再按新 Goal 开始后续开发。
 
-- macOS / Linux: `cp .env.example .env`
-- PowerShell: `Copy-Item .env.example .env`
+## 5. 生产使用
 
-至少设置：
-
-```dotenv
-OBSIDIAN_VAULT_PATH=D:/path/to/your/Obsidian
-```
-
-如果你要启用最终文案精修：
-
-```dotenv
-PKM_ENABLE_LLM_DIGEST_COPY=1
-OPENAI_API_KEY=...
-PKM_CURATION_MODEL=gpt-5.4-mini
-PKM_CURATION_REASONING_EFFORT=medium
-```
-
-## 4. Run Doctor
-
-```bash
-python main.py --doctor --doctor-skip-network
-```
-
-如果这里不是 `OK`，先不要继续跑真实流程。
-
-## 5. Dry Run
-
-```bash
-python main.py --dry-run
-```
-
-预期：
-
-- 命令成功退出
-- 输出会显示将要写入的 `AI-Daily-YYYY-MM-DD.md`
-- 不会真的改动你的 Vault
-
-## 6. Real Run
-
-```bash
-python main.py
-```
-
-默认最终产物：
-
-- `00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md`
-- `30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md`
-
-## 7. Optional: Start the Local UI
-
-安装前端依赖：
-
-```bash
-npm install
-npm --prefix ui install
-```
-
-启动本地控制面板：
-
-```bash
-npm run dev:full
-```
-
-默认地址：
-
-- UI: `http://127.0.0.1:5173`
-- API: `http://127.0.0.1:8000`
-
-## Next
-
-- [Local UI Guide](local-ui.md)
-- [HTTP API](api.md)
-- [Workflow Walkthrough](workthrough.md)
-- [AI Daily Sample](sample_outputs/ai-daily-brief-sample.md)
+当前没有受支持的生产命令，也没有应当启用的新 Task。AI Daily 必须经过真实端到端 shadow、7 天内容验收、create-new publisher、Task/Obsidian 资格和用户明确批准后才可启用。

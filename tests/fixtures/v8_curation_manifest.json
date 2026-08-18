@@ -1,0 +1,33 @@
+{
+  "user_context": {
+    "schema_version": "7.3",
+    "contract_id": "synthetic-user-context-v8",
+    "projects": ["Obsidian PKM"],
+    "technical_environment": ["Windows", "Python"],
+    "priorities": [
+      {
+        "rank": 1,
+        "topics": ["Agent", "evals"]
+      },
+      {
+        "rank": 2,
+        "topics": ["model", "API"]
+      }
+    ],
+    "style": {
+      "language": "zh-CN",
+      "orientation": "engineering-decision-first",
+      "evidence_first": true,
+      "precision_over_recall": true,
+      "abstention_allowed": true
+    },
+    "prohibited_inferences": ["career_stage", "private_facts"],
+    "personalization_rule": "Cite an approved field or label the impact as general.",
+    "vault_inference_allowed": false
+  },
+  "expected_user_context_hash": "sha256:d758f96d2149c7f5602720c049045a2078afb766df7b552c0eb4f90a398c7ab6",
+  "feed": {
+    "published_at": "Mon, 17 Aug 2026 12:00:00 GMT",
+    "content": "Agent release improves coding evals."
+  }
+}

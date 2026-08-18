@@ -23,16 +23,15 @@ from pathlib import Path
 from typing import Any, cast
 
 import structlog
-from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
 import daily_curation
 import fetcher
+import fetcher_registry
 import formatter
 import llm_digest
 import state_schema
-import writer
 from config_schema import PKMConfig, load_and_validate
 
 # 鈹€鈹€ Console / Logging Setup 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -54,15 +53,15 @@ structlog.configure(
     ],
     wrapper_class=structlog.make_filtering_bound_logger(20),  # INFO level
     context_class=dict,
-    logger_factory=structlog.PrintLoggerFactory(
-        file=open(LOG_PATH, "a", encoding="utf-8")  # noqa: SIM115
-    ),
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
 )
 log = structlog.get_logger("pkm")
 
 # 鈹€鈹€ Load Config + Environment 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
-load_dotenv(SCRIPT_DIR / ".env")
+# The legacy module must not read credentials or mutate process environment at
+# import time.  The sealed v7.3 CLI owns environment construction.
+LEGACY_ENV_PATH = SCRIPT_DIR / ".env"
 
 CONFIG_PATH = SCRIPT_DIR / "pkm_config.json"
 CACHE_PATH = SCRIPT_DIR / "feed_cache.json"
@@ -224,12 +223,13 @@ def _collect_items(
         t0 = time.monotonic()
         rss_meta: dict[str, Any] = {"status": "ok", "detail": "", "mode": "direct"}
         try:
-            fetched = fetcher.fetch_rss_feed(
-                feed.model_dump(),
-                feed_cache,
-                today,
-                MAX_PAPERS,
-                raw_only,
+            fetched = fetcher_registry.dispatch_source(
+                adapter="rss",
+                config=feed.model_dump(),
+                cache=feed_cache,
+                today=today,
+                max_papers=MAX_PAPERS,
+                raw_only=raw_only,
                 quality_config=QUALITY_CONFIG,
                 return_meta=True,
             )
@@ -276,7 +276,16 @@ def _collect_items(
 
             t0 = time.monotonic()
             try:
-                videos = fetcher.fetch_youtube_channel_raw(channel.model_dump())
+                videos = cast(
+                    list[dict],
+                    fetcher_registry.dispatch_source(
+                        adapter="youtube_raw",
+                        config=channel.model_dump(),
+                        cache=feed_cache,
+                        today=today,
+                        max_videos=2,
+                    ),
+                )
                 ok = True
             except Exception as exc:
                 log.error("yt.fail", channel=channel.name, error=str(exc))
@@ -312,8 +321,15 @@ def _collect_items(
 
             t0 = time.monotonic()
             try:
-                videos = fetcher.fetch_youtube_channel(
-                    channel.model_dump(), feed_cache, today, MAX_VIDEOS
+                videos = cast(
+                    list[dict],
+                    fetcher_registry.dispatch_source(
+                        adapter="youtube",
+                        config=channel.model_dump(),
+                        cache=feed_cache,
+                        today=today,
+                        max_videos=MAX_VIDEOS,
+                    ),
                 )
                 ok = True
             except Exception as exc:
@@ -613,25 +629,12 @@ def _write(filepath: str, content: str, dry_run: bool = False) -> bool:
     if dry_run:
         console.print(f"  [dim cyan][dry-run][/] would write -> [bold]{filepath}[/]")
         return True
-
-    if WRITE_MODE == "disk":
-        return writer.write_to_obsidian_disk(VAULT_PATH, filepath, content)
-
-    if WRITE_MODE == "api":
-        api_base = os.getenv("OBSIDIAN_API_BASE", CONFIG.obsidian_api.base_url)
-        api_key = os.getenv("OBSIDIAN_API_KEY", CONFIG.obsidian_api.api_key)
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "text/markdown"}
-        return writer.write_via_api(api_base, filepath, content, headers, overwrite=True)
-
-    if WRITE_MODE == "both":
-        ok_disk = writer.write_to_obsidian_disk(VAULT_PATH, filepath, content)
-        api_base = os.getenv("OBSIDIAN_API_BASE", CONFIG.obsidian_api.base_url)
-        api_key = os.getenv("OBSIDIAN_API_KEY", CONFIG.obsidian_api.api_key)
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "text/markdown"}
-        ok_api = writer.write_via_api(api_base, filepath, content, headers, overwrite=True)
-        return ok_disk and ok_api
-
-    log.warning("write.dispatch.unknown_mode", mode=WRITE_MODE)
+    del content
+    log.error(
+        "write.dispatch.blocked",
+        path=filepath,
+        reason="legacy writer disabled; qualified native broker required",
+    )
     return False
 
 
@@ -792,10 +795,11 @@ def _backfill_digest_items(
         try:
             items = cast(
                 list[dict[str, Any]],
-                fetcher.fetch_rss_feed(
-                    feed.model_dump(),
-                    local_cache,
-                    today,
+                fetcher_registry.dispatch_source(
+                    adapter="rss",
+                    config=feed.model_dump(),
+                    cache=local_cache,
+                    today=today,
                     raw_only=False,
                     quality_config=backfill_quality,
                 ),
@@ -825,30 +829,10 @@ def _backfill_digest_items(
 
 
 def _archive_old_raw_feeds(vault_path: str, keep_days: int = 7) -> int:
-    if keep_days < 1:
-        return 0
-    raw_dir = Path(vault_path) / "00-Inbox" / "Raw-Feeds"
-    if not raw_dir.exists():
-        return 0
-    archive_dir = raw_dir / "archive"
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    cutoff_date = (datetime.now() - timedelta(days=keep_days)).date()
-    archived_count = 0
-    for raw_file in raw_dir.glob("Raw-Daily-Feeds-*.md"):
-        suffix = raw_file.stem.replace("Raw-Daily-Feeds-", "", 1)
-        try:
-            file_date = datetime.strptime(suffix, "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if file_date >= cutoff_date:
-            continue
-        target = archive_dir / raw_file.name
-        if target.exists():
-            ts = datetime.now().strftime("%H%M%S")
-            target = archive_dir / f"{raw_file.stem}-{ts}{raw_file.suffix}"
-        raw_file.replace(target)
-        archived_count += 1
-    return archived_count
+    """Legacy archive moves are prohibited by the project no-move contract."""
+    del vault_path, keep_days
+    log.warning("raw.archive.blocked", reason="no-delete/no-move v7.3 contract")
+    return 0
 
 
 # 鈹€鈹€ Run Report 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -1021,8 +1005,13 @@ def run_doctor(check_network: bool = True) -> bool:
     for feed in rss_feeds:
         if check_network:
             try:
-                parsed = fetcher._parse_feed(feed.url)
-                if len(getattr(parsed, "entries", [])) == 0:
+                entries = fetcher_registry.dispatch_source(
+                    adapter="rss_probe",
+                    config=feed.model_dump(),
+                    cache={},
+                    today=formatter.today_str(),
+                )
+                if len(cast(list[object], entries)) == 0:
                     warnings.append(f"[RSS] {feed.name}: reachable but returned 0 entries")
             except Exception as exc:
                 errors.append(f"[RSS] {feed.name}: connectivity failed ({exc})")
@@ -1035,8 +1024,13 @@ def run_doctor(check_network: bool = True) -> bool:
             warnings.append(f"[YouTube] {channel.name}: unusual channel_id '{channel.channel_id}'")
         if check_network:
             try:
-                parsed = fetcher._parse_youtube_feed(channel.channel_id)
-                if len(getattr(parsed, "entries", [])) == 0:
+                entries = fetcher_registry.dispatch_source(
+                    adapter="youtube_probe",
+                    config=channel.model_dump(),
+                    cache={},
+                    today=formatter.today_str(),
+                )
+                if len(cast(list[object], entries)) == 0:
                     warnings.append(f"[YouTube] {channel.name}: reachable but returned 0 entries")
             except Exception as exc:
                 errors.append(f"[YouTube] {channel.name}: connectivity failed ({exc})")
@@ -1109,10 +1103,41 @@ def run_daily_fetch(
     return report
 
 
+def run_registered_source_lanes(
+    *,
+    source_registry,
+    adapter_registry,
+    configs: dict[str, dict[str, Any]],
+    cache: dict,
+    today: str,
+    at: datetime,
+    per_source_timeout_seconds: float,
+) -> fetcher.FetchLaneResult:
+    """Canonical v3 ingest seam; legacy adapters must not own lane policy."""
+
+    return fetcher.FetchLaneRunner(
+        source_registry=source_registry,
+        adapter_registry=adapter_registry,
+        per_source_timeout_seconds=per_source_timeout_seconds,
+    ).run(
+        configs=configs,
+        cache=cache,
+        today=today,
+        at=at,
+    )
+
+
 # 鈹€鈹€ CLI 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def main() -> None:
+    console.print(
+        "[bold red]BLOCKED:[/] legacy main.py is disabled; "
+        "use scripts/run_workflow.py --doctor or --dry-run."
+    )
+    raise SystemExit(3)
+
+    # Retained below as historical implementation under the no-delete rule.
     parser = argparse.ArgumentParser(
         description="PKM Daily Workflow Orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1142,7 +1167,7 @@ def main() -> None:
     parser.add_argument(
         "--health-check",
         action="store_true",
-        help="Run knowledge base lint report generation (10-Notes -> 40-MOC)",
+        help="Delegate to the canonical full-Vault structural validator",
     )
     args = parser.parse_args()
 
@@ -1153,14 +1178,7 @@ def main() -> None:
     if args.health_check:
         import knowledge_health_check as khc
 
-        report_path, summary = khc.generate_report(Path(VAULT_PATH), max_items=30, write_log=True)
-        console.print(
-            f"[green]Health check done:[/] score={summary['score']}/100 "
-            f"critical={summary['critical']} warning={summary['warning']} "
-            f"suggestion={summary['suggestion']}"
-        )
-        console.print(f"[green]Report:[/] {report_path}")
-        raise SystemExit(0)
+        raise SystemExit(khc.run_validator(label="legacy-main-health-check"))
 
     if args.schedule:
         fetch_time = os.getenv("DAILY_FETCH_TIME", CONFIG.daily_fetch_time)

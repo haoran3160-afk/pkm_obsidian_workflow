@@ -1,8 +1,10 @@
+import pytest
+
 import daily_curation
 import formatter
 
 
-def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
+def test_format_daily_digest_raw_rejects_an_unverified_low_signal_batch():
     items = {
         "LangChain Blog": [
             {
@@ -19,18 +21,11 @@ def test_format_daily_digest_raw_includes_bucket_sections_and_scores():
         ],
     }
 
-    path, content = formatter.format_daily_digest(items, raw_only=True)
-
-    assert path.startswith("00-Inbox/Raw-Feeds/Raw-Daily-Feeds-")
-    assert "## AI 资讯分桶" in content
-    assert "### 前沿突破" in content
-    assert "Context engineering guide" in content
-    assert "https://example.com/a" in content
-    assert "## LangChain Blog" in content
-    assert "Unscored item" in content
+    with pytest.raises(formatter.FormatterQualityError, match="hard-signal ratio"):
+        formatter.format_daily_digest(items, raw_only=True)
 
 
-def test_format_daily_digest_final_mode_uses_curated_template():
+def test_format_daily_digest_final_mode_rejects_an_underfilled_candidate_set():
     items = {
         "OpenAI News": [
             {
@@ -58,19 +53,11 @@ def test_format_daily_digest_final_mode_uses_curated_template():
         ],
     }
 
-    path, content = formatter.format_daily_digest(items, raw_only=False)
-
-    assert path.startswith("30-Daily/AI-News/AI-Daily-")
-    assert 'title: "AI & Growth Digest - ' in content
-    assert "## 🔟 Top 1 - " in content
-    assert "### 深度 Takeaways" in content
-    assert "**来源**：" in content
-    assert "**行动启示**：" in content
-    assert "## 📺 今日视频 - " in content
-    assert "**频道**：" in content
+    with pytest.raises(formatter.FormatterQualityError, match="hard-signal ratio"):
+        formatter.format_daily_digest(items, raw_only=False)
 
 
-def test_format_daily_digest_merges_llm_override_with_stable_base_copy():
+def test_format_daily_digest_does_not_use_llm_copy_to_bypass_the_quality_gate():
     items = {
         "OpenAI News": [
             {
@@ -138,17 +125,13 @@ def test_format_daily_digest_merges_llm_override_with_stable_base_copy():
         solopreneur_story=("Google AI Blog", items["Google AI Blog"][0]),
     )
 
-    _, content = formatter.format_daily_digest(
-        items,
-        raw_only=False,
-        curation_plan=curation_plan,
-        digest_copy=llm_override,
-    )
-
-    assert "OpenAI 把桌面代理推进真实工作流入口" in content
-    assert "Chrome 开始把高频 Prompt 做成技能" in content
-    assert "## 🧠 洞见 - Chrome 开始把高频 Prompt 做成技能" in content
-    assert "## 🔟 Top 2 - " in content
+    with pytest.raises(formatter.FormatterQualityError, match="hard-signal ratio"):
+        formatter.format_daily_digest(
+            items,
+            raw_only=False,
+            curation_plan=curation_plan,
+            digest_copy=llm_override,
+        )
 
 
 def test_format_note_templates_cover_paper_and_video():
