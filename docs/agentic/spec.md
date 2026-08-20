@@ -37,7 +37,32 @@
 
 ### 1.3 外部服务
 
-- 不购买 API，不读取 DeepSeek key，不建立 DeepSeek 生产回退。
+- 生产路径不购买 API、不读取 DeepSeek key、不建立 DeepSeek 生产回退。
+- D-009 仅为 T1.3c 增加一次用户明确批准的 DeepSeek-V4-Flash shadow 资格例外：
+  固定从当前 Windows 用户 Credential Manager 的 `PKM/DeepSeek/shadow-v1` 读取凭据，
+  固定调用 `https://api.deepseek.com/chat/completions` 与
+  `deepseek-v4-flash` 非思考模式。它不接入 orchestrator、CLI、renderer、publisher、
+  Home/Status 或 Task，不具备生产资格，也不得成为 T1.3b 的自动或人工 fallback。
+- T1.3c 单次真实 smoke 最多 4 个 API 请求，Generator 与 Reviewer 是两个独立请求，
+  每次至多一次 schema repair；不得自动充值或切换其他模型/供应商。401、402、429、
+  5xx 与 timeout 均 fail-closed，不产生 accepted story、Markdown、Vault target 或成功
+  terminal。T1.3c 完成后，后续任务不得调用该 Provider，除非用户追加新的 decision。
+- D-009 binding 固定为 `TRANSPORT_SCHEMA_CONTRACT_ONLY`、`production_eligible=false`、
+  `fallback_eligible=false` 和 `SAME_PROVIDER_SAME_MODEL`。Generator 与 Reviewer 虽为 fresh
+  request，但不是独立供应商或独立模型验证；结果不得计入生产内容质量或冒充现有
+  Terra/Sol curation generation。
+- 每个请求固定 `max_tokens=4096`；sealed input ≤250,000 bytes、完整 HTTP request
+  ≤400,000 bytes、response ≤1,000,000 bytes；connect timeout ≤10 秒、T1.3c 应用层统一
+  deadline 30 秒。固定 DNS 解析在不持有凭据的 daemon resolver 中等待到 deadline；TCP、
+  TLS 与 HTTP 每阶段复用剩余时间，TLS 以 `api.deepseek.com` 为固定 SNI/hostname，验证成功
+  后才构造 Authorization。它不继承环境代理、`SSL_CERT_FILE`/`SSL_CERT_DIR`、
+  `SSLKEYLOGFILE`、redirect、HTTP debug 输出或自动 retry。该 Python shadow deadline 不替代
+  生产所需的 Job/process 级硬终止资格，不能据此解除生产阻断。
+- schema repair 只允许“已解析为单一 JSON object、无未知字段、无 tool/function/reasoning、
+  仅缺字段或字段类型/边界错误”的初次响应。非 JSON、多 JSON、重复 key、NaN/Infinity、
+  unknown field、HTTP/timeout 和 Reviewer decision/evidence/hash 语义不一致都不得 repair。
+  repair 必须保留原角色的完整安全 prompt，只追加冻结的窄修复指令；每次实际 prompt 与
+  request body 分别记录 hash，且不回传第一次坏输出。
 - Codex 使用用户现有套餐。非交互认证或套餐额度不可用时 fail-closed。
 - 不由工作流自动升级 Codex CLI；使用经过本机资格验证的固定版本。首个候选版本为 `0.147.0`，版本号本身不替代资格测试。
 - 首个候选模型为 Generator `gpt-5.6-terra`、Reviewer `gpt-5.6-sol`；模型变化必须创建新 policy generation，重跑受影响内容集和至少 3 个 shadow 日。

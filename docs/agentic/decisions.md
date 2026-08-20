@@ -118,3 +118,55 @@ Windows `read-only` sandbox、approval never、隔离 cwd、固定输入、Job O
   AppContainer/WFP/`danger-full-access`、让 T1.3 写 Vault/Task。
 - 最终仲裁：上述修订后 `APPROVED`，无剩余 P0/P1；T1.3a 可立即执行，T1.3b 继续
   `BLOCKED_PREQUALIFICATION`。
+
+## D-009 — DeepSeek-V4-Flash 一次性 Shadow Provider 例外
+
+状态：`ACCEPTED`（2026-08-20，用户明确批准）
+
+决定：在不改变 T1.3b Codex 路线的前提下，增加唯一可执行任务 T1.3c，用 DeepSeek
+官方 Chat Completions API 跑通一次真实 Generator → Reviewer qualification shadow。
+
+- Provider、base URL、endpoint、model、thinking mode 与 Credential Manager target
+  全部固定，调用方不能覆盖；实现只使用 Python 标准库。
+- 凭据只从当前 Windows 用户 Credential Manager 的 `PKM/DeepSeek/shadow-v1` 经
+  `CredReadW` 读取。禁止把 key 放入 `.env`、代码、argv、日志、异常、测试、fixture、
+  manifest、Git 或 ProviderResult。
+- 真实 smoke 总预算最多 4 个请求：Generator 与 Reviewer 各一个独立请求，每次最多
+  一次 schema repair。预算必须导入已有真实调用数，不得通过新建进程或 `RequestBudget`
+  归零；超过预算时在网络前拒绝。
+- 所有调用必须携带代码冻结且自哈希的 D-009 exception binding：scope 为
+  `TRANSPORT_SCHEMA_CONTRACT_ONLY`，`production_eligible=false`、
+  `fallback_eligible=false`、`independence_class=SAME_PROVIDER_SAME_MODEL`。该 binding
+  同时进入 Generator 与 Reviewer sealed request，调用方任一改动都在零网络阶段失败。
+- 只允许 `deepseek-v4-flash`、`thinking={"type":"disabled"}`、非 streaming JSON
+  response；请求不发送 `tools` 字段，响应出现 `tool_calls` 或 `function_call` 立即拒绝。
+- 单次请求固定 `max_tokens=4096`、sealed input 250,000 bytes、request 400,000 bytes、
+  response 1,000,000 bytes、connect 10 秒和应用层统一 deadline 30 秒。无凭据 resolver、
+  TCP、TLS、HTTP 共享剩余时间；只连接固定 host/path，使用 Windows ROOT store、TLS 1.2+、
+  固定 SNI 与 hostname verification，成功后才创建 Authorization。不读取环境代理或
+  `SSL_CERT_FILE`/`SSL_CERT_DIR`，不跟随 redirect，不启用 `SSLKEYLOGFILE`/HTTP debug，
+  不自动 retry。它不等同于生产 Job/process 级硬终止资格。
+- repair 是窄状态机：仅初次、单一、已解析 object 的纯结构缺失/类型/边界错误可进入；
+  unknown field、tool/function/reasoning、坏 JSON、HTTP、timeout 或 Reviewer 语义闭包失败
+  均单次终止。repair request 保留原角色完整安全 prompt、只追加冻结 repair 指令，不回传
+  第一次原始模型输出；每个实际 prompt 与 request body 都进入独立 hash 审计。
+- 401、402、429、5xx、timeout、坏 JSON、schema 不匹配和 review decision 不完整均
+  fail-closed；不充值、不切换供应商或其他模型。
+- 产物只能 create-new 写入
+  `D:/personal/obsidian_workflow-runtime/scratch/deepseek-shadow-{run_id}`，仅保存脱敏
+  hash、逻辑 request ID、供应商 envelope ID hash、execution/credential mode、usage、latency、
+  terminal、tool/schema-repair 标志，不保存原始响应 header、自由推理或 Key。真实资格产物
+  必须是 `DIRECT_FIXED_HTTPS + WINDOWS_CREDENTIAL_MANAGER`；测试替身结果不得冒充真实调用。
+- Provider 不接入 orchestrator、CLI、renderer、publisher、Home/Status、Task 或生产
+  activation closure；它不能成为 Codex 失败时的 fallback。T1.3b 继续
+  `BLOCKED_PREQUALIFICATION`。
+
+费用边界：用户只批准本次 smoke 的最多 4 个请求；不得检查余额后自动充值，不得因
+402 降级，任何后续真实调用都需要新的明确批准。
+
+解释边界：两个 fresh request 都是同一供应商、同一 `deepseek-v4-flash` 模型，只能证明
+transport/schema/review-contract qualification 可运行，不构成“双模型验证”或独立事实保障。
+
+退出条件：一次真实双请求链路、单元/静态/回归门、两轮独立对抗审查和仅任务文件 Git
+提交完成后，T1.3c 结束。代码作为审计资产保留，但后续任务不可达；若未来希望复用，
+必须新增 decision，重新评估费用、供应商相关错误、数据出境和生产资格。

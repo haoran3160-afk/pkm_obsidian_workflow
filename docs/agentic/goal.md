@@ -1,11 +1,138 @@
-# Completed Development Goal — T1.3a Deterministic Curation Contract
+# Current Development Goal — T1.3c DeepSeek Flash Shadow Provider
 
-状态：`DONE`（2026-08-18）
+状态：`DONE`（2026-08-20，shadow qualification 完成；生产保持阻断）
 
-目标编号：`T1.3a`
+目标编号：`T1.3c`
 
-本文件记录已经完成的 T1.3a 开发指令。当前没有可自动认领的后继 Goal；T1.3b 仍为
-`BLOCKED_PREQUALIFICATION`。不要调用 Codex、访问互联网、写 runtime/Vault 或启用生产。
+T1.3b 保持 `BLOCKED_PREQUALIFICATION`。本 Goal 只实现并验证 D-009 的一次性
+DeepSeek-V4-Flash shadow Provider，完成一条真实 Generator → Reviewer qualification
+链路；不得进入生产、fallback、Vault、Home/Status 或 Task。
+
+## T1.3c 公开 seam
+
+```python
+result = DeepSeekShadowProvider.invoke(
+    role,
+    sealed_request,
+    output_schema,
+    request_budget,
+)
+```
+
+`ProviderResult` 必须包含固定 provider/model、role、execution/credential mode、fresh
+逻辑 request ID、input/prompt-schedule/schema/每次实际 prompt/request-body/供应商 envelope
+ID/全部 raw-response hashes、validated structured result 及其 hash、token usage、latency、
+terminal classification 和 `secret_redacted=True`。structured result 每次读取都返回新的
+hash-bound copy。审计 serializer 只输出 hash 和允许的计量字段，不输出 structured result
+正文。它不得包含 Key、Authorization header、完整敏感响应头或自由推理。
+
+## T1.3c 冻结边界
+
+- API：`https://api.deepseek.com/chat/completions`。
+- model：`deepseek-v4-flash`；thinking：`disabled`；非 streaming JSON object。
+- 凭据：只由 `CredReadW` 读取固定 target `PKM/DeepSeek/shadow-v1`，不接受明文或自由
+  target；Provider 不能继承宿主 `OPENAI_API_KEY`、`DEEPSEEK_API_KEY` 或代理凭据。
+- Generator 与 Reviewer 是两个独立 HTTP 请求。Reviewer sealed request 的输入只能是
+  sealed evidence、Generator 已验证结构化结果和冻结 rubric。
+- 两个请求都必须携带自哈希 D-009 binding：`TRANSPORT_SCHEMA_CONTRACT_ONLY`、
+  `production_eligible=false`、`fallback_eligible=false`、`SAME_PROVIDER_SAME_MODEL`。
+  这证明 fresh session，不代表独立供应商/模型事实验证，也不能复用 Terra/Sol synthetic
+  policy 身份。
+- 请求 body 不发送 `tools`；响应出现 `tool_calls`、`function_call`、thinking content 或
+  未知结构字段时 fail-closed。
+- 固定上限：`max_tokens=4096`、sealed input 250,000 bytes、HTTP request 400,000 bytes、
+  response 1,000,000 bytes、connect 10 秒、应用层统一 deadline 30 秒；无凭据 resolver、
+  TCP、TLS、HTTP 共用剩余时间。只使用 Windows ROOT store、固定 SNI/hostname verification，
+  TLS 成功后才构造 Authorization；不使用环境代理/CA override、redirect、自动 retry、
+  HTTP debug 或 ambient TLS key logging。它不替代生产 Job/process 级硬终止资格。
+- 单次 invoke 最多一次 schema repair；共享 budget 对整个真实 smoke 最多允许 4 个网络
+  请求，并导入本次资格此前已消耗的真实请求，不能因进程重启归零。budget 不足、
+  credential 缺失或输入/schema 非法时网络调用次数为零。
+- repair 仅允许首次单一 JSON object 的纯结构缺失/类型/边界错误；unknown field、坏 JSON、
+  tool/function/reasoning、HTTP/timeout 与 Reviewer claim/evidence/hash 语义不一致都不可
+  repair。repair 保留原角色完整安全 prompt，只追加冻结的窄 repair 指令；不包含第一次
+  坏输出，并记录每次实际 prompt/request body hash。
+- 401=`AUTH_REQUIRED`；402=`INSUFFICIENT_BALANCE`；429=`RATE_LIMITED`；5xx=
+  `EXTERNAL_SERVICE_UNAVAILABLE`；timeout=`TIMEOUT`。不充值、不重试到其他模型/供应商。
+- 任意失败都不能生成 accepted story、Markdown、Vault target 或成功 terminal。
+
+## T1.3c 允许修改的 5 个文件
+
+1. `docs/agentic/spec.md`
+2. `docs/agentic/decisions.md`
+3. `docs/agentic/goal.md`
+4. `src/pkm_workflow/deepseek_provider.py`
+5. `tests/test_v8_deepseek_provider.py`
+
+不得纳入或修改其他现有 tracked/untracked 资产，不新增依赖，不删除、移动、重命名或
+覆盖文件。
+
+## T1.3c TDD 与验证
+
+测试只通过公开 seam，先红后绿，覆盖 credential 缺失、固定请求参数、调用方不可覆盖、
+HTTP/timeout 分类、严格 JSON/schema、tool/function 拒绝、fresh request ID、Reviewer
+输入白名单、所有 assertive claim decision 完整性、secret redaction、budget 与 repair
+上限、失败无发布产物。
+
+目标测试、Ruff、Mypy 和 T1.3a 相关回归全绿后，使用真实 Credential Manager 凭据运行
+一次 T1.3a synthetic fixture → Generator → 本地 schema/ReviewContract → Reviewer →
+review completeness 的 shadow。真实产物只能 create-new 写入：
+
+`D:/personal/obsidian_workflow-runtime/scratch/deepseek-shadow-{run_id}`
+
+报告只记录请求数、两个 request ID、usage、latency、hash、terminal、脱敏错误、
+tool_calls/schema-repair 标志。总请求不得超过 4。
+
+完成前进行两轮独立对抗审查，覆盖凭据泄露、费用失控、同供应商相关错误、prompt
+injection、schema repair 绕过、宿主环境继承和 shadow 误发布。P0/P1 必须修复；secret
+scan 与 tracked delete/rename 必须为零。只提交上述 5 个任务文件，建议提交信息：
+`feat: add temporary deepseek flash shadow provider`。
+
+## T1.3c 完成定义
+
+- 真实 Generator 与 Reviewer 均成功且 request ID 不同；所有 assertive claims 恰有一个
+  Reviewer decision，并通过现有 `ReviewContract` 绑定。
+- 真实请求总数 ≤4；没有 tool call、Key/Authorization 泄漏、schema repair 绕过、
+  生产发布或 Vault/Task 副作用。
+- 两轮独立审查无剩余 P0/P1；测试/静态/回归/secret/delete gates 全绿。
+- T1.3c 结束后 Provider 保留为不可自动调用的 shadow 审计资产；T1.3b 与生产仍 BLOCKED。
+
+## T1.3c 完成证据（2026-08-20）
+
+- 最终真实链路产物为
+  `D:/personal/obsidian_workflow-runtime/scratch/deepseek-shadow-5e323a4f2da344a9be348cf129b01c64/shadow-report.json`，
+  SHA-256 为
+  `sha256:cf7c19fa9241d571f231cadf0a3b00a0887fb5a1340e0ac06dec57a9cf5876b5`。
+  Generator 与 Reviewer 均为 `DIRECT_FIXED_HTTPS + WINDOWS_CREDENTIAL_MANAGER`、首次
+  `VALIDATED`、各 1 个请求、无 schema repair、无 tool call；16 个 assertive claim、
+  requirement 与 decision 的 ID set/hash 和 binding set/hash 全等，两个逻辑 request ID 与
+  provider envelope ID hash 均不同。
+- 本资格累计真实请求严格为 4/4：preliminary 2 次、最终 Generator/Reviewer 各 1 次，
+  final artifact 记录 `prior_used=2`、`current_dispatched=2`、`cumulative_used=4`、
+  `remaining=0`。preliminary 产物保留并标记 retired：
+  `D:/personal/obsidian_workflow-runtime/scratch/deepseek-shadow-ad4a738afc0d492687611988e43eec08/shadow-report.json`，
+  SHA-256 为
+  `sha256:05ce5f07210e688c4c66a61f7f3aafa288a2d5a37c4e0800ad9fe2e0cf4f9a2a`。
+- 最终调用后发现并修复了一个仅位于 schema 已失败分支的 nested unknown-field repair
+  分类漏洞。修复把失败路径单调收紧为不可 repair；真实两次首次成功路径不会调用该
+  classifier。修复前 5 文件 byte snapshot、精确 delta 与离线继承证明 create-new 保存在
+  `D:/personal/obsidian_workflow-runtime/scratch/deepseek-shadow-security-delta-ae83f5624e234836918609296012156e/`；
+  不追加 API 请求，不把修复前代码冒充最终代码。
+- `tests/test_v8_deepseek_provider.py` 共 132 项通过，目标模块 line+branch 覆盖率 90.49%；
+  T1.1→T1.3c 六模块 322 项通过；排除 7 个明确 retired legacy node 的生产测试门通过，
+  `src/pkm_workflow` 总 line+branch 覆盖率 93.37%。commit-tree Ruff、format check 与 CI
+  等价 Mypy（32 个 source files）均通过。
+- 最终报告是 canonical JSON，仅含脱敏 hash/计量/状态；未包含 raw body、message、
+  structured result 正文、Authorization 或 key。Provider 未接入 CLI/orchestrator/renderer/
+  publisher/Home/Status/Task，未写 Vault；T1.3b、fallback 与生产 activation 继续
+  `BLOCKED_PREQUALIFICATION`。
+- 已知非阻断残余仅限 shadow TCB：secret-echo 拒绝路径仍可保留不可逆 response/ID hash，
+  以及 TLS 成功后极罕见本地异常可能延迟 socket 回收。它们不暴露明文、不改变 fail-closed
+  结果，也不解除生产所需 Job/process 隔离与真实系统资格门。
+
+---
+
+## 历史 T1.3a Goal 归档（非当前可执行 Goal）
 
 ## 先读
 
