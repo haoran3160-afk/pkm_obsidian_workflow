@@ -175,7 +175,7 @@ fn unresolved_native_proofs_are_explicit_not_self_reported_booleans() {
             "PREFLIGHT_NETWORK_ENFORCEMENT_NOT_QUALIFIED",
             "APPCONTAINER_PROFILE_DIAGNOSTIC_NOT_RELEASE_BOUND",
             "APPCONTAINER_PROFILE_CRASH_RECOVERY_NOT_QUALIFIED",
-            "APPCONTAINER_CAPABILITY_READBACK_NOT_QUALIFIED",
+            "LPAC_TOKEN_DIAGNOSTIC_NOT_RELEASE_BOUND",
             "ZERO_NETWORK_CAPABILITY_LOOPBACK_SMOKE_NOT_QUALIFIED",
             "PROXY_PROCESS_IDENTITY_NOT_QUALIFIED",
             "PROXY_EXECUTION_NOT_IMPLEMENTED",
@@ -858,7 +858,6 @@ fn child_policy_canary_proves_the_os_rejects_a_real_child_creation_attempt() {
         receipt_hashes[0],
         file_sha256(std::path::Path::new(&receipt_paths[0]))
     );
-
     let rejected = Command::new(executable)
         .args(["diagnose-child-policy", "caller-selected-path"])
         .output()
@@ -939,5 +938,61 @@ fn wfp_policy_diagnostic_requires_elevation_before_any_os_mutation() {
         .args(["diagnose-wfp-policy", "caller-port"])
         .output()
         .expect("reject caller-controlled WFP arguments");
+    assert_eq!(rejected.status.code(), Some(2));
+}
+
+#[test]
+fn lpac_token_diagnostic_records_direct_readback_blocker_before_any_resume() {
+    let _guard = NATIVE_CHILD_TEST_LOCK
+        .lock()
+        .expect("native child test lock");
+    let executable = env!("CARGO_BIN_EXE_pkm-codex-qualifier");
+    let output = Command::new(executable)
+        .arg("diagnose-lpac-token")
+        .output()
+        .expect("run fixed LPAC token diagnosis");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("LPAC diagnostic UTF-8");
+    assert!(stdout.contains("\"terminal\":\"BLOCKED_LPAC_TOKEN_DIAGNOSTIC\""));
+    assert!(stdout.contains("\"blocker\":\"LPAC_DIRECT_TOKEN_READBACK_UNSUPPORTED\""));
+    assert!(stdout.contains("\"production\":false"));
+    assert!(stdout.contains("\"live\":false"));
+    assert!(stdout.contains("\"auth_materialized_by_launcher\":false"));
+    assert!(stdout.contains("\"network_requested\":false"));
+    assert!(stdout.contains("\"profile_created\":true"));
+    assert!(stdout.contains("\"child_created_suspended\":true"));
+    assert!(stdout.contains("\"child_resumed\":false"));
+    assert!(stdout.contains("\"lpac_attribute_accepted\":true"));
+    assert!(stdout.contains("\"job_membership_verified\":true"));
+    assert!(stdout.contains("\"child_process_restricted\":true"));
+    assert!(stdout.contains("\"token_is_appcontainer\":true"));
+    assert!(stdout.contains("\"token_is_lpac\":null"));
+    assert!(stdout.contains("\"lpac_direct_query_supported\":false"));
+    assert!(stdout.contains("\"capability_count\":0"));
+    assert!(stdout.contains("\"package_sid_match\":true"));
+    assert!(stdout.contains("\"descendants_zero\":true"));
+    assert!(stdout.contains("\"profile_deleted\":true"));
+    assert!(stdout.contains("\"receipt_sha256\":\"sha256:"));
+
+    let receipt_paths = json_string_values(&stdout, "receipt_path");
+    let receipt_hashes = json_string_values(&stdout, "receipt_sha256");
+    assert_eq!(receipt_paths.len(), 1);
+    assert_eq!(receipt_hashes.len(), 1);
+    assert_eq!(
+        receipt_hashes[0],
+        file_sha256(std::path::Path::new(&receipt_paths[0]))
+    );
+    let receipt = std::fs::read_to_string(&receipt_paths[0]).expect("read LPAC receipt");
+    assert!(receipt.contains("\"blocker\":\"LPAC_DIRECT_TOKEN_READBACK_UNSUPPORTED\""));
+    assert!(receipt.contains("\"token_is_lpac\":null"));
+    assert!(receipt.contains("\"lpac_direct_query_supported\":false"));
+    assert!(receipt.contains("\"profile_deleted\":true"));
+
+    let rejected = Command::new(executable)
+        .args(["diagnose-lpac-token", "caller-binary"])
+        .output()
+        .expect("reject caller-controlled LPAC arguments");
     assert_eq!(rejected.status.code(), Some(2));
 }

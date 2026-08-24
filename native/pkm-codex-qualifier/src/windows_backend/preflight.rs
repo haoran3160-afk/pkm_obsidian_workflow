@@ -9,20 +9,27 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetHandleInformation, GetLastError, SetHandleInformation, ERROR_ACCESS_DENIED,
-    ERROR_BAD_EXE_FORMAT, ERROR_ELEVATION_REQUIRED, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER,
-    ERROR_NOT_SUPPORTED, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_ABANDONED,
-    WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, GetHandleInformation, GetLastError, LocalFree, SetHandleInformation,
+    ERROR_ACCESS_DENIED, ERROR_BAD_EXE_FORMAT, ERROR_ELEVATION_REQUIRED, ERROR_INSUFFICIENT_BUFFER,
+    ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED, HANDLE,
+    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
+use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
 use windows_sys::Win32::Security::Cryptography::{
     BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
 };
-use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Security::Isolation::GetAppContainerFolderPath;
+use windows_sys::Win32::Security::{
+    GetTokenInformation, IsValidSid, TokenAppContainerSid, TokenCapabilities, TokenIsAppContainer,
+    TokenIsLessPrivilegedAppContainer, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES,
+    TOKEN_APPCONTAINER_INFORMATION, TOKEN_QUERY, TOKEN_QUERY_SOURCE,
+};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
     FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
     OPEN_EXISTING,
 };
+use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, JobObjectBasicAccountingInformation, QueryInformationJobObject,
     TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
@@ -31,14 +38,19 @@ use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::SystemServices::PROCESS_MITIGATION_CHILD_PROCESS_POLICY;
 use windows_sys::Win32::System::Threading::{
     CreateMutexW, CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
-    GetProcessMitigationPolicy, InitializeProcThreadAttributeList, ProcessChildProcessPolicy,
-    ReleaseMutex, ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
-    CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, DETACHED_PROCESS,
-    EXTENDED_STARTUPINFO_PRESENT, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+    GetProcessMitigationPolicy, InitializeProcThreadAttributeList, OpenProcessToken,
+    ProcessChildProcessPolicy, ReleaseMutex, ResumeThread, TerminateProcess,
+    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
+    CREATE_UNICODE_ENVIRONMENT, DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT,
+    LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY,
     PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-    PROC_THREAD_ATTRIBUTE_JOB_LIST, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    PROC_THREAD_ATTRIBUTE_JOB_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW,
 };
-use windows_sys::Win32::System::WindowsProgramming::PROCESS_CREATION_CHILD_PROCESS_RESTRICTED;
+use windows_sys::Win32::System::WindowsProgramming::{
+    PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT, PROCESS_CREATION_CHILD_PROCESS_RESTRICTED,
+};
 
 use super::{
     appcontainer_sid_bytes, appcontainer_sids_equal, create_qualified_job,
@@ -59,10 +71,22 @@ pub use helper::{
     NativeHelperJobEvent, NativeHelperProcessEvidence,
 };
 
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtQueryInformationToken(
+        token_handle: HANDLE,
+        token_information_class: windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS,
+        token_information: *mut core::ffi::c_void,
+        token_information_length: u32,
+        return_length: *mut u32,
+    ) -> i32;
+}
+
 const PREFLIGHT_SCRATCH_ROOT: &str = r"D:\personal\obsidian_workflow-runtime\scratch";
 const PREFLIGHT_RUN_PREFIX: &str = "codex-t13b-preflight-";
 const CHILD_POLICY_RUN_PREFIX: &str = "codex-t13b-child-policy-";
 const APPCONTAINER_PROFILE_RUN_PREFIX: &str = "codex-t13b-appcontainer-profile-";
+const LPAC_TOKEN_RUN_PREFIX: &str = "codex-t13b-lpac-token-";
 const WFP_POLICY_RUN_PREFIX: &str = "codex-t13b-wfp-policy-";
 const DIAGNOSTIC_RUN_PREFIXES: [&str; 4] = [
     "codex-t13b-diagnostic-a-",
@@ -211,6 +235,65 @@ pub struct NativeWfpPolicyDiagnosticResult {
     pub negative_matrix: bool,
     pub package_sid_sha256: Option<String>,
     pub wfp_policy_sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeLpacTokenDiagnosticResult {
+    pub exit_code: u8,
+    pub terminal: &'static str,
+    pub blocker: &'static str,
+    pub production: bool,
+    pub live: bool,
+    pub run_root: Option<PathBuf>,
+    pub receipt_path: Option<PathBuf>,
+    pub receipt_sha256: Option<String>,
+    pub package_sid_sha256: Option<String>,
+    pub canary_sha256: Option<String>,
+    pub profile_created: bool,
+    pub child_created_suspended: bool,
+    pub create_win32_error: Option<u32>,
+    pub child_resumed: bool,
+    pub lpac_attribute_accepted: bool,
+    pub job_membership_verified: bool,
+    pub child_process_restricted: bool,
+    pub token_is_appcontainer: bool,
+    pub token_is_lpac: Option<bool>,
+    pub lpac_direct_query_supported: bool,
+    pub capability_count: Option<u32>,
+    pub package_sid_match: bool,
+    pub descendants_zero: bool,
+    pub profile_deleted: bool,
+}
+
+impl NativeLpacTokenDiagnosticResult {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"profile_created\":{},\"child_created_suspended\":{},\"create_win32_error\":{},\"child_resumed\":{},\"lpac_attribute_accepted\":{},\"job_membership_verified\":{},\"child_process_restricted\":{},\"token_is_appcontainer\":{},\"token_is_lpac\":{},\"lpac_direct_query_supported\":{},\"capability_count\":{},\"package_sid_match\":{},\"descendants_zero\":{},\"profile_deleted\":{},\"package_sid_sha256\":{},\"canary_sha256\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
+            json_escape(self.terminal),
+            json_escape(self.blocker),
+            json_bool(self.production),
+            json_bool(self.live),
+            json_bool(self.profile_created),
+            json_bool(self.child_created_suspended),
+            json_u32_or_null(self.create_win32_error),
+            json_bool(self.child_resumed),
+            json_bool(self.lpac_attribute_accepted),
+            json_bool(self.job_membership_verified),
+            json_bool(self.child_process_restricted),
+            json_bool(self.token_is_appcontainer),
+            json_bool_or_null(self.token_is_lpac),
+            json_bool(self.lpac_direct_query_supported),
+            json_u32_or_null(self.capability_count),
+            json_bool(self.package_sid_match),
+            json_bool(self.descendants_zero),
+            json_bool(self.profile_deleted),
+            json_string_or_null(self.package_sid_sha256.as_deref()),
+            json_string_or_null(self.canary_sha256.as_deref()),
+            json_path_or_null(self.run_root.as_deref()),
+            json_path_or_null(self.receipt_path.as_deref()),
+            json_string_or_null(self.receipt_sha256.as_deref()),
+        )
+    }
 }
 
 impl NativeWfpPolicyDiagnosticResult {
@@ -1074,6 +1157,549 @@ impl Drop for ProcThreadAttributeList {
     }
 }
 
+struct LpacAttributeList {
+    _storage: Vec<usize>,
+    pointer: LPPROC_THREAD_ATTRIBUTE_LIST,
+    job: Box<HANDLE>,
+    child_policy: Box<u32>,
+    security_capabilities: Box<SECURITY_CAPABILITIES>,
+    all_application_packages_policy: Box<u32>,
+}
+
+impl LpacAttributeList {
+    fn create(
+        job: HANDLE,
+        package_sid: windows_sys::Win32::Security::PSID,
+    ) -> Result<Self, Blocker> {
+        validate_live_handle(job, "LPAC_JOB_HANDLE_INVALID")?;
+        if package_sid.is_null() {
+            return Err(Blocker::new(
+                Gate::AppContainerLpac,
+                "LPAC_PACKAGE_SID_MISSING",
+            ));
+        }
+        let mut bytes = 0usize;
+        // SAFETY: documented four-entry size query; bytes is writable.
+        let _ =
+            unsafe { InitializeProcThreadAttributeList(std::ptr::null_mut(), 4, 0, &mut bytes) };
+        if bytes == 0 {
+            return Err(Blocker::new(
+                Gate::ChildCreatedSuspended,
+                "LPAC_ATTRIBUTE_SIZE_FAILED",
+            ));
+        }
+        let mut storage = vec![0usize; bytes.div_ceil(std::mem::size_of::<usize>())];
+        let pointer = storage.as_mut_ptr().cast();
+        // SAFETY: storage is aligned and at least the queried byte length.
+        if unsafe { InitializeProcThreadAttributeList(pointer, 4, 0, &mut bytes) } == 0 {
+            return Err(Blocker::new(
+                Gate::ChildCreatedSuspended,
+                "LPAC_ATTRIBUTE_INIT_FAILED",
+            ));
+        }
+        let list = Self {
+            _storage: storage,
+            pointer,
+            job: Box::new(job),
+            child_policy: Box::new(PROCESS_CREATION_CHILD_PROCESS_RESTRICTED),
+            security_capabilities: Box::new(SECURITY_CAPABILITIES {
+                AppContainerSid: package_sid,
+                Capabilities: std::ptr::null_mut(),
+                CapabilityCount: 0,
+                Reserved: 0,
+            }),
+            all_application_packages_policy: Box::new(
+                PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT,
+            ),
+        };
+        list.update(
+            PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+            (&*list.job as *const HANDLE).cast(),
+            std::mem::size_of::<HANDLE>(),
+            "LPAC_JOB_LIST_ATTRIBUTE_FAILED",
+        )?;
+        list.update(
+            PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY as usize,
+            (&*list.child_policy as *const u32).cast(),
+            std::mem::size_of::<u32>(),
+            "LPAC_CHILD_POLICY_ATTRIBUTE_FAILED",
+        )?;
+        list.update(
+            PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+            (&*list.security_capabilities as *const SECURITY_CAPABILITIES).cast(),
+            std::mem::size_of::<SECURITY_CAPABILITIES>(),
+            "LPAC_SECURITY_CAPABILITIES_ATTRIBUTE_FAILED",
+        )?;
+        list.update(
+            PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY as usize,
+            (&*list.all_application_packages_policy as *const u32).cast(),
+            std::mem::size_of::<u32>(),
+            "LPAC_ALL_APPLICATION_PACKAGES_ATTRIBUTE_FAILED",
+        )?;
+        Ok(list)
+    }
+
+    fn update(
+        &self,
+        attribute: usize,
+        value: *const core::ffi::c_void,
+        size: usize,
+        code: &'static str,
+    ) -> Result<(), Blocker> {
+        // SAFETY: attribute list and backing values remain live through the
+        // process creation call.
+        if unsafe {
+            UpdateProcThreadAttribute(
+                self.pointer,
+                0,
+                attribute,
+                value,
+                size,
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            )
+        } == 0
+        {
+            return Err(Blocker::new(Gate::ChildCreatedSuspended, code));
+        }
+        Ok(())
+    }
+}
+
+impl Drop for LpacAttributeList {
+    fn drop(&mut self) {
+        if !self.pointer.is_null() {
+            // SAFETY: pointer was initialized once and is deleted once.
+            unsafe { DeleteProcThreadAttributeList(self.pointer) };
+        }
+    }
+}
+
+#[derive(Debug)]
+struct LpacTokenObservation {
+    is_appcontainer: bool,
+    is_lpac: Option<bool>,
+    direct_lpac_query_supported: bool,
+    capability_count: u32,
+    package_sid_match: bool,
+}
+
+#[derive(Debug)]
+struct LpacChildCreateFailure {
+    blocker: Blocker,
+    child_created_suspended: bool,
+    descendants_zero: bool,
+    lpac_attribute_accepted: bool,
+}
+
+impl LpacChildCreateFailure {
+    fn before_child(blocker: Blocker) -> Self {
+        Self {
+            blocker,
+            child_created_suspended: false,
+            descendants_zero: true,
+            lpac_attribute_accepted: false,
+        }
+    }
+
+    fn after_child(
+        blocker: Blocker,
+        descendants_zero: bool,
+        lpac_attribute_accepted: bool,
+    ) -> Self {
+        Self {
+            blocker,
+            child_created_suspended: true,
+            descendants_zero,
+            lpac_attribute_accepted,
+        }
+    }
+
+    fn profile_cleanup_allowed(&self) -> bool {
+        !self.child_created_suspended || self.descendants_zero
+    }
+}
+
+#[derive(Debug)]
+struct SuspendedLpacChild {
+    job: OwnedKernelHandle,
+    process: OwnedKernelHandle,
+    _thread: OwnedKernelHandle,
+    drained: bool,
+    child_process_policy_flags: u32,
+}
+
+impl SuspendedLpacChild {
+    fn create(
+        application_path: &Path,
+        runtime: &RuntimeAuthority,
+        environment_entries: &[(String, String)],
+        package_sid: windows_sys::Win32::Security::PSID,
+        create_win32_error: &mut Option<u32>,
+    ) -> Result<Self, LpacChildCreateFailure> {
+        let job = create_qualified_job().map_err(LpacChildCreateFailure::before_child)?;
+        let attributes = LpacAttributeList::create(job.0, package_sid)
+            .map_err(LpacChildCreateFailure::before_child)?;
+        // SAFETY: zero is the baseline; the attribute list supplies every
+        // security boundary and no standard handle inheritance is requested.
+        let mut startup: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
+        startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+        startup.lpAttributeList = attributes.pointer;
+        let application = wide_null(application_path.as_os_str());
+        let mut command_line =
+            wide_null(OsStr::new(&format!("\"{}\"", application_path.display())));
+        let current_directory = wide_null(runtime.run_root.as_os_str());
+        let environment = build_environment_block(environment_entries)
+            .map_err(LpacChildCreateFailure::before_child)?;
+        // SAFETY: zero is the output baseline.
+        let mut process_information: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: all buffers and the four-entry attribute list stay live for
+        // this synchronous call. The primary thread is never resumed here.
+        let created = unsafe {
+            CreateProcessW(
+                application.as_ptr(),
+                command_line.as_mut_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                CREATE_SUSPENDED
+                    | DETACHED_PROCESS
+                    | CREATE_UNICODE_ENVIRONMENT
+                    | EXTENDED_STARTUPINFO_PRESENT,
+                environment.as_ptr().cast(),
+                current_directory.as_ptr(),
+                &startup.StartupInfo as *const _,
+                &mut process_information,
+            )
+        };
+        let create_error = if created == 0 {
+            unsafe { GetLastError() }
+        } else {
+            0
+        };
+        if created == 0 {
+            *create_win32_error = Some(create_error);
+        }
+        if created == 0
+            || process_information.hProcess.is_null()
+            || process_information.hThread.is_null()
+        {
+            let child_observed = lpac_partial_child_observed(
+                created != 0,
+                !process_information.hProcess.is_null(),
+                !process_information.hThread.is_null(),
+            );
+            let partial_process = (!process_information.hProcess.is_null())
+                .then(|| OwnedKernelHandle(process_information.hProcess));
+            let _partial_thread = (!process_information.hThread.is_null())
+                .then(|| OwnedKernelHandle(process_information.hThread));
+            if let Some(process) = partial_process.as_ref() {
+                let direct_terminated =
+                    unsafe { TerminateProcess(process.0, PREFLIGHT_TERMINATE_EXIT) } != 0;
+                let job_terminated =
+                    unsafe { TerminateJobObject(job.0, PREFLIGHT_TERMINATE_EXIT) } != 0;
+                let wait = unsafe { WaitForSingleObject(process.0, 5_000) };
+                if !lpac_partial_cleanup_proven(direct_terminated, job_terminated, wait) {
+                    return Err(LpacChildCreateFailure::after_child(
+                        Blocker::new(Gate::JobDrained, "LPAC_PARTIAL_CREATE_DRAIN_UNPROVEN"),
+                        false,
+                        created != 0,
+                    ));
+                }
+            } else if child_observed {
+                return Err(LpacChildCreateFailure::after_child(
+                    Blocker::new(
+                        Gate::JobDrained,
+                        "LPAC_PARTIAL_CREATE_PROCESS_HANDLE_MISSING",
+                    ),
+                    false,
+                    created != 0,
+                ));
+            }
+            let blocker = create_process_blocker(create_error);
+            return Err(if child_observed {
+                LpacChildCreateFailure::after_child(blocker, true, created != 0)
+            } else {
+                LpacChildCreateFailure::before_child(blocker)
+            });
+        }
+        let mut child = Self {
+            job,
+            process: OwnedKernelHandle(process_information.hProcess),
+            _thread: OwnedKernelHandle(process_information.hThread),
+            drained: false,
+            child_process_policy_flags: 0,
+        };
+        let flags = match query_child_process_policy_flags(child.process.0) {
+            Ok(value) => value,
+            Err(error) => {
+                return match child.terminate_and_drain() {
+                    Ok(()) => Err(LpacChildCreateFailure::after_child(error, true, true)),
+                    Err(cleanup_error) => Err(LpacChildCreateFailure::after_child(
+                        cleanup_error,
+                        false,
+                        true,
+                    )),
+                };
+            }
+        };
+        child.child_process_policy_flags = flags;
+        let accounting = match query_job_accounting(&child.job, Gate::JobPrepared) {
+            Ok(value) => value,
+            Err(error) => {
+                return match child.terminate_and_drain() {
+                    Ok(()) => Err(LpacChildCreateFailure::after_child(error, true, true)),
+                    Err(cleanup_error) => Err(LpacChildCreateFailure::after_child(
+                        cleanup_error,
+                        false,
+                        true,
+                    )),
+                };
+            }
+        };
+        if flags != 1 || accounting.TotalProcesses != 1 || accounting.ActiveProcesses != 1 {
+            let blocker = Blocker::new(Gate::PrelaunchObserved, "LPAC_PRELAUNCH_READBACK_MISMATCH");
+            return match child.terminate_and_drain() {
+                Ok(()) => Err(LpacChildCreateFailure::after_child(blocker, true, true)),
+                Err(cleanup_error) => Err(LpacChildCreateFailure::after_child(
+                    cleanup_error,
+                    false,
+                    true,
+                )),
+            };
+        }
+        Ok(child)
+    }
+
+    fn observe_token(
+        &self,
+        expected_package_sid: windows_sys::Win32::Security::PSID,
+    ) -> Result<LpacTokenObservation, Blocker> {
+        let mut token = std::ptr::null_mut();
+        // SAFETY: process handle is live and token output is writable.
+        if unsafe { OpenProcessToken(self.process.0, TOKEN_QUERY | TOKEN_QUERY_SOURCE, &mut token) }
+            == 0
+            || token.is_null()
+        {
+            return Err(Blocker::new(
+                Gate::PrelaunchObserved,
+                "LPAC_PROCESS_TOKEN_OPEN_FAILED",
+            ));
+        }
+        let token = OwnedKernelHandle(token);
+        let is_appcontainer =
+            query_token_u32(token.0, TokenIsAppContainer, "LPAC_TOKEN_APP_QUERY_FAILED")?;
+        let direct_lpac = match query_token_u32(
+            token.0,
+            TokenIsLessPrivilegedAppContainer,
+            "LPAC_TOKEN_LPAC_QUERY_FAILED",
+        ) {
+            Ok(value) => Some(value == 1),
+            Err(error) if error.code == "LPAC_DIRECT_TOKEN_READBACK_UNSUPPORTED" => None,
+            Err(error) => return Err(error),
+        };
+        let capabilities = query_token_buffer(
+            token.0,
+            TokenCapabilities,
+            std::mem::size_of::<u32>(),
+            65_536,
+            "LPAC_TOKEN_CAPABILITIES_QUERY_FAILED",
+        )?;
+        // TOKEN_GROUPS begins with the exact DWORD count; zero capabilities
+        // means no following SID_AND_ATTRIBUTES entry may be consumed.
+        let capability_count = unsafe { *(capabilities.as_ptr().cast::<u32>()) };
+        let appcontainer = query_token_buffer(
+            token.0,
+            TokenAppContainerSid,
+            std::mem::size_of::<TOKEN_APPCONTAINER_INFORMATION>(),
+            4_096,
+            "LPAC_TOKEN_PACKAGE_SID_QUERY_FAILED",
+        )?;
+        if appcontainer.len() * std::mem::size_of::<usize>()
+            < std::mem::size_of::<TOKEN_APPCONTAINER_INFORMATION>()
+        {
+            return Err(Blocker::new(
+                Gate::PrelaunchObserved,
+                "LPAC_TOKEN_PACKAGE_SID_BUFFER_INVALID",
+            ));
+        }
+        let token_package_sid = unsafe {
+            (*(appcontainer
+                .as_ptr()
+                .cast::<TOKEN_APPCONTAINER_INFORMATION>()))
+            .TokenAppContainer
+        };
+        let package_sid_match = !token_package_sid.is_null()
+            && unsafe { IsValidSid(token_package_sid) } != 0
+            && !expected_package_sid.is_null()
+            && unsafe {
+                windows_sys::Win32::Security::EqualSid(token_package_sid, expected_package_sid) != 0
+            };
+        Ok(LpacTokenObservation {
+            is_appcontainer: is_appcontainer == 1,
+            is_lpac: direct_lpac,
+            direct_lpac_query_supported: direct_lpac.is_some(),
+            capability_count,
+            package_sid_match,
+        })
+    }
+
+    fn terminate_and_drain(&mut self) -> Result<(), Blocker> {
+        // SAFETY: the job is live and owns the still-suspended process.
+        if unsafe { TerminateJobObject(self.job.0, PREFLIGHT_TERMINATE_EXIT) } == 0 {
+            return Err(Blocker::new(
+                Gate::JobTerminated,
+                "LPAC_JOB_TERMINATE_FAILED",
+            ));
+        }
+        // SAFETY: process handle is live and bounded wait is fail-closed.
+        if unsafe { WaitForSingleObject(self.process.0, 5_000) } != WAIT_OBJECT_0 {
+            return Err(Blocker::new(Gate::JobDrained, "LPAC_PROCESS_WAIT_FAILED"));
+        }
+        let accounting = query_job_accounting(&self.job, Gate::JobDrained)?;
+        if accounting.TotalProcesses != 1 || accounting.ActiveProcesses != 0 {
+            return Err(Blocker::new(
+                Gate::JobDrained,
+                "LPAC_JOB_DRAIN_READBACK_MISMATCH",
+            ));
+        }
+        self.drained = true;
+        Ok(())
+    }
+}
+
+impl Drop for SuspendedLpacChild {
+    fn drop(&mut self) {
+        if !self.drained {
+            let _ = unsafe { TerminateJobObject(self.job.0, PREFLIGHT_TERMINATE_EXIT) };
+            let _ = unsafe { WaitForSingleObject(self.process.0, 5_000) };
+        }
+    }
+}
+
+fn lpac_partial_cleanup_proven(
+    direct_terminated: bool,
+    job_terminated: bool,
+    wait_result: u32,
+) -> bool {
+    (direct_terminated || job_terminated) && wait_result == WAIT_OBJECT_0
+}
+
+fn lpac_partial_child_observed(
+    create_reported_success: bool,
+    process_handle_present: bool,
+    thread_handle_present: bool,
+) -> bool {
+    create_reported_success || process_handle_present || thread_handle_present
+}
+
+fn query_token_u32(
+    token: HANDLE,
+    class: windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS,
+    code: &'static str,
+) -> Result<u32, Blocker> {
+    let mut value = 0u32;
+    let mut returned = 0u32;
+    // SAFETY: exact DWORD output buffer is writable for the requested class.
+    let queried = unsafe {
+        GetTokenInformation(
+            token,
+            class,
+            (&mut value as *mut u32).cast(),
+            std::mem::size_of::<u32>() as u32,
+            &mut returned,
+        )
+    };
+    if queried == 0 {
+        let error = unsafe { GetLastError() };
+        if class == TokenIsLessPrivilegedAppContainer && error == ERROR_INVALID_PARAMETER {
+            returned = 0;
+            // SAFETY: documented fixed-DWORD token query. This bypasses an
+            // older advapi32 information-class gate while using the same live
+            // handle and exact class directly against ntdll.
+            let status = unsafe {
+                NtQueryInformationToken(
+                    token,
+                    class,
+                    (&mut value as *mut u32).cast(),
+                    std::mem::size_of::<u32>() as u32,
+                    &mut returned,
+                )
+            };
+            classify_lpac_nt_query_status(status)?;
+        } else {
+            return Err(Blocker::new(Gate::PrelaunchObserved, code));
+        }
+    }
+    if returned != std::mem::size_of::<u32>() as u32 || value > 1 {
+        return Err(Blocker::new(Gate::PrelaunchObserved, code));
+    }
+    Ok(value)
+}
+
+fn classify_lpac_nt_query_status(status: i32) -> Result<(), Blocker> {
+    if status >= 0 {
+        return Ok(());
+    }
+    let code = match status as u32 {
+        0xC000_0002 | 0xC000_0003 | 0xC000_00BB => "LPAC_DIRECT_TOKEN_READBACK_UNSUPPORTED",
+        _ => "LPAC_TOKEN_NT_QUERY_FAILED",
+    };
+    Err(Blocker::new(Gate::PrelaunchObserved, code))
+}
+
+fn query_token_buffer(
+    token: HANDLE,
+    class: windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS,
+    minimum_bytes: usize,
+    maximum_bytes: usize,
+    code: &'static str,
+) -> Result<Vec<usize>, Blocker> {
+    let mut bytes = 0u32;
+    // SAFETY: documented size query with null output.
+    let first = unsafe { GetTokenInformation(token, class, std::ptr::null_mut(), 0, &mut bytes) };
+    if first != 0 || unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+        return Err(Blocker::new(Gate::PrelaunchObserved, code));
+    }
+    validate_token_buffer_length(bytes as usize, minimum_bytes, maximum_bytes)?;
+    let words = (bytes as usize).div_ceil(std::mem::size_of::<usize>());
+    let mut storage = vec![0usize; words];
+    let mut returned = 0u32;
+    // SAFETY: aligned storage has at least the size returned by the first call.
+    if unsafe {
+        GetTokenInformation(
+            token,
+            class,
+            storage.as_mut_ptr().cast(),
+            bytes,
+            &mut returned,
+        )
+    } == 0
+        || returned != bytes
+    {
+        return Err(Blocker::new(Gate::PrelaunchObserved, code));
+    }
+    Ok(storage)
+}
+
+fn validate_token_buffer_length(
+    bytes: usize,
+    minimum_bytes: usize,
+    maximum_bytes: usize,
+) -> Result<(), Blocker> {
+    if minimum_bytes == 0
+        || maximum_bytes < minimum_bytes
+        || bytes < minimum_bytes
+        || bytes > maximum_bytes
+    {
+        return Err(Blocker::new(
+            Gate::PrelaunchObserved,
+            "LPAC_TOKEN_BUFFER_LENGTH_INVALID",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct BoundedCapture {
     bytes: Vec<u8>,
@@ -1570,6 +2196,64 @@ fn query_child_process_policy_flags(process: HANDLE) -> Result<u32, Blocker> {
     Ok(unsafe { policy.Anonymous.Flags })
 }
 
+fn appcontainer_local_appdata(
+    package_sid: windows_sys::Win32::Security::PSID,
+) -> Result<String, Blocker> {
+    if package_sid.is_null() {
+        return Err(Blocker::new(
+            Gate::AppContainerLpac,
+            "LPAC_PACKAGE_SID_MISSING",
+        ));
+    }
+    let mut sid_text = std::ptr::null_mut();
+    // SAFETY: package SID is live and the output pointer is writable.
+    if unsafe { ConvertSidToStringSidW(package_sid, &mut sid_text) } == 0 || sid_text.is_null() {
+        return Err(Blocker::new(
+            Gate::AppContainerLpac,
+            "LPAC_PACKAGE_SID_STRING_FAILED",
+        ));
+    }
+    let sid_string = wide_pointer_to_string(sid_text, 512, "LPAC_PACKAGE_SID_STRING_INVALID");
+    // SAFETY: ConvertSidToStringSidW returns LocalFree-owned storage.
+    let _ = unsafe { LocalFree(sid_text.cast()) };
+    let sid_string = sid_string?;
+    let sid_wide = wide_null(OsStr::new(&sid_string));
+    let mut folder = std::ptr::null_mut();
+    // SAFETY: SID text is NUL-terminated and folder output is writable.
+    if unsafe { GetAppContainerFolderPath(sid_wide.as_ptr(), &mut folder) } < 0 || folder.is_null()
+    {
+        return Err(Blocker::new(
+            Gate::AppContainerLpac,
+            "LPAC_LOCALAPPDATA_QUERY_FAILED",
+        ));
+    }
+    let folder_string = wide_pointer_to_string(folder, 32_768, "LPAC_LOCALAPPDATA_INVALID");
+    // SAFETY: GetAppContainerFolderPath returns CoTaskMemFree-owned storage.
+    unsafe { CoTaskMemFree(folder.cast()) };
+    folder_string
+}
+
+fn wide_pointer_to_string(
+    pointer: *const u16,
+    limit: usize,
+    code: &'static str,
+) -> Result<String, Blocker> {
+    if pointer.is_null() || limit == 0 {
+        return Err(Blocker::new(Gate::AppContainerLpac, code));
+    }
+    let mut length = 0usize;
+    // SAFETY: callers provide a system-allocated NUL-terminated UTF-16
+    // string. Reads are bounded so malformed output fails closed.
+    while length < limit && unsafe { *pointer.add(length) } != 0 {
+        length += 1;
+    }
+    if length == 0 || length == limit {
+        return Err(Blocker::new(Gate::AppContainerLpac, code));
+    }
+    let units = unsafe { std::slice::from_raw_parts(pointer, length) };
+    String::from_utf16(units).map_err(|_| Blocker::new(Gate::AppContainerLpac, code))
+}
+
 fn build_environment_entries(runtime: &RuntimeAuthority) -> Result<Vec<(String, String)>, Blocker> {
     let codex_home = path_utf8(&runtime.codex_home, Gate::Manifest)?;
     let temp = path_utf8(&runtime.temp, Gate::Manifest)?;
@@ -1593,6 +2277,19 @@ fn build_environment_entries(runtime: &RuntimeAuthority) -> Result<Vec<(String, 
             "PREFLIGHT_ENVIRONMENT_INVALID",
         ));
     }
+    Ok(entries)
+}
+
+fn build_lpac_environment_entries(
+    runtime: &RuntimeAuthority,
+    package_sid: windows_sys::Win32::Security::PSID,
+) -> Result<Vec<(String, String)>, Blocker> {
+    let mut entries = build_environment_entries(runtime)?;
+    entries.push((
+        "LOCALAPPDATA".to_owned(),
+        appcontainer_local_appdata(package_sid)?,
+    ));
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(entries)
 }
 
@@ -2493,6 +3190,300 @@ pub fn run_native_appcontainer_profile_diagnostic() -> NativeAppContainerProfile
     result
 }
 
+pub fn run_native_lpac_token_diagnostic() -> NativeLpacTokenDiagnosticResult {
+    let mut result = NativeLpacTokenDiagnosticResult {
+        exit_code: 3,
+        terminal: "BLOCKED_LPAC_TOKEN_DIAGNOSTIC",
+        blocker: "LPAC_TOKEN_DIAGNOSTIC_EVIDENCE_INCOMPLETE",
+        production: false,
+        live: false,
+        run_root: None,
+        receipt_path: None,
+        receipt_sha256: None,
+        package_sid_sha256: None,
+        canary_sha256: None,
+        profile_created: false,
+        child_created_suspended: false,
+        create_win32_error: None,
+        child_resumed: false,
+        lpac_attribute_accepted: false,
+        job_membership_verified: false,
+        child_process_restricted: false,
+        token_is_appcontainer: false,
+        token_is_lpac: None,
+        lpac_direct_query_supported: false,
+        capability_count: None,
+        package_sid_match: false,
+        descendants_zero: false,
+        profile_deleted: false,
+    };
+    let maintenance = match MaintenanceMutex::acquire() {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let runtime = match RuntimeAuthority::create_with_prefix(LPAC_TOKEN_RUN_PREFIX) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.run_root = Some(runtime.run_root.clone());
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", runtime.run_id);
+    let sid = match create_zero_capability_profile(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.profile_created = true;
+    let sid_bytes = match appcontainer_sid_bytes(&sid) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let sid_sha256 = match crate::sha256_digest(&sid_bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.package_sid_sha256 = Some(sid_sha256.clone());
+    let environment = match build_lpac_environment_entries(&runtime, sid.0) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let qualifier_path = match std::env::current_exe() {
+        Ok(value) => value,
+        Err(_) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => "LPAC_QUALIFIER_PATH_UNAVAILABLE",
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let canary_path = match qualifier_path.parent() {
+        Some(parent) => parent.join("pkm-child-policy-canary.exe"),
+        None => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => "LPAC_CANARY_PARENT_UNAVAILABLE",
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    if std::fs::symlink_metadata(&canary_path)
+        .map(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+        .unwrap_or(true)
+    {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => "LPAC_CANARY_REPARSE_OR_MISSING",
+            Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+        };
+        return result;
+    }
+    let canary_file = match OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&canary_path)
+    {
+        Ok(value) => value,
+        Err(_) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => "LPAC_CANARY_OPEN_FAILED",
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let canary_identity = match file_id_from_handle(&canary_file, Gate::BinaryIdentity) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let canary_sha256 = match sha256_open_file(&canary_file, Gate::BinaryIdentity) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    if !(1..=2).contains(&canary_identity.2) || canary_identity.3 == 0 {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => "LPAC_CANARY_IDENTITY_INVALID",
+            Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+        };
+        return result;
+    }
+    if let Err(error) = verify_pe_file(&canary_file) {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => error.code,
+            Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+        };
+        return result;
+    }
+    result.canary_sha256 = Some(canary_sha256.clone());
+
+    let mut child = match SuspendedLpacChild::create(
+        &canary_path,
+        &runtime,
+        &environment,
+        sid.0,
+        &mut result.create_win32_error,
+    ) {
+        Ok(value) => value,
+        Err(failure) => {
+            result.child_created_suspended = failure.child_created_suspended;
+            result.lpac_attribute_accepted = failure.lpac_attribute_accepted;
+            result.descendants_zero = failure.descendants_zero;
+            if !failure.profile_cleanup_allowed() {
+                drop(sid);
+                result.blocker = failure.blocker.code;
+                return result;
+            }
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => failure.blocker.code,
+                Err(_) => "LPAC_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.child_created_suspended = true;
+    result.lpac_attribute_accepted = true;
+    result.job_membership_verified = true;
+    result.child_process_restricted = child.child_process_policy_flags == 1;
+
+    let reopened_matches = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&canary_path)
+        .and_then(|file| {
+            let identity = file_id_from_handle(&file, Gate::BinaryIdentity)
+                .map_err(|_| std::io::Error::other("identity"))?;
+            let sha256 = sha256_open_file(&file, Gate::BinaryIdentity)
+                .map_err(|_| std::io::Error::other("hash"))?;
+            Ok(identity == canary_identity && sha256 == canary_sha256)
+        })
+        .unwrap_or(false);
+    let observation = child.observe_token(sid.0);
+    if let Ok(value) = observation.as_ref() {
+        result.token_is_appcontainer = value.is_appcontainer;
+        result.token_is_lpac = value.is_lpac;
+        result.lpac_direct_query_supported = value.direct_lpac_query_supported;
+        result.capability_count = Some(value.capability_count);
+        result.package_sid_match = value.package_sid_match;
+    }
+    let drain = child.terminate_and_drain();
+    result.descendants_zero = child.drained;
+    drop(child);
+    if let Err(error) = drain {
+        // Without an exact zero-descendant proof, retain the restrictive
+        // AppContainer profile for operator reconciliation. Drop may retry
+        // Job termination, but a best-effort retry is not qualification proof.
+        drop(sid);
+        result.blocker = error.code;
+        return result;
+    }
+    let profile_delete = delete_profile(&profile_name);
+    if profile_delete.is_ok() {
+        result.profile_deleted = true;
+    }
+    drop(sid);
+    let maintenance_release = maintenance.release();
+
+    if profile_delete.is_err() {
+        result.blocker = "LPAC_PROFILE_FINAL_DELETE_FAILED";
+        return result;
+    }
+    if maintenance_release.is_err() {
+        result.blocker = "LPAC_MAINTENANCE_RELEASE_FAILED";
+        return result;
+    }
+    let observation = match observation {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    if !reopened_matches
+        || !observation.is_appcontainer
+        || observation.capability_count != 0
+        || !observation.package_sid_match
+        || !result.child_process_restricted
+        || !result.descendants_zero
+    {
+        result.blocker = "LPAC_TOKEN_READBACK_MISMATCH";
+        return result;
+    }
+    if observation.direct_lpac_query_supported && observation.is_lpac != Some(true) {
+        result.blocker = "LPAC_DIRECT_TOKEN_READBACK_MISMATCH";
+        return result;
+    }
+
+    result.blocker = if observation.direct_lpac_query_supported {
+        "LPAC_TOKEN_OBSERVED_NOT_RELEASE_BOUND"
+    } else {
+        "LPAC_DIRECT_TOKEN_READBACK_UNSUPPORTED"
+    };
+    let receipt_bytes = format!(
+        "{{\"schema\":\"pkm.codex.lpac-token-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_LPAC_TOKEN_DIAGNOSTIC\",\"blocker\":\"{}\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"package_sid_sha256\":\"{}\",\"canary_sha256\":\"{}\",\"canary_release_bound\":false,\"profile_created\":true,\"child_created_suspended\":true,\"child_resumed\":false,\"lpac_attribute_accepted\":true,\"job_membership_verified\":true,\"child_process_restricted\":true,\"token_is_appcontainer\":true,\"token_is_lpac\":{},\"lpac_direct_query_supported\":{},\"capability_count\":0,\"package_sid_match\":true,\"descendants_zero\":true,\"profile_deleted\":true}}\n",
+        result.blocker,
+        runtime.run_id,
+        json_escape(&runtime.run_root.to_string_lossy()),
+        sid_sha256,
+        canary_sha256,
+        json_bool_or_null(result.token_is_lpac),
+        json_bool(result.lpac_direct_query_supported),
+    )
+    .into_bytes();
+    let receipt = match create_new_artifact(
+        &runtime.run_root.join("lpac-token-diagnostic-receipt.json"),
+        &runtime.run_root_directory,
+        &receipt_bytes,
+        Gate::CleanupFinalized,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.receipt_path = Some(receipt.identity.path.clone());
+    result.receipt_sha256 = Some(receipt.identity.sha256.clone());
+    result
+}
+
 pub fn run_native_wfp_policy_diagnostic() -> NativeWfpPolicyDiagnosticResult {
     let mut result = NativeWfpPolicyDiagnosticResult {
         exit_code: 3,
@@ -2943,6 +3934,14 @@ const fn json_bool(value: bool) -> &'static str {
     }
 }
 
+const fn json_bool_or_null(value: Option<bool>) -> &'static str {
+    match value {
+        Some(true) => "true",
+        Some(false) => "false",
+        None => "null",
+    }
+}
+
 fn json_escape(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
@@ -3066,5 +4065,82 @@ mod tests {
                 "DIAGNOSTIC_SUMMARY_FAIL_CLOSED_CONTRACT_INVALID"
             ))
         );
+    }
+
+    #[test]
+    fn lpac_nt_query_only_classifies_exact_platform_statuses_as_unsupported() {
+        for status in [
+            0xC000_0002u32 as i32,
+            0xC000_0003u32 as i32,
+            0xC000_00BBu32 as i32,
+        ] {
+            assert_eq!(
+                classify_lpac_nt_query_status(status),
+                Err(Blocker::new(
+                    Gate::PrelaunchObserved,
+                    "LPAC_DIRECT_TOKEN_READBACK_UNSUPPORTED",
+                ))
+            );
+        }
+        for status in [0xC000_0008u32 as i32, 0xC000_0022u32 as i32] {
+            assert_eq!(
+                classify_lpac_nt_query_status(status),
+                Err(Blocker::new(
+                    Gate::PrelaunchObserved,
+                    "LPAC_TOKEN_NT_QUERY_FAILED",
+                ))
+            );
+        }
+        assert_eq!(classify_lpac_nt_query_status(0), Ok(()));
+    }
+
+    #[test]
+    fn partial_lpac_create_requires_termination_and_wait_evidence() {
+        assert!(lpac_partial_cleanup_proven(true, false, WAIT_OBJECT_0));
+        assert!(lpac_partial_cleanup_proven(false, true, WAIT_OBJECT_0));
+        assert!(!lpac_partial_cleanup_proven(false, false, WAIT_OBJECT_0));
+        assert!(!lpac_partial_cleanup_proven(true, true, WAIT_TIMEOUT));
+        assert!(!lpac_partial_child_observed(false, false, false));
+        assert!(lpac_partial_child_observed(false, true, false));
+        assert!(lpac_partial_child_observed(false, false, true));
+        assert!(lpac_partial_child_observed(false, true, true));
+        assert!(lpac_partial_child_observed(true, false, false));
+    }
+
+    #[test]
+    fn lpac_create_failure_preserves_observed_child_and_drain_state() {
+        let unproven = LpacChildCreateFailure::after_child(
+            Blocker::new(Gate::JobDrained, "INJECTED_DRAIN_FAILURE"),
+            false,
+            false,
+        );
+        assert!(unproven.child_created_suspended);
+        assert!(!unproven.descendants_zero);
+        assert!(!unproven.lpac_attribute_accepted);
+        assert!(!unproven.profile_cleanup_allowed());
+
+        let drained = LpacChildCreateFailure::after_child(
+            Blocker::new(Gate::PrelaunchObserved, "INJECTED_READBACK_FAILURE"),
+            true,
+            true,
+        );
+        assert!(drained.child_created_suspended);
+        assert!(drained.descendants_zero);
+        assert!(drained.lpac_attribute_accepted);
+        assert!(drained.profile_cleanup_allowed());
+    }
+
+    #[test]
+    fn token_buffer_lengths_are_class_bounded_before_allocation_or_cast() {
+        assert_eq!(validate_token_buffer_length(8, 4, 4096), Ok(()));
+        for (bytes, minimum, maximum) in [(0, 4, 4096), (3, 4, 4096), (4097, 4, 4096)] {
+            assert_eq!(
+                validate_token_buffer_length(bytes, minimum, maximum),
+                Err(Blocker::new(
+                    Gate::PrelaunchObserved,
+                    "LPAC_TOKEN_BUFFER_LENGTH_INVALID",
+                ))
+            );
+        }
     }
 }

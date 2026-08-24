@@ -73,11 +73,12 @@ use crate::{
 mod preflight;
 pub use preflight::{
     run_native_appcontainer_profile_diagnostic, run_native_child_policy_diagnostic,
-    run_native_helper_diagnostic, run_native_preflight, run_native_preflight_diagnostic,
-    run_native_wfp_policy_diagnostic, NativeAppContainerProfileDiagnosticResult,
-    NativeChildPolicyDiagnosticResult, NativeHelperDebugEvent, NativeHelperDiagnosticResult,
-    NativeHelperDiagnosticVariantResult, NativeHelperHomeChangeEvent, NativeHelperHomeEntry,
-    NativeHelperJobEvent, NativeHelperProcessEvidence, NativePreflightDiagnosticResult,
+    run_native_helper_diagnostic, run_native_lpac_token_diagnostic, run_native_preflight,
+    run_native_preflight_diagnostic, run_native_wfp_policy_diagnostic,
+    NativeAppContainerProfileDiagnosticResult, NativeChildPolicyDiagnosticResult,
+    NativeHelperDebugEvent, NativeHelperDiagnosticResult, NativeHelperDiagnosticVariantResult,
+    NativeHelperHomeChangeEvent, NativeHelperHomeEntry, NativeHelperJobEvent,
+    NativeHelperProcessEvidence, NativeLpacTokenDiagnosticResult, NativePreflightDiagnosticResult,
     NativePreflightDiagnosticVariantResult, NativePreflightResult, NativeWfpPolicyDiagnosticResult,
 };
 
@@ -243,7 +244,7 @@ pub fn native_static_blockers() -> Vec<Blocker> {
         ),
         Blocker::new(
             Gate::AppContainerLpac,
-            "APPCONTAINER_CAPABILITY_READBACK_NOT_QUALIFIED",
+            "LPAC_TOKEN_DIAGNOSTIC_NOT_RELEASE_BOUND",
         ),
         Blocker::new(
             Gate::AppContainerLpac,
