@@ -370,7 +370,7 @@ reconciliation、启动时枚举或 fresh-process phase-B，因此固定输出
 reconciliation 名称；广义 `APPCONTAINER_PROFILE_CRASH_RECOVERY_NOT_QUALIFIED` 与
 `MAINTENANCE_LOCK_LIFECYCLE_NOT_QUALIFIED` 继续保留，不能被本证据关闭。
 
-当前 create-new candidate 为
+本决定的首个 create-new candidate 为
 `D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-08`；
 qualifier SHA-256 `0cfb5646cbe307d498f083740d28c3d4ef2e978253661d8f7ed63cae4d7b2c56`，
 child-policy canary SHA-256 `a8316ad74c48dd4cf3cc25e91cc99186318aa8e351dc1a3f378a2b50c91cb469`，
@@ -382,3 +382,39 @@ build receipt SHA-256 `f4e541b5d685d96581600a9fc786a5e4f3e5968c10898c0b5346c52f4
 
 范围后果：本决定不授权 owner-crash recovery 标绿，不授权认证、网络、模型、Vault、Task 或
 发布；runtime 产物与 receipt 继续 create-new。
+
+## D-015 — Owner-process restart recovery 与 qualifier startup recovery 分开计证
+
+状态：`ACCEPTED`（2026-08-24，真实 Phase A kill + fresh Phase B）
+
+决定：固定 CLI `diagnose-appcontainer-owner-restart-recovery` 使用两个独立
+`ChildTransaction`/Job。Phase A owner process 必须在 profile mutation 前 create-new intent，
+写入 exact canonical bytes、flush 并 `FlushFileBuffers(file)`；随后创建 profile、flush READY，
+被 750ms Job deadline 强杀且证明 1→0。Phase B 是全新 process，只读取固定 run_id 对应的
+exact intent，删除残留、同名重建、比较 SID、最终删除，并 create-new+flush Phase-B receipt。
+Supervisor 不执行成功路径的 profile 恢复，只用 held read-only handles 验证 intent 与 Phase-B
+receipt 的 no-reparse、same-volume、parent/file ID、link_count=1、exact length/SHA/content，并把
+两份 identity 嵌入 overall receipt。测试最后按 run_id 独立 recreate→delete，证明 Phase B
+结束时 profile 不存在。
+
+失败语义：未证明 descendants=0 时不删除 profile并设置
+`profile_retained_for_recovery=true`；已 drain 后才调用 checked reconciliation delete，delete
+失败成为 primary blocker。Intent 只称 `file_flushed_and_observed`，固定输出
+`directory_metadata_durability_observed=false`；Phase B 由 supervisor 提供 run_id，固定输出
+`startup_intent_discovery_observed=false`；supervisor/qualifier 没有被杀，固定输出
+`qualifier_restart_recovery_observed=false`。因此本证据只允许
+`owner_process_restart_recovery_observed=true`，不能关闭广义 profile crash、maintenance/startup
+discovery 或 power-loss durability 门。
+
+当前 create-new candidate 为
+`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-09`；
+qualifier SHA-256 `9cdea7e3f148b8ddecac72f49795b5efda987d50c58c2e05b2b465f21f99903b`，
+child-policy canary SHA-256 `7aeac03c60db7c6de747496309f2f76bde300444366cebc13a476608308e9ca1`，
+recovery canary SHA-256 `b98d911fbe8c1ce154a42585620d053250ac05233fe694be76276578e9bbba99`，
+build receipt SHA-256 `0dc30f86cb52f30b566ebc32ae26fe1f9c9659a3a5b717d198b07262be3f282d`。
+14 项 source closure、三份 binary 与 Git `17ae296` 已绑定；build/签名、qualifier restart、
+startup discovery、directory durability、LPAC direct flag、elevated WFP、proxy/file trace 和用户
+批准仍是 blockers。
+
+范围后果：本决定不授权 production、认证、模型、网络、Vault、Task 或发布；intent 与两级
+receipt 永久 append-only 保留，不删除、不覆盖。

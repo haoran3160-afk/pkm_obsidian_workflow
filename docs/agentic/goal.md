@@ -43,7 +43,10 @@ AppContainer、零 capability、package SID exact；Job/child-policy/zero descen
 cleanup 通过。Windows 26100 的 direct LPAC token class 不受支持，因此 LPAC flag 仍是 null，
 不能标绿。Creator-kill reconciliation 也已证明 profile creator 被 Job kill 后，同一存活
 authority 可删除残留、重建并验证 SID；它明确不证明 owner/qualifier 整体崩溃后的 durable
-discovery 与 fresh-process recovery。非管理员 WFP 入口已证明先于任何系统 mutation 返回
+discovery 与 fresh-process recovery。随后 owner-process Phase A/Phase B 诊断又证明：intent
+file 先 flush、Phase A 被 kill、fresh Phase B 可读取 exact intent并完成恢复；但 qualifier
+restart、startup intent discovery 与 directory metadata/power-loss durability 仍明确为 false。
+非管理员 WFP 入口已证明先于任何系统 mutation 返回
 `ELEVATION_REQUIRED`。当前仍阻断在
 frozen candidate 未独立复现/签名、release-bound direct LPAC token/crash recovery、
 管理员 WFP 精确回读与网络负向矩阵、loopback proxy、文件 ETW、专用认证和真实双审。
