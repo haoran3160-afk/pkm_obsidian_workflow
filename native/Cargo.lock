@@ -10,6 +10,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkm-codex-qualifier"
+version = "0.1.0"
+dependencies = [
+ "windows-sys",
+]
+
+[[package]]
 name = "pkm-stage0"
 version = "7.3.0-alpha.1"
 dependencies = [

@@ -1,5 +1,5 @@
 [workspace]
-members = ["pkm-stage0", "pkm-broker"]
+members = ["pkm-stage0", "pkm-broker", "pkm-codex-qualifier"]
 resolver = "2"
 
 [workspace.package]
@@ -10,7 +10,19 @@ rust-version = "1.85"
 [workspace.dependencies]
 windows-sys = { version = "=0.59.0", features = [
     "Win32_Foundation",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
     "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Cryptography",
+    "Win32_Security_Isolation",
+    "Win32_Security_WinTrust",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_JobObjects",
+    "Win32_System_Pipes",
+    "Win32_System_Rpc",
+    "Win32_System_SystemServices",
     "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
 ] }
