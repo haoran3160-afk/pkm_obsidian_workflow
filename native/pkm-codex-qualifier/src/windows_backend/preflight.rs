@@ -88,6 +88,7 @@ const CHILD_POLICY_RUN_PREFIX: &str = "codex-t13b-child-policy-";
 const APPCONTAINER_PROFILE_RUN_PREFIX: &str = "codex-t13b-appcontainer-profile-";
 const LPAC_TOKEN_RUN_PREFIX: &str = "codex-t13b-lpac-token-";
 const APPCONTAINER_CREATOR_KILL_RUN_PREFIX: &str = "codex-t13b-appcontainer-creator-kill-";
+const APPCONTAINER_OWNER_RESTART_RUN_PREFIX: &str = "codex-t13b-appcontainer-owner-restart-";
 const WFP_POLICY_RUN_PREFIX: &str = "codex-t13b-wfp-policy-";
 const DIAGNOSTIC_RUN_PREFIXES: [&str; 4] = [
     "codex-t13b-diagnostic-a-",
@@ -106,8 +107,10 @@ const PREFLIGHT_SCHEMA: &[u8] = b"{}\n";
 const DIAGNOSTIC_VARIANT_DEADLINE: Duration = Duration::from_secs(10);
 const CHILD_POLICY_CANARY_DEADLINE: Duration = Duration::from_secs(10);
 const APPCONTAINER_CRASH_CANARY_DEADLINE: Duration = Duration::from_millis(750);
+const APPCONTAINER_OWNER_RECOVERY_DEADLINE: Duration = Duration::from_secs(5);
 const EXPECTED_APPCONTAINER_CRASH_CANARY_STDOUT: &str =
     "{\"terminal\":\"APPCONTAINER_PROFILE_CREATED_WAITING_FOR_KILL\",\"profile_created\":true}\n";
+const EXPECTED_APPCONTAINER_OWNER_RECOVERY_STDOUT: &str = "{\"terminal\":\"APPCONTAINER_OWNER_RESTART_RECOVERED\",\"intent_verified\":true,\"stale_profile_deleted\":true,\"recreate\":true,\"sid_stable\":true,\"final_delete\":true}\n";
 const EXPECTED_CHILD_POLICY_CANARY_STDOUT: &str = "{\"terminal\":\"CHILD_CREATION_BLOCKED_BY_POLICY\",\"child_creation_attempted\":true,\"child_creation_blocked\":true,\"win32_error\":367}\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -267,6 +270,124 @@ impl NativeAppContainerCreatorKillReconciliationDiagnosticResult {
             json_string_or_null(self.receipt_sha256.as_deref()),
         )
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
+    pub exit_code: u8,
+    pub terminal: &'static str,
+    pub blocker: &'static str,
+    pub production: bool,
+    pub live: bool,
+    pub run_root: Option<PathBuf>,
+    pub receipt_path: Option<PathBuf>,
+    pub receipt_sha256: Option<String>,
+    pub canary_sha256: Option<String>,
+    pub intent_artifact_sha256: Option<String>,
+    pub phase_b_artifact_sha256: Option<String>,
+    pub phase_a_intent_file_flushed_and_observed: bool,
+    pub phase_a_ready: bool,
+    pub phase_a_timed_out: bool,
+    pub phase_a_descendants_zero: bool,
+    pub phase_b_fresh_process: bool,
+    pub phase_b_intent_verified: bool,
+    pub phase_b_descendants_zero: bool,
+    pub phase_b_stale_profile_deleted: bool,
+    pub phase_b_recreate: bool,
+    pub phase_b_sid_stable: bool,
+    pub phase_b_final_delete: bool,
+    pub owner_process_restart_recovery_observed: bool,
+    pub qualifier_restart_recovery_observed: bool,
+    pub startup_intent_discovery_observed: bool,
+    pub directory_metadata_durability_observed: bool,
+    pub profile_retained_for_recovery: bool,
+    pub failure_cleanup_deleted_profile: bool,
+}
+
+impl NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"phase_a_intent_file_flushed_and_observed\":{},\"phase_a_ready\":{},\"phase_a_timed_out\":{},\"phase_a_descendants_zero\":{},\"phase_b_fresh_process\":{},\"phase_b_intent_verified\":{},\"phase_b_descendants_zero\":{},\"phase_b_stale_profile_deleted\":{},\"phase_b_recreate\":{},\"phase_b_sid_stable\":{},\"phase_b_final_delete\":{},\"owner_process_restart_recovery_observed\":{},\"qualifier_restart_recovery_observed\":{},\"startup_intent_discovery_observed\":{},\"directory_metadata_durability_observed\":{},\"profile_retained_for_recovery\":{},\"failure_cleanup_deleted_profile\":{},\"canary_sha256\":{},\"intent_artifact_sha256\":{},\"phase_b_artifact_sha256\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
+            json_escape(self.terminal),
+            json_escape(self.blocker),
+            json_bool(self.production),
+            json_bool(self.live),
+            json_bool(self.phase_a_intent_file_flushed_and_observed),
+            json_bool(self.phase_a_ready),
+            json_bool(self.phase_a_timed_out),
+            json_bool(self.phase_a_descendants_zero),
+            json_bool(self.phase_b_fresh_process),
+            json_bool(self.phase_b_intent_verified),
+            json_bool(self.phase_b_descendants_zero),
+            json_bool(self.phase_b_stale_profile_deleted),
+            json_bool(self.phase_b_recreate),
+            json_bool(self.phase_b_sid_stable),
+            json_bool(self.phase_b_final_delete),
+            json_bool(self.owner_process_restart_recovery_observed),
+            json_bool(self.qualifier_restart_recovery_observed),
+            json_bool(self.startup_intent_discovery_observed),
+            json_bool(self.directory_metadata_durability_observed),
+            json_bool(self.profile_retained_for_recovery),
+            json_bool(self.failure_cleanup_deleted_profile),
+            json_string_or_null(self.canary_sha256.as_deref()),
+            json_string_or_null(self.intent_artifact_sha256.as_deref()),
+            json_string_or_null(self.phase_b_artifact_sha256.as_deref()),
+            json_path_or_null(self.run_root.as_deref()),
+            json_path_or_null(self.receipt_path.as_deref()),
+            json_string_or_null(self.receipt_sha256.as_deref()),
+        )
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct OwnerRestartFailureProjection {
+    blocker: &'static str,
+    profile_retained_for_recovery: bool,
+    failure_cleanup_deleted_profile: bool,
+}
+
+fn project_owner_restart_failure(
+    primary_blocker: &'static str,
+    descendants_zero: bool,
+    deletion: Option<Result<bool, Blocker>>,
+) -> OwnerRestartFailureProjection {
+    if !descendants_zero {
+        return OwnerRestartFailureProjection {
+            blocker: primary_blocker,
+            profile_retained_for_recovery: true,
+            failure_cleanup_deleted_profile: false,
+        };
+    }
+    match deletion {
+        Some(Ok(deleted)) => OwnerRestartFailureProjection {
+            blocker: primary_blocker,
+            profile_retained_for_recovery: false,
+            failure_cleanup_deleted_profile: deleted,
+        },
+        Some(Err(cleanup_error)) => OwnerRestartFailureProjection {
+            blocker: cleanup_error.code,
+            profile_retained_for_recovery: true,
+            failure_cleanup_deleted_profile: false,
+        },
+        None => OwnerRestartFailureProjection {
+            blocker: "APPCONTAINER_OWNER_RESTART_CLEANUP_EVIDENCE_MISSING",
+            profile_retained_for_recovery: true,
+            failure_cleanup_deleted_profile: false,
+        },
+    }
+}
+
+fn apply_owner_restart_failure_cleanup(
+    result: &mut NativeAppContainerOwnerRestartRecoveryDiagnosticResult,
+    profile_name: &str,
+    descendants_zero: bool,
+    primary_blocker: &'static str,
+) {
+    let deletion = descendants_zero.then(|| delete_profile_if_present(profile_name));
+    let projection = project_owner_restart_failure(primary_blocker, descendants_zero, deletion);
+    result.blocker = projection.blocker;
+    result.profile_retained_for_recovery = projection.profile_retained_for_recovery;
+    result.failure_cleanup_deleted_profile = projection.failure_cleanup_deleted_profile;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -916,6 +1037,51 @@ fn create_new_artifact(
     let sha256 = sha256_open_file(&file, gate)?;
     if volume != parent_volume || link_count != 1 || length != bytes.len() as u64 {
         return Err(Blocker::new(gate, "ARTIFACT_IDENTITY_INVALID"));
+    }
+    Ok(CreatedArtifact {
+        identity: NtfsFileIdentity {
+            path: path.to_path_buf(),
+            volume_serial: volume,
+            file_id,
+            parent_file_id,
+            length,
+            sha256,
+            link_count,
+            creation_authority: FileCreationAuthority::NativeCreateNewOutput,
+        },
+        _file: file,
+    })
+}
+
+fn open_exact_create_new_artifact(
+    path: &Path,
+    parent: &File,
+    expected_bytes: &[u8],
+    gate: Gate,
+) -> Result<CreatedArtifact, Blocker> {
+    let file = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|_| Blocker::new(gate, "OBSERVED_ARTIFACT_OPEN_FAILED"))?;
+    let attributes = file
+        .metadata()
+        .map_err(|_| Blocker::new(gate, "OBSERVED_ARTIFACT_METADATA_FAILED"))?
+        .file_attributes();
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(Blocker::new(gate, "OBSERVED_ARTIFACT_REPARSE_FORBIDDEN"));
+    }
+    let (volume, file_id, link_count, length) = file_id_from_handle(&file, gate)?;
+    let (parent_volume, parent_file_id, _, _) = file_id_from_handle(parent, gate)?;
+    let sha256 = sha256_open_file(&file, gate)?;
+    let expected_sha256 = crate::sha256_digest(expected_bytes)?;
+    if volume != parent_volume
+        || link_count != 1
+        || length != expected_bytes.len() as u64
+        || sha256 != expected_sha256
+    {
+        return Err(Blocker::new(gate, "OBSERVED_ARTIFACT_IDENTITY_MISMATCH"));
     }
     Ok(CreatedArtifact {
         identity: NtfsFileIdentity {
@@ -3290,6 +3456,14 @@ pub fn run_native_appcontainer_creator_kill_reconciliation_diagnostic(
         "PKM_APPCONTAINER_CRASH_RUN_ID".to_owned(),
         runtime.run_id.clone(),
     ));
+    environment.push((
+        "PKM_APPCONTAINER_RECOVERY_MODE".to_owned(),
+        "CREATE".to_owned(),
+    ));
+    environment.push((
+        "PKM_APPCONTAINER_RUNTIME_KIND".to_owned(),
+        "CREATOR_KILL".to_owned(),
+    ));
     environment.sort_by(|left, right| left.0.cmp(&right.0));
     let qualifier_path = match std::env::current_exe() {
         Ok(value) => value,
@@ -3473,6 +3647,332 @@ pub fn run_native_appcontainer_creator_kill_reconciliation_diagnostic(
         &runtime
             .run_root
             .join("appcontainer-creator-kill-reconciliation-diagnostic-receipt.json"),
+        &runtime.run_root_directory,
+        &receipt_bytes,
+        Gate::CleanupFinalized,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.receipt_path = Some(receipt.identity.path.clone());
+    result.receipt_sha256 = Some(receipt.identity.sha256.clone());
+    result
+}
+
+pub fn run_native_appcontainer_owner_restart_recovery_diagnostic(
+) -> NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
+    let mut result = NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
+        exit_code: 3,
+        terminal: "BLOCKED_APPCONTAINER_OWNER_RESTART_RECOVERY_DIAGNOSTIC",
+        blocker: "APPCONTAINER_OWNER_RESTART_RECOVERY_EVIDENCE_INCOMPLETE",
+        production: false,
+        live: false,
+        run_root: None,
+        receipt_path: None,
+        receipt_sha256: None,
+        canary_sha256: None,
+        intent_artifact_sha256: None,
+        phase_b_artifact_sha256: None,
+        phase_a_intent_file_flushed_and_observed: false,
+        phase_a_ready: false,
+        phase_a_timed_out: false,
+        phase_a_descendants_zero: false,
+        phase_b_fresh_process: false,
+        phase_b_intent_verified: false,
+        phase_b_descendants_zero: false,
+        phase_b_stale_profile_deleted: false,
+        phase_b_recreate: false,
+        phase_b_sid_stable: false,
+        phase_b_final_delete: false,
+        owner_process_restart_recovery_observed: false,
+        qualifier_restart_recovery_observed: false,
+        startup_intent_discovery_observed: false,
+        directory_metadata_durability_observed: false,
+        profile_retained_for_recovery: false,
+        failure_cleanup_deleted_profile: false,
+    };
+    let maintenance = match MaintenanceMutex::acquire() {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let runtime = match RuntimeAuthority::create_with_prefix(APPCONTAINER_OWNER_RESTART_RUN_PREFIX)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.run_root = Some(runtime.run_root.clone());
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", runtime.run_id);
+    let qualifier_path = match std::env::current_exe() {
+        Ok(value) => value,
+        Err(_) => {
+            result.blocker = "APPCONTAINER_OWNER_RESTART_QUALIFIER_PATH_UNAVAILABLE";
+            return result;
+        }
+    };
+    let canary_path = match qualifier_path.parent() {
+        Some(parent) => parent.join("pkm-appcontainer-crash-canary.exe"),
+        None => {
+            result.blocker = "APPCONTAINER_OWNER_RESTART_CANARY_PARENT_UNAVAILABLE";
+            return result;
+        }
+    };
+    if std::fs::symlink_metadata(&canary_path)
+        .map(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+        .unwrap_or(true)
+    {
+        result.blocker = "APPCONTAINER_OWNER_RESTART_CANARY_REPARSE_OR_MISSING";
+        return result;
+    }
+    let canary_file = match OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&canary_path)
+    {
+        Ok(value) => value,
+        Err(_) => {
+            result.blocker = "APPCONTAINER_OWNER_RESTART_CANARY_OPEN_FAILED";
+            return result;
+        }
+    };
+    let canary_identity = match file_id_from_handle(&canary_file, Gate::BinaryIdentity) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let canary_sha256 = match sha256_open_file(&canary_file, Gate::BinaryIdentity) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    if !(1..=2).contains(&canary_identity.2) || canary_identity.3 == 0 {
+        result.blocker = "APPCONTAINER_OWNER_RESTART_CANARY_IDENTITY_INVALID";
+        return result;
+    }
+    if let Err(error) = verify_pe_file(&canary_file) {
+        result.blocker = error.code;
+        return result;
+    }
+    result.canary_sha256 = Some(canary_sha256.clone());
+    let command_line = format!("\"{}\"", canary_path.display());
+    let mut phase_a_environment = match build_environment_entries(&runtime) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    for (key, value) in [
+        ("PKM_APPCONTAINER_CRASH_RUN_ID", runtime.run_id.as_str()),
+        ("PKM_APPCONTAINER_RECOVERY_MODE", "CREATE"),
+        ("PKM_APPCONTAINER_RUNTIME_KIND", "OWNER_RESTART"),
+    ] {
+        phase_a_environment.push((key.to_owned(), value.to_owned()));
+    }
+    phase_a_environment.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut phase_a = match ChildTransaction::create(
+        &canary_path,
+        OsStr::new(&command_line),
+        &runtime,
+        &phase_a_environment,
+        CANONICAL_PREFLIGHT_POLICY,
+        ConsoleCreationMode::DetachedProcess,
+        APPCONTAINER_CRASH_CANARY_DEADLINE,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    if let Err(error) = phase_a.prepare_job_membership(CANONICAL_PREFLIGHT_POLICY) {
+        result.phase_a_descendants_zero = phase_a.drained;
+        result.blocker = error.code;
+        return result;
+    }
+    let phase_a_outcome = match phase_a.run() {
+        Ok(value) => value,
+        Err(error) => {
+            result.phase_a_descendants_zero = phase_a.drained;
+            apply_owner_restart_failure_cleanup(
+                &mut result,
+                &profile_name,
+                phase_a.drained,
+                error.code,
+            );
+            return result;
+        }
+    };
+    result.phase_a_ready = std::str::from_utf8(&phase_a_outcome.stdout.bytes).ok()
+        == Some(EXPECTED_APPCONTAINER_CRASH_CANARY_STDOUT);
+    result.phase_a_timed_out = phase_a_outcome.timed_out;
+    result.phase_a_descendants_zero = phase_a.drained;
+    let phase_a_valid = phase_a_outcome.timed_out
+        && phase_a.drained
+        && phase_a_outcome.total_processes == 1
+        && phase_a_outcome.active_processes == 0
+        && result.phase_a_ready
+        && phase_a_outcome.stderr.bytes.is_empty()
+        && !phase_a_outcome.stdout.overflow
+        && !phase_a_outcome.stderr.overflow;
+    drop(phase_a);
+    if !phase_a_valid {
+        let descendants_zero = result.phase_a_descendants_zero;
+        apply_owner_restart_failure_cleanup(
+            &mut result,
+            &profile_name,
+            descendants_zero,
+            "APPCONTAINER_OWNER_RESTART_PHASE_A_MISMATCH",
+        );
+        return result;
+    }
+    let expected_intent = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-intent.v1\",\"run_id\":\"{}\",\"profile_name\":\"{}\",\"phase\":\"PREPARED_BEFORE_PROFILE\"}}\n",
+        runtime.run_id, profile_name,
+    );
+    let intent_artifact = match open_exact_create_new_artifact(
+        &runtime.run_root.join("create-intent.json"),
+        &runtime.run_root_directory,
+        expected_intent.as_bytes(),
+        Gate::Manifest,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            apply_owner_restart_failure_cleanup(&mut result, &profile_name, true, error.code);
+            return result;
+        }
+    };
+    result.phase_a_intent_file_flushed_and_observed = true;
+    result.intent_artifact_sha256 = Some(intent_artifact.identity.sha256.clone());
+
+    let mut phase_b_environment = match build_environment_entries(&runtime) {
+        Ok(value) => value,
+        Err(error) => {
+            apply_owner_restart_failure_cleanup(&mut result, &profile_name, true, error.code);
+            return result;
+        }
+    };
+    for (key, value) in [
+        ("PKM_APPCONTAINER_CRASH_RUN_ID", runtime.run_id.as_str()),
+        ("PKM_APPCONTAINER_RECOVERY_MODE", "RECOVER"),
+        ("PKM_APPCONTAINER_RUNTIME_KIND", "OWNER_RESTART"),
+    ] {
+        phase_b_environment.push((key.to_owned(), value.to_owned()));
+    }
+    phase_b_environment.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut phase_b = match ChildTransaction::create(
+        &canary_path,
+        OsStr::new(&command_line),
+        &runtime,
+        &phase_b_environment,
+        CANONICAL_PREFLIGHT_POLICY,
+        ConsoleCreationMode::DetachedProcess,
+        APPCONTAINER_OWNER_RECOVERY_DEADLINE,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            apply_owner_restart_failure_cleanup(&mut result, &profile_name, true, error.code);
+            return result;
+        }
+    };
+    result.phase_b_fresh_process = true;
+    if let Err(error) = phase_b.prepare_job_membership(CANONICAL_PREFLIGHT_POLICY) {
+        result.phase_b_descendants_zero = phase_b.drained;
+        apply_owner_restart_failure_cleanup(
+            &mut result,
+            &profile_name,
+            phase_b.drained,
+            error.code,
+        );
+        return result;
+    }
+    let phase_b_outcome = match phase_b.run() {
+        Ok(value) => value,
+        Err(error) => {
+            result.phase_b_descendants_zero = phase_b.drained;
+            apply_owner_restart_failure_cleanup(
+                &mut result,
+                &profile_name,
+                phase_b.drained,
+                error.code,
+            );
+            return result;
+        }
+    };
+    result.phase_b_descendants_zero = phase_b.drained;
+    let phase_b_stdout = std::str::from_utf8(&phase_b_outcome.stdout.bytes).ok();
+    let expected_phase_b_receipt = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-phase-b.v1\",\"run_id\":\"{}\",\"intent_verified\":true,\"stale_profile_deleted\":true,\"recreate\":true,\"sid_stable\":true,\"final_delete\":true}}\n",
+        runtime.run_id,
+    );
+    let phase_b_artifact = open_exact_create_new_artifact(
+        &runtime.run_root.join("phase-b-recovery-receipt.json"),
+        &runtime.run_root_directory,
+        expected_phase_b_receipt.as_bytes(),
+        Gate::CleanupFinalized,
+    )
+    .ok();
+    result.phase_b_intent_verified = phase_b_artifact.is_some();
+    result.phase_b_artifact_sha256 = phase_b_artifact
+        .as_ref()
+        .map(|artifact| artifact.identity.sha256.clone());
+    let phase_b_valid = !phase_b_outcome.timed_out
+        && phase_b_outcome.exit_code == 0
+        && phase_b.drained
+        && phase_b_outcome.total_processes == 1
+        && phase_b_outcome.active_processes == 0
+        && phase_b_stdout == Some(EXPECTED_APPCONTAINER_OWNER_RECOVERY_STDOUT)
+        && phase_b_outcome.stderr.bytes.is_empty()
+        && !phase_b_outcome.stdout.overflow
+        && !phase_b_outcome.stderr.overflow
+        && result.phase_b_intent_verified;
+    drop(phase_b);
+    if !phase_b_valid {
+        let descendants_zero = result.phase_b_descendants_zero;
+        apply_owner_restart_failure_cleanup(
+            &mut result,
+            &profile_name,
+            descendants_zero,
+            "APPCONTAINER_OWNER_RESTART_PHASE_B_MISMATCH",
+        );
+        return result;
+    }
+    result.phase_b_stale_profile_deleted = true;
+    result.phase_b_recreate = true;
+    result.phase_b_sid_stable = true;
+    result.phase_b_final_delete = true;
+    result.owner_process_restart_recovery_observed = true;
+    if maintenance.release().is_err() {
+        result.blocker = "APPCONTAINER_OWNER_RESTART_MAINTENANCE_RELEASE_FAILED";
+        return result;
+    }
+    result.blocker = "APPCONTAINER_OWNER_RESTART_RECOVERY_OBSERVED_NOT_RELEASE_BOUND";
+    let receipt_bytes = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-recovery-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_APPCONTAINER_OWNER_RESTART_RECOVERY_DIAGNOSTIC\",\"blocker\":\"APPCONTAINER_OWNER_RESTART_RECOVERY_OBSERVED_NOT_RELEASE_BOUND\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"canary_sha256\":\"{}\",\"intent_artifact\":{},\"phase_b_artifact\":{},\"phase_a_intent_file_flushed_and_observed\":true,\"phase_a_ready\":true,\"phase_a_timed_out\":true,\"phase_a_descendants_zero\":true,\"phase_b_fresh_process\":true,\"phase_b_intent_verified\":true,\"phase_b_descendants_zero\":true,\"phase_b_stale_profile_deleted\":true,\"phase_b_recreate\":true,\"phase_b_sid_stable\":true,\"phase_b_final_delete\":true,\"owner_process_restart_recovery_observed\":true,\"qualifier_restart_recovery_observed\":false,\"startup_intent_discovery_observed\":false,\"directory_metadata_durability_observed\":false,\"profile_retained_for_recovery\":false,\"failure_cleanup_deleted_profile\":false}}\n",
+        runtime.run_id,
+        json_escape(&runtime.run_root.to_string_lossy()),
+        canary_sha256,
+        identity_json(Some(&intent_artifact.identity)),
+        identity_json(phase_b_artifact.as_ref().map(|artifact| &artifact.identity)),
+    )
+    .into_bytes();
+    let receipt = match create_new_artifact(
+        &runtime
+            .run_root
+            .join("appcontainer-owner-restart-recovery-diagnostic-receipt.json"),
         &runtime.run_root_directory,
         &receipt_bytes,
         Gate::CleanupFinalized,
@@ -4440,5 +4940,40 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn owner_restart_failure_cleanup_preserves_recovery_truth() {
+        assert_eq!(
+            project_owner_restart_failure("PRIMARY", false, None),
+            OwnerRestartFailureProjection {
+                blocker: "PRIMARY",
+                profile_retained_for_recovery: true,
+                failure_cleanup_deleted_profile: false,
+            }
+        );
+        assert_eq!(
+            project_owner_restart_failure("PRIMARY", true, Some(Ok(true))),
+            OwnerRestartFailureProjection {
+                blocker: "PRIMARY",
+                profile_retained_for_recovery: false,
+                failure_cleanup_deleted_profile: true,
+            }
+        );
+        assert_eq!(
+            project_owner_restart_failure(
+                "PRIMARY",
+                true,
+                Some(Err(Blocker::new(
+                    Gate::AppContainerRemoved,
+                    "CLEANUP_FAILED",
+                ))),
+            ),
+            OwnerRestartFailureProjection {
+                blocker: "CLEANUP_FAILED",
+                profile_retained_for_recovery: true,
+                failure_cleanup_deleted_profile: false,
+            }
+        );
     }
 }

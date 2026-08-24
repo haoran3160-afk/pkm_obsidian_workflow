@@ -1113,3 +1113,87 @@ fn appcontainer_creator_kill_reconciliation_cleans_a_real_profile() {
         .expect("reject caller-controlled reconciliation arguments");
     assert_eq!(rejected.status.code(), Some(2));
 }
+
+#[test]
+fn appcontainer_owner_restart_uses_flushed_intent_and_a_fresh_recovery_process() {
+    let _guard = NATIVE_CHILD_TEST_LOCK
+        .lock()
+        .expect("native child test lock");
+    let executable = env!("CARGO_BIN_EXE_pkm-codex-qualifier");
+    let output = Command::new(executable)
+        .arg("diagnose-appcontainer-owner-restart-recovery")
+        .output()
+        .expect("run fixed owner-restart recovery diagnosis");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("owner-restart diagnostic UTF-8");
+    for expected in [
+        "\"terminal\":\"BLOCKED_APPCONTAINER_OWNER_RESTART_RECOVERY_DIAGNOSTIC\"",
+        "\"blocker\":\"APPCONTAINER_OWNER_RESTART_RECOVERY_OBSERVED_NOT_RELEASE_BOUND\"",
+        "\"production\":false",
+        "\"live\":false",
+        "\"phase_a_intent_file_flushed_and_observed\":true",
+        "\"phase_a_ready\":true",
+        "\"phase_a_timed_out\":true",
+        "\"phase_a_descendants_zero\":true",
+        "\"phase_b_fresh_process\":true",
+        "\"phase_b_intent_verified\":true",
+        "\"phase_b_descendants_zero\":true",
+        "\"phase_b_stale_profile_deleted\":true",
+        "\"phase_b_recreate\":true",
+        "\"phase_b_sid_stable\":true",
+        "\"phase_b_final_delete\":true",
+        "\"owner_process_restart_recovery_observed\":true",
+        "\"qualifier_restart_recovery_observed\":false",
+        "\"startup_intent_discovery_observed\":false",
+        "\"directory_metadata_durability_observed\":false",
+        "\"profile_retained_for_recovery\":false",
+        "\"receipt_sha256\":\"sha256:",
+    ] {
+        assert!(stdout.contains(expected), "missing {expected}: {stdout}");
+    }
+    let receipt_paths = json_string_values(&stdout, "receipt_path");
+    let receipt_hashes = json_string_values(&stdout, "receipt_sha256");
+    assert_eq!(receipt_paths.len(), 1);
+    assert_eq!(receipt_hashes.len(), 1);
+    assert_eq!(
+        receipt_hashes[0],
+        file_sha256(std::path::Path::new(&receipt_paths[0]))
+    );
+
+    let receipt = std::fs::read_to_string(&receipt_paths[0]).expect("read owner-restart receipt");
+    let run_ids = json_string_values(&receipt, "run_id");
+    assert_eq!(run_ids.len(), 1);
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", run_ids[0]);
+    let profile_name = wide_null(std::ffi::OsStr::new(&profile_name));
+    let display_name = wide_null(std::ffi::OsStr::new("PKM owner-restart absence observer"));
+    let description = wide_null(std::ffi::OsStr::new(
+        "Independent recreate proves phase B left no profile",
+    ));
+    let mut sid = std::ptr::null_mut();
+    let create_status = unsafe {
+        CreateAppContainerProfile(
+            profile_name.as_ptr(),
+            display_name.as_ptr(),
+            description.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut sid,
+        )
+    };
+    assert_eq!(create_status, 0, "phase B left a registered profile");
+    assert!(!sid.is_null() && unsafe { IsValidSid(sid) } != 0);
+    let delete_status = unsafe { DeleteAppContainerProfile(profile_name.as_ptr()) };
+    let _ = unsafe { FreeSid(sid) };
+    assert_eq!(delete_status, 0, "owner-restart observer cleanup failed");
+
+    let rejected = Command::new(executable)
+        .args([
+            "diagnose-appcontainer-owner-restart-recovery",
+            "caller-intent",
+        ])
+        .output()
+        .expect("reject caller-controlled owner-restart arguments");
+    assert_eq!(rejected.status.code(), Some(2));
+}

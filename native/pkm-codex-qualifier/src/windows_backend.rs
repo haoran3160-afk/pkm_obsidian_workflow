@@ -73,10 +73,12 @@ use crate::{
 mod preflight;
 pub use preflight::{
     run_native_appcontainer_creator_kill_reconciliation_diagnostic,
+    run_native_appcontainer_owner_restart_recovery_diagnostic,
     run_native_appcontainer_profile_diagnostic, run_native_child_policy_diagnostic,
     run_native_helper_diagnostic, run_native_lpac_token_diagnostic, run_native_preflight,
     run_native_preflight_diagnostic, run_native_wfp_policy_diagnostic,
     NativeAppContainerCreatorKillReconciliationDiagnosticResult,
+    NativeAppContainerOwnerRestartRecoveryDiagnosticResult,
     NativeAppContainerProfileDiagnosticResult, NativeChildPolicyDiagnosticResult,
     NativeHelperDebugEvent, NativeHelperDiagnosticResult, NativeHelperDiagnosticVariantResult,
     NativeHelperHomeChangeEvent, NativeHelperHomeEntry, NativeHelperJobEvent,
