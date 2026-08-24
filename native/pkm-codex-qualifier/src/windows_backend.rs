@@ -1002,11 +1002,94 @@ const WFP_SUBLAYER_KEY: GUID = GUID::from_u128(0xf41baeb8_1706_4cab_91ad_6f7bb39
 
 struct WfpEngine(HANDLE);
 
+impl WfpEngine {
+    fn close(&mut self) -> Result<(), Blocker> {
+        self.close_with(|handle| {
+            // SAFETY: the dynamic engine handle remains owned by self for the
+            // duration of the synchronous close call.
+            unsafe { FwpmEngineClose0(handle) }
+        })
+    }
+
+    fn close_with<F>(&mut self, close: F) -> Result<(), Blocker>
+    where
+        F: FnOnce(HANDLE) -> u32,
+    {
+        if self.0.is_null() {
+            return Ok(());
+        }
+        // Ownership is cleared only after the close authority confirms
+        // success. Failure retains the exact handle for an explicit retry.
+        if close(self.0) != 0 {
+            return Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "WFP_ENGINE_CLOSE_FAILED",
+            ));
+        }
+        self.0 = std::ptr::null_mut();
+        Ok(())
+    }
+}
+
 impl Drop for WfpEngine {
     fn drop(&mut self) {
-        // SAFETY: dynamic engine handle is owned and closed once. Closing it
-        // removes every object created in this dynamic session.
-        let _ = unsafe { FwpmEngineClose0(self.0) };
+        // Best-effort process teardown remains fail-closed because an open
+        // dynamic session only preserves the restrictive filters. Qualified
+        // cleanup uses the checked close path before this destructor.
+        let _ = self.close();
+    }
+}
+
+struct WfpPolicyResource {
+    engine: Option<WfpEngine>,
+    filter_ids: [u64; 3],
+    cleanup_verified: bool,
+}
+
+impl WfpPolicyResource {
+    fn close_and_verify_with<C, F>(&mut self, close: C, verify: F) -> Result<(), Blocker>
+    where
+        C: FnOnce(&mut Option<WfpEngine>) -> Result<(), Blocker>,
+        F: FnOnce([u64; 3]) -> Result<(), Blocker>,
+    {
+        if self.cleanup_verified {
+            return Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "WFP_CLEANUP_ALREADY_VERIFIED",
+            ));
+        }
+        // Closing the dynamic session is the removal operation. A close error
+        // retains the owned handle and must not start absence verification.
+        // After a confirmed close, retain the exact filter IDs until an
+        // independent engine has proved both filters and the sublayer absent.
+        close(&mut self.engine)?;
+        verify(self.filter_ids)?;
+        self.cleanup_verified = true;
+        Ok(())
+    }
+
+    fn close_and_verify(&mut self) -> Result<(), Blocker> {
+        self.close_and_verify_with(
+            |engine_slot| {
+                if let Some(engine) = engine_slot.as_mut() {
+                    engine.close()?;
+                }
+                engine_slot.take();
+                Ok(())
+            },
+            verify_wfp_dynamic_cleanup,
+        )
+    }
+}
+
+impl std::fmt::Debug for WfpPolicyResource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WfpPolicyResource")
+            .field("engine_active", &self.engine.is_some())
+            .field("filter_count", &self.filter_ids.len())
+            .field("cleanup_verified", &self.cleanup_verified)
+            .finish()
     }
 }
 
@@ -1709,7 +1792,7 @@ pub struct NativeWindowsBackend {
     job: Option<OwnedKernelHandle>,
     binary_file: Option<VerifiedFile>,
     sealed_files: Vec<VerifiedFile>,
-    wfp_engine: Option<WfpEngine>,
+    wfp_policy: Option<WfpPolicyResource>,
     per_run_package_identity_qualified: bool,
     appcontainer_sid: Option<OwnedSid>,
     appcontainer_profile_name: Option<String>,
@@ -1727,7 +1810,7 @@ impl NativeWindowsBackend {
             job: None,
             binary_file: None,
             sealed_files: Vec::new(),
-            wfp_engine: None,
+            wfp_policy: None,
             per_run_package_identity_qualified: false,
             appcontainer_sid: None,
             appcontainer_profile_name: None,
@@ -1814,7 +1897,7 @@ impl IsolationBackend for NativeWindowsBackend {
     }
 
     fn install_wfp_policy(&mut self, plan: &QualificationPlan) -> Result<(), Blocker> {
-        if !self.proxy_attested || self.wfp_engine.is_some() {
+        if !self.proxy_attested || self.wfp_policy.is_some() {
             return Err(Blocker::new(
                 Gate::WfpTransaction,
                 "WFP_TRANSACTION_STATE_INVALID",
@@ -1824,13 +1907,21 @@ impl IsolationBackend for NativeWindowsBackend {
             .appcontainer_sid
             .as_ref()
             .ok_or_else(|| Blocker::new(Gate::WfpTransaction, "PACKAGE_SID_MISSING"))?;
-        let (engine, _filter_ids) = install_wfp_default_deny(sid.0, plan.proxy_port)?;
-        self.wfp_engine = Some(engine);
+        let (engine, filter_ids) = install_wfp_default_deny(sid.0, plan.proxy_port)?;
+        self.wfp_policy = Some(WfpPolicyResource {
+            engine: Some(engine),
+            filter_ids,
+            cleanup_verified: false,
+        });
         Ok(())
     }
 
     fn verify_file_boundary(&mut self, plan: &QualificationPlan) -> Result<(), Blocker> {
-        if self.wfp_engine.is_none() {
+        if !self
+            .wfp_policy
+            .as_ref()
+            .is_some_and(|policy| policy.engine.is_some() && !policy.cleanup_verified)
+        {
             return Err(Blocker::new(Gate::FileBoundary, "WFP_POLICY_NOT_ACTIVE"));
         }
         let sid = self
@@ -1928,7 +2019,11 @@ impl IsolationBackend for NativeWindowsBackend {
     }
 
     fn remove_wfp_policy(&mut self) -> Result<(), Blocker> {
-        self.wfp_engine.take();
+        let Some(policy) = self.wfp_policy.as_mut() else {
+            return Ok(());
+        };
+        policy.close_and_verify()?;
+        self.wfp_policy.take();
         Ok(())
     }
 
@@ -2014,5 +2109,107 @@ mod tests {
         assert!(!wfp_condition_matches(&wrong_type, &expected));
         let wrong_value = uint16_condition(FWPM_CONDITION_IP_REMOTE_PORT, 43_118);
         assert!(!wfp_condition_matches(&wrong_value, &expected));
+    }
+
+    #[test]
+    fn wfp_resource_retains_ids_until_post_drop_cleanup_is_verified() {
+        let filter_ids = [11, 22, 33];
+        let mut resource = WfpPolicyResource {
+            engine: Some(WfpEngine(std::ptr::null_mut())),
+            filter_ids,
+            cleanup_verified: false,
+        };
+
+        let verify_called = std::cell::Cell::new(false);
+        let failed_close = resource.close_and_verify_with(
+            |engine| {
+                assert!(engine.is_some());
+                Err(Blocker::new(
+                    Gate::WfpPolicyRemoved,
+                    "INJECTED_WFP_ENGINE_CLOSE_FAILURE",
+                ))
+            },
+            |_observed| {
+                verify_called.set(true);
+                Ok(())
+            },
+        );
+        assert_eq!(
+            failed_close,
+            Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "INJECTED_WFP_ENGINE_CLOSE_FAILURE",
+            ))
+        );
+        assert!(!verify_called.get());
+        assert!(resource.engine.is_some());
+        assert!(!resource.cleanup_verified);
+        assert_eq!(resource.filter_ids, filter_ids);
+
+        let failed_readback = resource.close_and_verify_with(
+            |engine| {
+                assert!(engine.take().is_some());
+                Ok(())
+            },
+            |observed| {
+                assert_eq!(observed, filter_ids);
+                Err(Blocker::new(
+                    Gate::WfpPolicyRemoved,
+                    "INJECTED_WFP_CLEANUP_READBACK_FAILURE",
+                ))
+            },
+        );
+        assert_eq!(
+            failed_readback,
+            Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "INJECTED_WFP_CLEANUP_READBACK_FAILURE",
+            ))
+        );
+        assert!(resource.engine.is_none());
+        assert!(!resource.cleanup_verified);
+        assert_eq!(resource.filter_ids, filter_ids);
+
+        resource
+            .close_and_verify_with(
+                |engine| {
+                    assert!(engine.is_none());
+                    Ok(())
+                },
+                |observed| {
+                    assert_eq!(observed, filter_ids);
+                    Ok(())
+                },
+            )
+            .expect("retry exact post-drop cleanup readback");
+        assert!(resource.cleanup_verified);
+        assert_eq!(resource.filter_ids, filter_ids);
+    }
+
+    #[test]
+    fn wfp_engine_close_failure_retains_the_owned_handle_for_retry() {
+        let fake_handle = 1usize as HANDLE;
+        let mut engine = WfpEngine(fake_handle);
+
+        let failed = engine.close_with(|observed| {
+            assert_eq!(observed, fake_handle);
+            5
+        });
+        assert_eq!(
+            failed,
+            Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "WFP_ENGINE_CLOSE_FAILED",
+            ))
+        );
+        assert_eq!(engine.0, fake_handle);
+
+        engine
+            .close_with(|observed| {
+                assert_eq!(observed, fake_handle);
+                0
+            })
+            .expect("retry WFP engine close");
+        assert!(engine.0.is_null());
     }
 }
