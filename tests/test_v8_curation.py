@@ -13,6 +13,7 @@ from pkm_workflow.curation import (
     CurationDisposition,
     CurationEngine,
     CurationPolicyGeneration,
+    EventCluster,
     UserContextContract,
 )
 from pkm_workflow.evidence import EvidencePackage, EvidenceParser
@@ -238,6 +239,14 @@ def curate_closure(closure):
         curation_policy=curation_policy,
     )
     return result
+
+
+def _rehash_cluster(cluster: EventCluster) -> EventCluster:
+    return replace(
+        cluster,
+        cluster_hash="sha256:"
+        + hashlib.sha256(canonical_json_bytes(cluster.identity_payload())).hexdigest(),
+    )
 
 
 def test_complete_production_closure_creates_stable_model_candidates() -> None:
@@ -673,3 +682,62 @@ def test_cjk_similarity_clusters_losslessly_and_no_profile_match_gets_no_boost()
     assert matching.relevance_reason == "GENERAL_POSSIBLE_IMPACT"
     assert matching.best_profile_rank is None
     assert matching.profile_fields == ()
+
+
+def test_event_cluster_rejects_each_structural_and_relevance_downgrade() -> None:
+    result = curate_closure(build_valid_closure())
+    cluster = next(value for value in result.audit_clusters if len(value.evidence) == 1)
+    evidence = cluster.evidence[0]
+    locator = cluster.locators[0]
+
+    invalid_clusters = (
+        (_rehash_cluster(replace(cluster, evidence=(), locators=())), "contain evidence"),
+        (
+            _rehash_cluster(
+                replace(
+                    cluster,
+                    evidence=(evidence, evidence),
+                    locators=(locator, locator),
+                )
+            ),
+            "duplicate evidence",
+        ),
+        (
+            _rehash_cluster(
+                replace(cluster, locators=(replace(locator, evidence_id="forged-evidence"),))
+            ),
+            "exactly match evidence",
+        ),
+        (
+            _rehash_cluster(
+                replace(cluster, locators=(replace(locator, status="VERIFIED"),))
+            ),
+            "locator is invalid",
+        ),
+        (_rehash_cluster(replace(cluster, best_role_rank=-1)), "role rank is invalid"),
+        (
+            _rehash_cluster(
+                replace(
+                    cluster,
+                    best_profile_rank=None,
+                    relevance_reason="GENERAL_POSSIBLE_IMPACT",
+                    profile_fields=("priorities[0].topics[0]",),
+                )
+            ),
+            "general relevance metadata",
+        ),
+        (
+            _rehash_cluster(
+                replace(
+                    cluster,
+                    best_profile_rank=0,
+                    relevance_reason="PROFILE_TOPIC_MATCH",
+                )
+            ),
+            "profile relevance metadata",
+        ),
+    )
+
+    for invalid, message in invalid_clusters:
+        with pytest.raises(ValueError, match=message):
+            invalid.validate()

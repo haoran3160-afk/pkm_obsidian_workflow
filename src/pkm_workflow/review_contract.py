@@ -6,7 +6,7 @@ import hashlib
 import re
 from dataclasses import dataclass, replace
 
-from .curation import CurationDisposition, CurationResult, ModelEvidenceItem, normalize_text
+from .curation import CurationDisposition, CurationResult, ModelEvidenceItem
 from .provenance import canonical_json_bytes
 
 IDENTITY_PATTERN = re.compile(r"[a-z][a-z0-9-]{0,63}")
@@ -189,6 +189,8 @@ class ReviewContract:
             raise ValueError("Generator draft must contain at least one story")
         if len(draft.stories) > curation.max_stories:
             raise ValueError("SCHEMA_INVALID: too many stories")
+        if sum(len(story.claims) for story in draft.stories) > curation.max_assertive_claims:
+            raise ValueError("SCHEMA_INVALID: too many assertive claims")
         evidence: dict[str, ModelEvidenceItem] = {}
         evidence_cluster: dict[str, str] = {}
         for cluster in curation.model_candidates:
@@ -200,6 +202,7 @@ class ReviewContract:
         claim_ids: set[str] = set()
         excerpt_ids: set[str] = set()
         claims: list[AssertiveClaim] = []
+        used_evidence_by_cluster: dict[str, set[str]] = {}
         for story in draft.stories:
             _require_identity(story.story_id, "story_id")
             if story.story_id in story_ids:
@@ -226,6 +229,7 @@ class ReviewContract:
             if not referenced_claims <= local_claim_ids:
                 raise ValueError("story output fields may reference only assertive claims")
             story_clusters: set[str] = set()
+            story_evidence_ids: set[str] = set()
             for claim in story.claims:
                 claim.validate()
                 if claim.claim_id in claim_ids or claim.claim_id in excerpt_ids:
@@ -234,6 +238,7 @@ class ReviewContract:
                 story_clusters.add(
                     self._validate_evidence_refs(claim.evidence_ids, evidence, evidence_cluster)
                 )
+                story_evidence_ids.update(claim.evidence_ids)
                 claims.append(claim)
             for excerpt in story.source_excerpts:
                 excerpt.validate()
@@ -244,14 +249,19 @@ class ReviewContract:
                 if evidence_item is None:
                     raise ValueError("source excerpt references unknown evidence")
                 story_clusters.add(evidence_cluster[excerpt.evidence_id])
-                normalized_excerpt = normalize_text(excerpt.text)
-                if not normalized_excerpt or not any(
-                    normalized_excerpt in normalize_text(source)
+                story_evidence_ids.add(excerpt.evidence_id)
+                if not any(
+                    excerpt.text in source
                     for source in (evidence_item.title, evidence_item.content_text)
                 ):
-                    raise ValueError("source excerpt is not an exact normalized evidence span")
+                    raise ValueError("source excerpt is not an exact evidence span")
             if len(story_clusters) != 1:
                 raise ValueError("story evidence must belong to one event cluster")
+            cluster_hash = next(iter(story_clusters))
+            used_evidence = used_evidence_by_cluster.setdefault(cluster_hash, set())
+            if story_evidence_ids & used_evidence:
+                raise ValueError("stories split from one event cluster must use disjoint evidence")
+            used_evidence.update(story_evidence_ids)
         if len(claims) > curation.max_assertive_claims:
             raise ValueError("SCHEMA_INVALID: too many assertive claims")
         if not set(draft.digest_conclusion_claim_ids) <= claim_ids:

@@ -8,7 +8,7 @@ import pytest
 from test_v8_curation import build_valid_closure, curate_closure
 
 from pkm_workflow.curation import CurationExclusion, ExclusionReason
-from pkm_workflow.provenance import canonical_json_bytes
+from pkm_workflow.provenance import SourceLane, canonical_json_bytes
 from pkm_workflow.review_contract import (
     AssertiveClaim,
     GeneratorDraft,
@@ -134,8 +134,25 @@ def test_source_excerpt_is_exact_and_cannot_fill_an_assertive_output_field() -> 
         ),
         digest_conclusion_claim_ids=(claim.claim_id,),
     )
-    with pytest.raises(ValueError, match="exact normalized evidence span"):
+    with pytest.raises(ValueError, match="exact evidence span"):
         ReviewContract().derive(curation=curation, draft=draft)
+
+    for altered in (
+        item.title.swapcase(),
+        item.title.replace(" ", "  ", 1),
+        item.title.replace(" ", ", ", 1),
+    ):
+        altered_draft = replace(
+            draft,
+            stories=(
+                replace(
+                    draft.stories[0],
+                    source_excerpts=(replace(invented, text=altered),),
+                ),
+            ),
+        )
+        with pytest.raises(ValueError, match="exact evidence span"):
+            ReviewContract().derive(curation=curation, draft=altered_draft)
 
     exact = replace(invented, text=item.content_text)
     injected = GeneratorDraft(
@@ -404,6 +421,41 @@ def test_story_cannot_join_claims_or_excerpts_from_different_event_clusters() ->
                 digest_conclusion_claim_ids=(first_claim.claim_id,),
             ),
         )
+
+
+def test_split_overmerged_cluster_requires_disjoint_evidence_at_review_boundary() -> None:
+    shared_title = "Agent framework release improves deterministic evaluation"
+    curation = curate_closure(
+        build_valid_closure(
+            title_overrides={
+                (SourceLane.OFFICIAL_LABS, 0): shared_title,
+                (SourceLane.RESEARCH, 0): shared_title,
+            }
+        )
+    )
+    candidate = next(cluster for cluster in curation.model_candidates if len(cluster.evidence) == 2)
+    first_evidence, second_evidence = (item.evidence_id for item in candidate.evidence)
+    first = _story(1, (_claim(1, first_evidence),))
+
+    reused = replace(_story(2, (_claim(2, first_evidence),)), top_rank=2)
+    with pytest.raises(ValueError, match="disjoint evidence"):
+        ReviewContract().derive(
+            curation=curation,
+            draft=GeneratorDraft(
+                stories=(first, reused),
+                digest_conclusion_claim_ids=("claim-1", "claim-2"),
+            ),
+        )
+
+    disjoint = replace(_story(2, (_claim(2, second_evidence),)), top_rank=2)
+    requirements = ReviewContract().derive(
+        curation=curation,
+        draft=GeneratorDraft(
+            stories=(first, disjoint),
+            digest_conclusion_claim_ids=("claim-1", "claim-2"),
+        ),
+    )
+    assert {requirement.claim_id for requirement in requirements} == {"claim-1", "claim-2"}
 
 
 def test_top_ranks_are_unique_across_the_draft() -> None:
