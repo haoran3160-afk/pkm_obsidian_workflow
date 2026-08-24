@@ -170,3 +170,100 @@ transport/schema/review-contract qualification 可运行，不构成“双模型
 退出条件：一次真实双请求链路、单元/静态/回归门、两轮独立对抗审查和仅任务文件 Git
 提交完成后，T1.3c 结束。代码作为审计资产保留，但后续任务不可达；若未来希望复用，
 必须新增 decision，重新评估费用、供应商相关错误、数据出境和生产资格。
+
+## D-010 — T1.3b 使用 AppContainer/LPAC + WFP 做 Codex 本机资格隔离
+
+状态：`ACCEPTED`（2026-08-20，用户明确要求并批准实施）
+
+决定：仅对 T1.3b qualification shadow，D-008 中“Windows `read-only` sandbox、
+不使用 AppContainer/WFP/`danger-full-access`”的隔离段被本决定取代。固定官方 Windows
+原生 Codex CLI `0.147.0` 在专用 AppContainer/LPAC 中运行；Codex 内部 sandbox 固定为
+`danger-full-access`，避免第二套 helper sandbox 扩大或混淆进程拓扑。真正的安全边界是
+外层 package SID、动态 WFP 策略、单用途 loopback CONNECT proxy、精确文件 ACL 和 Job
+Object，不是 Codex 自报的工具策略。
+
+边界和资格顺序：
+
+1. 官方 release ZIP SHA-256 固定为
+   `a1c073ede409178502b1ff11bed635d2b644424352f9d4f3999de8272c6aebbd`；解包后的
+   `codex-x86_64-pc-windows-msvc.exe` SHA-256 固定为
+   `935a1911ed2556e4ffcec995f4886ac2ac425863ba26fed264df62e30272ad9d`。必须同时验证
+   Authenticode、PE 身份和真实 `codex-cli 0.147.0` 输出；不得使用 PATH、wrapper、
+   0.125、自动升级或调用方自报 identity。
+2. 先完成无认证 parser preflight，再完成 AppContainer/LPAC、WFP、proxy、文件拒读、
+   Job kill-tree 与 trace 资格；只有全部通过才允许把套餐认证暴露给该 package SID，随后
+   最多执行一次 Terra Generator 和一次 fresh Sol Reviewer。任一 gate 失败都保持
+   `BLOCKED_PREQUALIFICATION`，不得放宽、回退或先做模型请求。
+3. WFP 使用动态 session，按 package SID 在 ALE v4/v6 层默认拒绝，只允许固定 IPv4
+   loopback proxy 端口；DNS、UDP、QUIC、其他 loopback 端口、私网和直连全部拒绝。proxy
+   只接受冻结 audience 的 CONNECT，验证 CONNECT authority、ClientHello SNI、解析结果和
+   实际 peer；策略安装、child resume 或 proxy readiness 任一步失败时不得创建携带认证的
+   Codex child。Windows 对 AppContainer→未打包本机 proxy 还要求 package-specific loopback
+   exemption：它只能作为网络隔离的使能层，必须在维护锁内保留系统已有 SID 列表、追加并
+   读回本次 package SID，随后仍由上述动态 WFP 精确限制到单一端口；运行结束或崩溃恢复后
+   撤销本次 SID 并恢复既有列表。宽泛、长期或未配套端口级 WFP 的
+   `CheckNetIsolation LoopbackExempt` 不能替代本设计，也不能计为资格通过。
+   AppContainer 默认不授予 `internetClient` 或其他网络 capability；loopback exemption 与
+   package-SID WFP 必须先在无网络 capability 的真实 smoke 中证明足够。只有系统 trace
+   证明固定 CLI 无法到达本机 proxy 时，才能把最小必需 capability 作为新的、哈希绑定的
+   qualification 输入，且仍须证明 WFP 撤除时该 capability 不会形成直连窗口。
+4. child 必须 `CREATE_SUSPENDED`，先纳入 kill-on-close Job、应用 AppContainer security
+   capabilities 并确认 WFP transaction 已提交，再 resume。统一 hard deadline 后调用
+   `TerminateJobObject` 并确认所有 descendants 归零；breakaway、额外 child 或未知 helper
+   都使资格失败。
+   `TerminateJobObject` 或 descendants drain 未确认归零时，不能撤销 WFP、loopback
+   exemption、文件边界或 profile；必须保留隔离资源和维护锁并进入需人工处理状态。
+   只有进程树归零后才允许按逆序清理，避免清理动作反而给存活 child 放开网络或文件。
+5. package SID 只可读取固定 executable、系统运行库、专用 `CODEX_HOME`、本次 sealed
+   evidence/schema/prompt 和 isolated run root。仓库、私有仓、Vault、环境配置、AGENTS、
+   skills、plugins 与其他用户文件必须在 trace 中为零成功读取；真实目录不改 ACL，所有
+   grant 只发生在 create-new qualification runtime。
+6. T1.3a 的 synthetic fixture 仍是输入事实源；T1.3b 另建
+   `LIVE_CODEX_TRANSPORT_QUALIFICATION` binding，绑定 fixture、curation result、prompt、
+   schema、模型、binary、argv、package SID、WFP 和 Windows build。它不把 T1.3a 的
+   `SYNTHETIC_QUALIFICATION` policy 冒充 production generation，也不进入 renderer、
+   publisher、Home、Status、Task 或生产 activation。
+7. T1.3b 采用当前产品的可信单用户主机威胁模型：由固定 Authenticode qualifier 在同一
+   进程内构建 plan、持有文件 handle 并重算全部 hash，资格产物只能称
+   content-addressed/hashed，不能称 signed。没有预置 CNG 信任根时不得用 ephemeral 或
+   self-signed key 制造“已签名”证明；未来生产 broker 的 key provisioning/rotation/
+   recovery 必须另立决定和用户批准。
+
+权限后果：WFP/profile/trace 的真实资格需要管理员授权和 disposable Windows 环境。
+当前非 elevated 会话可以完成官方资产、严格模型契约和离线负向测试，但不得伪造绿色；
+必须以结构化 blocker 停止，并把需要用户完成的管理员动作列为显式下一步。
+
+范围后果：D-001/D-006 的轻量生产架构在 T1.3b 之外继续有效；本决定不是重新启用旧
+stage0/broker、native publisher、CNG journal、PromotionLedger、Vault 发布或 Task。
+D-009 继续不可达且不能成为 fallback。
+
+## D-011 — Windows Codex console 启动固定使用 DETACHED_PROCESS
+
+状态：`ACCEPTED`（2026-08-24，无认证真实 Windows 诊断）
+
+决定：T1.3b 的 Codex child 和 child-policy canary 使用 `DETACHED_PROCESS`，不得使用
+`CREATE_NO_WINDOW`。官方 0.147.0 executable 是 `WINDOWS_CUI`；真实 B/D 控制组证明
+`CREATE_NO_WINDOW` 仍创建 `conhost.exe`，且与 `CHILD_PROCESS_RESTRICTED` 组合时以
+`0xC0000142` 终止。E/F 单变量组仅改为 `DETACHED_PROCESS`：E 无 child restriction，
+F 保留 atomic Job 与 `CHILD_PROCESS_RESTRICTED`；两者均退出 0、Job 累计进程为 1、
+descendants 归零。canonical preflight 因而可以验证固定 `codex-cli 0.147.0`，但仍在
+`PREFLIGHT_FULL_TOKEN_AUTH_ISOLATION_NOT_QUALIFIED` 停止。
+
+证明要求：child 在 suspended 状态、resume 前必须通过
+`GetProcessMitigationPolicy(ProcessChildProcessPolicy)` 精确回读；无 restriction 的 E
+必须为 flags=0，F/canonical 必须为 flags=1。另用固定、无认证、无网络 canary 证明：
+未施加 policy 时固定 child 创建成功并使诊断失败；施加 policy 后 Windows 必须返回
+`ERROR_CHILD_PROCESS_BLOCKED (367)`，Job 累计进程仍为 1。只观察到“没有 child”或只写入
+PROC_THREAD_ATTRIBUTE 均不算资格证明。
+
+证据边界：当前 create-new candidate 位于
+`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-04`；
+qualifier SHA-256 为 `45384ace4410ddb493a53fb3a3d5674b1afbbbd3aadef9c77245be1ae9515ad5`，
+canary SHA-256 为 `f58adb00d5a3817d01216d266060f0c8d1f1110724756460fc449ee7673a9ac6`。
+二者未 Authenticode 签名、未在独立环境复现、未绑定 Windows build，因此只能称
+content-addressed prequalification candidate，不能称 production/release-qualified。
+
+验证后果：Cargo 可在用户明确允许清理的 runtime scratch 中更新/删除编译缓存；这些门
+必须标为 `SCRATCH_TOOLCHAIN_ONLY / production=false`。strict no-delete harness 直接运行
+固定 SHA 的 qualifier `doctor`，不得用 `cargo run` 冒充运行 authority。该决定不解除
+AppContainer/LPAC、WFP、loopback proxy、文件 ETW、套餐认证、真实 Terra/Sol 或用户批准门。

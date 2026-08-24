@@ -1,4 +1,47 @@
-# Current Development Goal — T1.3c DeepSeek Flash Shadow Provider
+# Active Goal — T1.3b Codex Generator → Reviewer 本机资格
+
+状态：`IN_PROGRESS / BLOCKED_PREQUALIFICATION`
+
+只执行 D-010 的 qualification shadow：固定官方 Windows 原生 Codex CLI `0.147.0`，
+先证明 AppContainer/LPAC、package-SID WFP、one-shot loopback proxy、精确文件边界、
+Job Object kill-tree、零 tool/额外 child/未知文件读取，再用用户现有 Codex 套餐执行
+T1.3a sealed synthetic fixture → `gpt-5.6-terra` Generator → 现有 `ReviewContract` →
+fresh `gpt-5.6-sol` Reviewer。
+
+完成条件：
+
+1. binary/archive/signature/version/argv/config/prompt/schema/model/fixture/input 全部冻结并
+   绑定 SHA-256；PATH、wrapper、ambient config、AGENTS/skills/plugins 均不可影响结果。
+2. WFP 只允许 package SID 到固定 loopback proxy 端口；proxy 精确验证 CONNECT audience、
+   SNI、DNS 与 peer，其他网络全拒绝。
+3. package 只读取 create-new qualification runtime 的密封输入和专用 `CODEX_HOME`；
+   仓库、私有仓、Vault 和其他用户文件成功读取为零。
+4. child suspended→Job/WFP→resume；timeout/parent exit 后 descendants 为零；任意 tool、
+   helper、unknown event/read/network 使结果失败。
+5. GeneratorDraft 严格解析后才进入 `ReviewContract`；Reviewer 的 claim、requirement、
+   decision、evidence IDs 与 hashes 精确全等，不允许部分成功。
+6. 目标模块 line+branch≥90%，Ruff/Mypy/相关回归通过；两轮独立对抗审查连续无 P0/P1。
+7. create-new qualification artifact 记录真实调用数、usage、时长、认证/额度影响和全部
+   trace/hash。只有用户明确批准后才可解除 T1.3b 阻断；不得自动进入生产、Task 或 Vault。
+
+非目标：不调用 OpenAI API；不调用 DeepSeek 或其他 fallback；不购买额度；不写 Vault、
+Home、Status；不安装/启用 Task；不恢复旧 stage0/broker/publisher；不删除、移动、重命名
+或覆盖用户资产。所有 runtime 产物 create-new。当前未跟踪资产是用户资产，必须按实施前
+baseline 保留。
+
+执行顺序：环境/资产 parser preflight → 离线契约 TDD → 原生隔离 TDD/资格 → 真实双审 →
+artifact/红队/Git。隔离资格之前不得执行真实模型请求；当前非 elevated 会话若无法安装
+WFP/trace，必须诚实停在结构化 blocker，不得放宽或伪造通过。
+
+当前实证（2026-08-24）：固定 0.147.0 已通过 `DETACHED_PROCESS + atomic Job +
+CHILD_PROCESS_RESTRICTED` 无认证 preflight；OS readback flags=1，拒绝型 canary 返回
+`ERROR_CHILD_PROCESS_BLOCKED (367)`，进程树始终为 1→0。`CREATE_NO_WINDOW` 控制组仍产生
+`conhost.exe`，仅保留为反事实证据，不得进入 canonical launch。当前仍阻断在 frozen
+candidate 未独立复现/签名、AppContainer/LPAC、WFP/proxy、文件 ETW、专用认证和真实双审。
+
+---
+
+# Historical Goal — T1.3c DeepSeek Flash Shadow Provider
 
 状态：`DONE`（2026-08-20，shadow qualification 完成；生产保持阻断）
 

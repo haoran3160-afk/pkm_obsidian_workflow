@@ -66,6 +66,10 @@
 - Codex 使用用户现有套餐。非交互认证或套餐额度不可用时 fail-closed。
 - 不由工作流自动升级 Codex CLI；使用经过本机资格验证的固定版本。首个候选版本为 `0.147.0`，版本号本身不替代资格测试。
 - 首个候选模型为 Generator `gpt-5.6-terra`、Reviewer `gpt-5.6-sol`；模型变化必须创建新 policy generation，重跑受影响内容集和至少 3 个 shadow 日。
+- T1.3b 固定使用 D-010 的 AppContainer/LPAC + package-SID WFP + one-shot loopback
+  proxy + Job Object 资格边界。只有官方 `0.147.0` asset、parser、签名、SHA、专用
+  `CODEX_HOME`、隔离和 trace 全部绑定通过后才能执行真实 Terra/Sol；否则结构化返回
+  `BLOCKED_PREQUALIFICATION`，不尝试模型、不使用 API/DeepSeek/fallback。
 
 ## 2. 工作流行为
 
@@ -164,6 +168,19 @@ Coverage 车道：官方实验室、科研论文、开源/产品 release、产�
 - 模型不得提供 URL、HTML、wikilink、文件路径或自定义 URI。
 - Codex 会话使用隔离 run directory，不读取仓库、Vault、用户配置、skills 或 plugins；shell、web、apply_patch、apps、memory、collab 等工具不可用。
 - 任意 tool event、未知文件访问、schema 失败或额外子进程使本次模型输出无效。
+- Windows Codex child 必须使用 `DETACHED_PROCESS`，不得使用会创建 `conhost.exe` 的
+  `CREATE_NO_WINDOW`。配置 child-process attribute 还不够：resume 前必须精确回读
+  ProcessChildProcessPolicy flags=1，并由无认证 negative canary 实测固定 child 创建返回
+  `ERROR_CHILD_PROCESS_BLOCKED (367)`；任一步不符继续 `BLOCKED_PREQUALIFICATION`。
+- T1.3b 的外层隔离是强制资格条件：Codex package SID 只能读取 create-new runtime 中
+  显式授权的 executable、`CODEX_HOME`、sealed prompt/evidence/schema 和 run root，只能
+  连接固定 loopback proxy 端口。package-specific loopback exemption 只能临时使能该
+  AppContainer 到本机 proxy 的连接，必须保留并恢复系统既有 exemption 列表，且不能绕过
+  package-SID WFP 对单一端口的精确限制。exemption/WFP/filter/profile/proxy/Job 任一失败时
+  必须在 child resume 或认证暴露前停止。
+- AppContainer 默认不携带 `internetClient` 或其他网络 capability；任何新增 capability
+  必须由真实 loopback/WFP trace 证明为最小必要项并绑定资格闭包。若 child/descendant
+  未确认归零，WFP、loopback exemption、ACL/profile 和维护锁均不得提前撤销。
 
 ### 4.3 发布判断
 
@@ -270,10 +287,13 @@ pkm reconcile [--workflow {ai,ielts,weekly}] --json
 - 两轮针对 feed prompt injection、伪 canonical、数字偷换、时间错误、重复 origin 与模型夸大的红队，无未处理 P0/P1。
 - 用户连续一周认为至少 80% Top 值得注意。
 
-### 9.2 不作为首发阻断
+### 9.2 不作为首发发布阻断
 
-- Rust stage0/native broker、AppContainer/WFP、CNG MAC chain、PromotionLedger、DPAPI-NG 恢复包。
+- Rust stage0/native publisher、CNG MAC chain、PromotionLedger、DPAPI-NG 恢复包。
 - 物理掉电矩阵、全模块 mutation≥85%、Weekly 等待四个真实周、所有内容双模型审核。
+
+AppContainer/LPAC 与 WFP 不是整个首发发布器的要求，但按 D-010 是 T1.3b Codex
+qualification 的硬门；T1.3b 未通过时 M1 不能把 Codex shadow 标为完成。
 
 关键 delete/overwrite/path-escape/evidence-mismatch 测试必须通过；mutation 只用于这些高风险模块，不追求全仓数字。
 

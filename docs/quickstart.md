@@ -40,7 +40,7 @@ doctor 当前仍显示 native broker、AppContainer/WFP 等 v7.3 遗留 blocker�
 
 ## 4. 开始开发
 
-[T1.1–T1.3a](agentic/tasks.md) 已完成；T1.3b 当前为 `BLOCKED_PREQUALIFICATION`，尚无可自动认领的后继 Goal。[Current Development Goal](agentic/goal.md) 仅记录已完成的 T1.3a，不能作为新的开发任务执行。待 T1.3b 的固定原生 Codex CLI、专用套餐登录与 Windows sandbox 预资格全部通过并由任务文档明确改为 `NEXT` 后，再按新 Goal 开始后续开发。
+[T1.1–T1.3a](agentic/tasks.md) 已完成；T1.3b 已获准开发并由 [Current Development Goal](agentic/goal.md) 标记为唯一 Active Goal。它的实现与离线合约测试可以继续，但真实 Codex 调用、生产资格、Task 和 Vault 发布仍保持 `BLOCKED_PREQUALIFICATION`；只有固定原生 CLI、专用套餐登录、Windows 隔离与完整 shadow 证据通过并经用户批准后，才可解除该阻断。
 
 ## 5. 生产使用
 

@@ -108,23 +108,35 @@ hash 精确匹配；任意 assertive claim 都被标记为 review-required。
   `POLICY_OVERFLOW`，全部 evidence 仍留在审计 clusters。当前 canonical M1 gate
   （CLI + T1.1–T1.3a）231 passed，line+branch 90.97%。
 
-### T1.3b 固定 Codex Generator/Reviewer 资格 — BLOCKED
+### T1.3b 固定 Codex Generator/Reviewer 资格 — NEXT（运行仍 BLOCKED_PREQUALIFICATION）
 
-阻断码：`BLOCKED_PREQUALIFICATION`。T1.3a 已 `DONE`；仍须用户批准的隔离目录中
-原生 Codex CLI 0.147.0、官方 release asset SHA-256、专用 `CODEX_HOME` 套餐登录和
-Windows elevated sandbox smoke 全部通过后，才能改为 `NEXT`。
+用户已明确批准实施 D-010；这只把开发任务置为 `NEXT`，不解除运行阻断。T1.3a 已
+`DONE`；原生 Codex CLI 0.147.0、官方 release asset/signature/SHA-256、专用
+`CODEX_HOME` 套餐登录、AppContainer/LPAC、WFP、sealed proxy、Job kill-tree 和完整
+Windows trace 全部通过前，任何真实模型调用仍返回 `BLOCKED_PREQUALIFICATION`。
 
 目标：以固定原生 Codex CLI 完成真实 Terra Generator + Sol Reviewer fresh-thread
 qualification shadow；所有 assertive claim 均由 Reviewer 审核。
 
-主要文件（≤5）：`src/pkm_workflow/codex_runner.py`、
-`src/pkm_workflow/codex_job.py`（新）、`src/pkm_workflow/model_contract.py`（新）和两个
-测试（其中一个为显式 live qualification）。
+主要文件：`src/pkm_workflow/codex_runner.py`、`src/pkm_workflow/codex_job.py`（新）、
+`src/pkm_workflow/model_contract.py`（新）、独立 native qualification launcher/proxy、
+一个 offline 行为测试和一个显式 live qualification 测试。安全边界跨 Python/Rust，
+本任务经 D-010 明确允许超过常规 5 文件预算；不得为满足数字删除 live test 或合并掉
+可独立审计的 TCB。
 
 验收：固定 executable/model/argv/prompt/schema/input hashes；完整 JSONL 生命周期；
-不同真实 thread；零 tool event；Job Object 超时/kill-tree；冻结 helper 拓扑和 canary
-拒读；schema 修复≤1；auth/quota/security/timeout 互斥分类；真实套餐 smoke 不以 mock
-替代。不使用 API/DeepSeek/AppContainer/WFP，不写 Vault/Task。
+不同真实 thread；零 tool event；AppContainer/LPAC + WFP + one-shot proxy；Job Object
+超时/kill-tree；冻结 helper 拓扑和 canary 拒读；schema repair≤1；auth/quota/security/
+timeout 互斥分类；真实套餐 smoke 不以 mock 替代。不使用 OpenAI API/DeepSeek/fallback，
+不写 Vault/Home/Status/Task。
+
+2026-08-24 环境资格进展：`DETACHED_PROCESS` 已替代 `CREATE_NO_WINDOW`；canonical
+preflight 与拒绝型 child-policy canary 均通过真实 Windows 无认证验证，固定 qualifier/
+canary candidate 和 build receipt 已 create-new 冻结。Cargo fmt/check/clippy/test 通过
+`SCRATCH_TOOLCHAIN_ONLY` observer 门；固定 qualifier doctor 通过 strict no-delete harness，
+仍为 `VERIFIED_EXPECTED_BLOCKED / production_qualification_eligible=false`。剩余硬门是独立
+build/release binding、AppContainer/LPAC、WFP/loopback proxy、文件 ETW、专用套餐认证、
+真实 Terra→Sol、覆盖/mutation 与两轮最终红队。
 
 T1.3a/b 只产生 curation/review qualification shadow，不是用户日报或 M3 内容质量
 样本；feed URL/摘要不能被表述为已验证 article 正文、canonical 或原始链接。

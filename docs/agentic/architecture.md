@@ -71,7 +71,13 @@ result = CoverageEvaluator().evaluate(proof)
 - `fetch_service` 只能访问 registry 枚举的 endpoint，并执行 SSRF、redirect、peer、MIME、大小和超时校验。
 - parser、coverage、renderer、publisher 均不联网。
 - Codex 只接收本次 run directory 中密封的 evidence/schema，内部工具全部关闭；它的网络只用于套餐服务，不用于网页搜索。
-- 无需首发 WFP；若应用层限制在红队中可被真实绕过，才重新评估 OS 隔离。
+- 普通 fetch 与首发发布路径仍不需要 WFP。T1.3b 是 D-010 的窄例外：Codex package SID
+  只能通过动态 WFP 策略访问一个固定 loopback proxy 端口；其他 v4/v6、DNS、UDP、QUIC、
+  loopback 与直连默认拒绝。Windows 所需的 package-specific loopback exemption 仅在该
+  动态 WFP 已提交且读回精确一致时临时启用，并在运行后恢复系统原列表；它不是独立安全
+  边界。package 默认不授予 `internetClient`；若真实 trace 证明必须增加网络 capability，
+  它必须是最小项并进入资格 closure。child tree 未确认归零时不得撤销 WFP、exemption、
+  ACL/profile 或维护锁。该例外不进入 fetch 或生产 publisher。
 
 ## Codex 调用策略
 
@@ -90,10 +96,16 @@ Codex CLI、专用套餐登录与 Windows sandbox 真实 preflight 通过后才�
 decision，并用真实 holdout 证明确定性分类器不能降级受保护 claim。
 
 T1.3b 直接启动官方 release 的原生 `codex.exe`，不经过 npm/PowerShell wrapper。
-固定 `read-only`、approval never、ignore user config/rules、ephemeral、isolated non-git
-cwd、schema 与 JSONL；Job Object 提供硬超时和进程树终止。preflight 冻结实际允许的
-helper 拓扑与读取类别，并用仓库、Vault 和私有配置 canary 证明拒读。没有 ETW 时只
-声明这些可观察边界通过，不扩写成“看见所有系统文件读取”。
+Windows CUI child 固定使用 `DETACHED_PROCESS`；禁止 `CREATE_NO_WINDOW`，因为真实控制组会
+创建 `conhost.exe` 并破坏零额外 child 与 child-process policy。resume 前同时要求
+ProcessChildProcessPolicy flags=1 的 OS readback 和固定 negative canary 的
+`ERROR_CHILD_PROCESS_BLOCKED (367)` 证据。
+固定 approval never、ignore user config/rules、ephemeral、isolated non-git cwd、schema、
+JSONL 与全部 tool feature off。按 D-010，Codex 内层固定 `danger-full-access`，外层
+AppContainer/LPAC + package-SID WFP + one-shot proxy + 精确 runtime ACL 才是安全边界。
+child 在 suspended 状态先加入 Job 并完成网络策略，再 resume；硬超时必须终止整棵树。
+资格 trace 必须证明零 tool、零额外 child、零未知文件成功读取和零策略外网络；没有完整
+trace 时保持 `BLOCKED_PREQUALIFICATION`，不能把有限可观察性扩写为系统级隔离证明。
 
 ## 发布边界
 
@@ -121,4 +133,7 @@ publish(workflow, content_date, artifact_kind, run_id, backing_path, expected_ha
 
 ## 历史 native 代码
 
-`native/` 保留为实验和未来候选，不进入当前 wheel、Task action、验收 denominator 或发布路径。不得为了让旧 native 测试通过而扩展它。重新启用需满足 `decisions.md` 的升级条件并获得用户批准。
+旧 `native/pkm-stage0` 与 `native/pkm-broker` 继续只是历史实验，不进入 wheel、Task、
+发布或验收 denominator。D-010 允许为 T1.3b 新建独立 qualification launcher/proxy，
+但禁止借机扩展旧 publisher/broker；任何新增 native 组件都必须保持 shadow-only、
+content-addressed、fail-closed，并有独立 Windows 真实资格证据。

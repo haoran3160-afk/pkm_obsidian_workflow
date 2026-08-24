@@ -13,7 +13,21 @@
 .\.venv\Scripts\python.exe scripts\run_workflow.py --dry-run --workflow ai --json
 ```
 
-输出中的 native/AppContainer/WFP blocker 是 v7.3 遗留诊断，不是当前架构要求。T1.5 只能在对应轻量资格有真实证据时替换它们，不得把旧 blocker 直接硬编码为绿色。
+输出中的 native publisher/stage0 blocker 仍是 v7.3 遗留诊断；但 AppContainer/LPAC、
+WFP、sealed proxy 和 Job kill-tree 现在是 D-010 下 T1.3b 的真实资格门。它们只能由
+release-bound Windows 证据解除，不得直接硬编码为绿色，也不得据此解锁 T1.5/生产。
+
+T1.3b 的 Cargo 构建必须把 `CARGO_TARGET_DIR` 指向
+`D:\personal\obsidian_workflow-runtime\scratch` 下的 create-new 目录；不得清理、覆盖或
+继续使用仓库中的既有 `native/target` 缓存。qualification closure 还必须记录实际
+`rustc`/`cargo` 版本和最终 qualifier binary hash，不能把 `rust-version` 最低版本当成
+精确编译器身份。
+
+当前 Rust/Cargo 工具链在链接过程中会删除中间 `.o` 文件。严格 no-delete ACL 已真实
+阻断该行为，因此 Cargo 的 check/clippy/test 只能作为 scratch 工具链证据，不能冒充
+“全程 create-new”证据；对应受限验证命令必须保留 `BLOCKED` 记录。除非用户另行批准
+仅限 disposable compiler scratch 的例外，否则不得为获得绿色结果而撤销 no-delete
+保护。最终 qualifier、报告和 qualification closure 本身仍必须 create-new。
 
 不要运行根目录 `main.py`、`ui_server.py`、旧 Task installer 或 `.agent/workflows` 的历史命令。
 
@@ -91,6 +105,12 @@ git diff --name-status --diff-filter=DR
 - 实施前后对两个仓库与允许的 Vault 范围做 inventory；报告必须准确说明覆盖范围，不能把子集证明扩写成“全 Vault 零变化”。
 - 当前工作树很脏，所有既有修改都视为用户资产；不 reset、stash、checkout 或覆盖不相关改动。
 - 不删除测试产物、历史脚本或 native 实验；通过不可达、警告和 release closure 管理。
+- Rust 编译器 target/cache 只能放在
+  `D:\personal\obsidian_workflow-runtime\scratch` 的显式 mutable root；该根内允许 Cargo
+  正常删除/替换中间文件，但证据必须标记 `SCRATCH_TOOLCHAIN_ONLY` 且永不具有生产资格。
+  no-delete verification root 只保存 create-new evidence，不再承载 `CARGO_TARGET_DIR`。
+- native 运行验收必须直接执行 create-new 冻结且 SHA 固定的 qualifier binary；`cargo run`
+  只能证明工具链构建，不能充当 doctor/preflight/helper/canary 的运行 authority。
 
 ## Review 门
 
