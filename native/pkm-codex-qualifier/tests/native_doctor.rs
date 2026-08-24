@@ -173,7 +173,7 @@ fn unresolved_native_proofs_are_explicit_not_self_reported_booleans() {
             "CHILD_PROCESS_RESTRICTION_NEGATIVE_CANARY_NOT_RELEASE_BOUND",
             "PREFLIGHT_FULL_TOKEN_AUTH_ISOLATION_NOT_QUALIFIED",
             "PREFLIGHT_NETWORK_ENFORCEMENT_NOT_QUALIFIED",
-            "PER_RUN_APPCONTAINER_IDENTITY_NOT_QUALIFIED",
+            "APPCONTAINER_PROFILE_DIAGNOSTIC_NOT_RELEASE_BOUND",
             "APPCONTAINER_PROFILE_CRASH_RECOVERY_NOT_QUALIFIED",
             "APPCONTAINER_CAPABILITY_READBACK_NOT_QUALIFIED",
             "ZERO_NETWORK_CAPABILITY_LOOPBACK_SMOKE_NOT_QUALIFIED",
@@ -182,7 +182,7 @@ fn unresolved_native_proofs_are_explicit_not_self_reported_booleans() {
             "PROXY_SECRET_ONESHOT_CHILD_ENV_NOT_READY",
             "CODEX_0147_PROXY_AUTH_TRACE_REQUIRED",
             "SUBSCRIPTION_AUDIENCE_TRACE_REQUIRED",
-            "WFP_EXACT_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
+            "WFP_ELEVATED_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
             "LOOPBACK_EXEMPTION_NOT_QUALIFIED",
             "ANCESTOR_HANDLE_CHAIN_NOT_QUALIFIED",
             "AUTH_CACHE_ACL_HANDLE_NOT_QUALIFIED",
@@ -863,5 +863,81 @@ fn child_policy_canary_proves_the_os_rejects_a_real_child_creation_attempt() {
         .args(["diagnose-child-policy", "caller-selected-path"])
         .output()
         .expect("reject caller-controlled canary arguments");
+    assert_eq!(rejected.status.code(), Some(2));
+}
+
+#[test]
+fn appcontainer_profile_diagnostic_recreates_and_removes_zero_capability_identity() {
+    let _guard = NATIVE_CHILD_TEST_LOCK
+        .lock()
+        .expect("native child test lock");
+    let executable = env!("CARGO_BIN_EXE_pkm-codex-qualifier");
+    let output = Command::new(executable)
+        .arg("diagnose-appcontainer-profile")
+        .output()
+        .expect("run fixed AppContainer profile diagnosis");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("profile diagnostic UTF-8");
+    assert!(stdout.contains("\"terminal\":\"BLOCKED_APPCONTAINER_PROFILE_DIAGNOSTIC\""));
+    assert!(stdout.contains("\"production\":false"));
+    assert!(stdout.contains("\"live\":false"));
+    assert!(stdout.contains("\"zero_capabilities\":true"));
+    assert!(stdout.contains("\"first_create\":true"));
+    assert!(stdout.contains("\"derived_sid_match\":true"));
+    assert!(stdout.contains("\"first_delete\":true"));
+    assert!(stdout.contains("\"recreate\":true"));
+    assert!(stdout.contains("\"sid_stable\":true"));
+    assert!(stdout.contains("\"final_delete\":true"));
+    assert!(stdout.contains("\"profile_name_sha256\":\"sha256:"));
+    assert!(stdout.contains("\"package_sid_sha256\":\"sha256:"));
+    assert!(stdout.contains("\"receipt_sha256\":\"sha256:"));
+    assert!(!stdout.contains("OpenAI.PKMWorkflow.Codex.T13b."));
+
+    let receipt_paths = json_string_values(&stdout, "receipt_path");
+    let receipt_hashes = json_string_values(&stdout, "receipt_sha256");
+    assert_eq!(receipt_paths.len(), 1);
+    assert_eq!(receipt_hashes.len(), 1);
+    assert_eq!(
+        receipt_hashes[0],
+        file_sha256(std::path::Path::new(&receipt_paths[0]))
+    );
+
+    let rejected = Command::new(executable)
+        .args(["diagnose-appcontainer-profile", "caller-name"])
+        .output()
+        .expect("reject caller-controlled profile name");
+    assert_eq!(rejected.status.code(), Some(2));
+}
+
+#[test]
+fn wfp_policy_diagnostic_requires_elevation_before_any_os_mutation() {
+    if process_is_elevated().expect("query elevation") {
+        return;
+    }
+    let executable = env!("CARGO_BIN_EXE_pkm-codex-qualifier");
+    let output = Command::new(executable)
+        .arg("diagnose-wfp-policy")
+        .output()
+        .expect("run fixed WFP policy diagnosis");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("WFP diagnostic UTF-8");
+    assert!(stdout.contains("\"terminal\":\"BLOCKED_WFP_POLICY_DIAGNOSTIC\""));
+    assert!(stdout.contains("\"blocker\":\"ELEVATION_REQUIRED\""));
+    assert!(stdout.contains("\"production\":false"));
+    assert!(stdout.contains("\"live\":false"));
+    assert!(stdout.contains("\"profile_created\":false"));
+    assert!(stdout.contains("\"wfp_installed\":false"));
+    assert!(stdout.contains("\"filter_readback\":false"));
+    assert!(stdout.contains("\"cleanup_verified\":false"));
+    assert!(stdout.contains("\"receipt_path\":null"));
+
+    let rejected = Command::new(executable)
+        .args(["diagnose-wfp-policy", "caller-port"])
+        .output()
+        .expect("reject caller-controlled WFP arguments");
     assert_eq!(rejected.status.code(), Some(2));
 }

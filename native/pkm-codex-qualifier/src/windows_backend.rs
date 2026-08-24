@@ -7,17 +7,20 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use windows_sys::core::GUID;
-use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, HANDLE, HWND, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, LocalFree, FWP_E_FILTER_NOT_FOUND, FWP_E_SUBLAYER_NOT_FOUND, HANDLE, HWND,
+    INVALID_HANDLE_VALUE,
+};
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::{
     FwpmEngineClose0, FwpmEngineOpen0, FwpmFilterAdd0, FwpmFilterGetById0, FwpmFreeMemory0,
-    FwpmSubLayerAdd0, FwpmTransactionAbort0, FwpmTransactionBegin0, FwpmTransactionCommit0,
-    FWPM_ACTION0, FWPM_ACTION0_0, FWPM_CONDITION_ALE_PACKAGE_ID, FWPM_CONDITION_IP_PROTOCOL,
-    FWPM_CONDITION_IP_REMOTE_ADDRESS, FWPM_CONDITION_IP_REMOTE_PORT, FWPM_DISPLAY_DATA0,
-    FWPM_FILTER0, FWPM_FILTER0_0, FWPM_FILTER_CONDITION0, FWPM_LAYER_ALE_AUTH_CONNECT_V4,
-    FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWPM_SESSION0, FWPM_SESSION_FLAG_DYNAMIC, FWPM_SUBLAYER0,
-    FWP_ACTION_BLOCK, FWP_ACTION_PERMIT, FWP_BYTE_BLOB, FWP_CONDITION_VALUE0,
-    FWP_CONDITION_VALUE0_0, FWP_MATCH_EQUAL, FWP_SID, FWP_UINT16, FWP_UINT32, FWP_UINT8,
-    FWP_VALUE0, FWP_VALUE0_0,
+    FwpmSubLayerAdd0, FwpmSubLayerGetByKey0, FwpmTransactionAbort0, FwpmTransactionBegin0,
+    FwpmTransactionCommit0, FWPM_ACTION0, FWPM_ACTION0_0, FWPM_CONDITION_ALE_PACKAGE_ID,
+    FWPM_CONDITION_IP_PROTOCOL, FWPM_CONDITION_IP_REMOTE_ADDRESS, FWPM_CONDITION_IP_REMOTE_PORT,
+    FWPM_DISPLAY_DATA0, FWPM_FILTER0, FWPM_FILTER0_0, FWPM_FILTER_CONDITION0,
+    FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWPM_SESSION0,
+    FWPM_SESSION_FLAG_DYNAMIC, FWPM_SUBLAYER0, FWP_ACTION_BLOCK, FWP_ACTION_PERMIT, FWP_BYTE_BLOB,
+    FWP_CONDITION_VALUE0, FWP_CONDITION_VALUE0_0, FWP_MATCH_EQUAL, FWP_SID, FWP_UINT16, FWP_UINT32,
+    FWP_UINT8, FWP_VALUE0, FWP_VALUE0_0,
 };
 use windows_sys::Win32::Security::Authorization::{
     BuildTrusteeWithSidW, GetEffectiveRightsFromAclW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
@@ -35,7 +38,7 @@ use windows_sys::Win32::Security::Cryptography::{
     X509_ASN_ENCODING,
 };
 use windows_sys::Win32::Security::Isolation::{
-    CreateAppContainerProfile, DeleteAppContainerProfile,
+    CreateAppContainerProfile, DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
 };
 use windows_sys::Win32::Security::WinTrust::{
     WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
@@ -44,8 +47,8 @@ use windows_sys::Win32::Security::WinTrust::{
     WTD_STATEACTION_VERIFY, WTD_UICONTEXT_EXECUTE, WTD_UI_NONE,
 };
 use windows_sys::Win32::Security::{
-    FreeSid, GetTokenInformation, IsValidSid, TokenElevation, ACL, DACL_SECURITY_INFORMATION,
-    PSECURITY_DESCRIPTOR, PSID, TOKEN_ELEVATION, TOKEN_QUERY,
+    EqualSid, FreeSid, GetLengthSid, GetTokenInformation, IsValidSid, TokenElevation, ACL,
+    DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_ELEVATION, TOKEN_QUERY,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FileIdInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
@@ -69,11 +72,13 @@ use crate::{
 
 mod preflight;
 pub use preflight::{
-    run_native_child_policy_diagnostic, run_native_helper_diagnostic, run_native_preflight,
-    run_native_preflight_diagnostic, NativeChildPolicyDiagnosticResult, NativeHelperDebugEvent,
-    NativeHelperDiagnosticResult, NativeHelperDiagnosticVariantResult, NativeHelperHomeChangeEvent,
-    NativeHelperHomeEntry, NativeHelperJobEvent, NativeHelperProcessEvidence,
-    NativePreflightDiagnosticResult, NativePreflightDiagnosticVariantResult, NativePreflightResult,
+    run_native_appcontainer_profile_diagnostic, run_native_child_policy_diagnostic,
+    run_native_helper_diagnostic, run_native_preflight, run_native_preflight_diagnostic,
+    run_native_wfp_policy_diagnostic, NativeAppContainerProfileDiagnosticResult,
+    NativeChildPolicyDiagnosticResult, NativeHelperDebugEvent, NativeHelperDiagnosticResult,
+    NativeHelperDiagnosticVariantResult, NativeHelperHomeChangeEvent, NativeHelperHomeEntry,
+    NativeHelperJobEvent, NativeHelperProcessEvidence, NativePreflightDiagnosticResult,
+    NativePreflightDiagnosticVariantResult, NativePreflightResult, NativeWfpPolicyDiagnosticResult,
 };
 
 const PREFLIGHT_BINARY_PATH: &str = r"D:\personal\obsidian_workflow-runtime\durable\codex\0.147.0-prequal-20260818-01\expanded\codex-x86_64-pc-windows-msvc.exe";
@@ -230,7 +235,7 @@ pub fn native_static_blockers() -> Vec<Blocker> {
         ),
         Blocker::new(
             Gate::AppContainerLpac,
-            "PER_RUN_APPCONTAINER_IDENTITY_NOT_QUALIFIED",
+            "APPCONTAINER_PROFILE_DIAGNOSTIC_NOT_RELEASE_BOUND",
         ),
         Blocker::new(
             Gate::AppContainerLpac,
@@ -263,7 +268,7 @@ pub fn native_static_blockers() -> Vec<Blocker> {
         ),
         Blocker::new(
             Gate::WfpTransaction,
-            "WFP_EXACT_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
+            "WFP_ELEVATED_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
         ),
         Blocker::new(Gate::LoopbackExemption, "LOOPBACK_EXEMPTION_NOT_QUALIFIED"),
         Blocker::new(Gate::FileBoundary, "ANCESTOR_HANDLE_CHAIN_NOT_QUALIFIED"),
@@ -955,6 +960,44 @@ fn create_zero_capability_profile(profile_name: &str) -> Result<OwnedSid, Blocke
     Ok(OwnedSid(sid))
 }
 
+fn derive_appcontainer_sid(profile_name: &str) -> Result<OwnedSid, Blocker> {
+    let profile_name = wide_null(std::ffi::OsStr::new(profile_name));
+    let mut sid = std::ptr::null_mut();
+    // SAFETY: profile_name is a live NUL-terminated buffer and sid is writable.
+    if unsafe { DeriveAppContainerSidFromAppContainerName(profile_name.as_ptr(), &mut sid) } < 0
+        || sid.is_null()
+        || unsafe { IsValidSid(sid) } == 0
+    {
+        if !sid.is_null() {
+            // SAFETY: any returned SID follows the FreeSid ownership contract.
+            let _ = unsafe { FreeSid(sid) };
+        }
+        return Err(Blocker::new(
+            Gate::AppContainerLpac,
+            "APPCONTAINER_SID_DERIVE_FAILED",
+        ));
+    }
+    Ok(OwnedSid(sid))
+}
+
+fn appcontainer_sids_equal(left: &OwnedSid, right: &OwnedSid) -> bool {
+    // SAFETY: both values own live, validated SIDs.
+    unsafe { EqualSid(left.0, right.0) != 0 }
+}
+
+fn appcontainer_sid_bytes(sid: &OwnedSid) -> Result<Vec<u8>, Blocker> {
+    // SAFETY: sid owns a live, validated SID.
+    let length = unsafe { GetLengthSid(sid.0) };
+    if length == 0 || length > 4_096 {
+        return Err(Blocker::new(
+            Gate::AppContainerLpac,
+            "APPCONTAINER_SID_LENGTH_INVALID",
+        ));
+    }
+    // SAFETY: GetLengthSid returned the exact readable SID byte length.
+    Ok(unsafe { std::slice::from_raw_parts(sid.0.cast::<u8>(), length as usize) }.to_vec())
+}
+
 const WFP_SUBLAYER_KEY: GUID = GUID::from_u128(0xf41baeb8_1706_4cab_91ad_6f7bb3941c70);
 
 struct WfpEngine(HANDLE);
@@ -1258,12 +1301,59 @@ fn add_filter(
     Ok(id)
 }
 
+#[derive(Clone, Copy)]
+enum ExpectedWfpValue {
+    Sid(PSID),
+    U32(u32),
+    U16(u16),
+    U8(u8),
+}
+
+#[derive(Clone, Copy)]
+struct ExpectedWfpCondition {
+    field: GUID,
+    value: ExpectedWfpValue,
+}
+
+fn wfp_condition_matches(actual: &FWPM_FILTER_CONDITION0, expected: &ExpectedWfpCondition) -> bool {
+    if !guid_eq(actual.fieldKey, expected.field) || actual.matchType != FWP_MATCH_EQUAL {
+        return false;
+    }
+    match expected.value {
+        ExpectedWfpValue::Sid(expected_sid) => {
+            if actual.conditionValue.r#type != FWP_SID || expected_sid.is_null() {
+                return false;
+            }
+            // SAFETY: the active union member is selected by FWP_SID and BFE
+            // owns the returned SID for the lifetime of the filter allocation.
+            let actual_sid = unsafe { actual.conditionValue.Anonymous.sid };
+            !actual_sid.is_null() && unsafe { EqualSid(actual_sid.cast(), expected_sid) != 0 }
+        }
+        ExpectedWfpValue::U32(expected_value) => {
+            actual.conditionValue.r#type == FWP_UINT32
+                // SAFETY: active union member is selected by FWP_UINT32.
+                && unsafe { actual.conditionValue.Anonymous.uint32 } == expected_value
+        }
+        ExpectedWfpValue::U16(expected_value) => {
+            actual.conditionValue.r#type == FWP_UINT16
+                // SAFETY: active union member is selected by FWP_UINT16.
+                && unsafe { actual.conditionValue.Anonymous.uint16 } == expected_value
+        }
+        ExpectedWfpValue::U8(expected_value) => {
+            actual.conditionValue.r#type == FWP_UINT8
+                // SAFETY: active union member is selected by FWP_UINT8.
+                && unsafe { actual.conditionValue.Anonymous.uint8 } == expected_value
+        }
+    }
+}
+
 fn verify_filter(
     engine: &WfpEngine,
     id: u64,
     expected_layer: GUID,
     expected_action: u32,
-    expected_conditions: u32,
+    expected_weight: u8,
+    expected_conditions: &[ExpectedWfpCondition],
 ) -> Result<(), Blocker> {
     let mut filter = std::ptr::null_mut();
     // SAFETY: output pointer is writable and engine/id are live.
@@ -1275,11 +1365,28 @@ fn verify_filter(
     }
     // SAFETY: BFE returned a valid FWPM_FILTER0 pointer until FwpmFreeMemory0.
     let matches = unsafe {
+        let condition_count = (*filter).numFilterConditions as usize;
+        let conditions = if condition_count == 0 || (*filter).filterCondition.is_null() {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts((*filter).filterCondition, condition_count)
+        };
         (*filter).filterId == id
             && guid_eq((*filter).layerKey, expected_layer)
             && guid_eq((*filter).subLayerKey, WFP_SUBLAYER_KEY)
+            && (*filter).flags == 0
+            && (*filter).providerKey.is_null()
             && (*filter).action.r#type == expected_action
-            && (*filter).numFilterConditions == expected_conditions
+            && (*filter).weight.r#type == FWP_UINT8
+            && (*filter).weight.Anonymous.uint8 == expected_weight
+            && condition_count == expected_conditions.len()
+            && expected_conditions.iter().all(|expected| {
+                conditions
+                    .iter()
+                    .filter(|actual| wfp_condition_matches(actual, expected))
+                    .count()
+                    == 1
+            })
     };
     let mut allocation = filter.cast::<core::ffi::c_void>();
     // SAFETY: allocation was returned by a Fwpm*Get API and is freed once.
@@ -1300,7 +1407,7 @@ fn guid_eq(left: GUID, right: GUID) -> bool {
         && left.data4 == right.data4
 }
 
-fn install_wfp_default_deny(sid: PSID, port: u16) -> Result<WfpEngine, Blocker> {
+fn install_wfp_default_deny(sid: PSID, port: u16) -> Result<(WfpEngine, [u64; 3]), Blocker> {
     let engine = open_dynamic_wfp_engine()?;
     let transaction = WfpTransaction::begin(&engine)?;
     add_sublayer(&engine)?;
@@ -1336,28 +1443,101 @@ fn install_wfp_default_deny(sid: PSID, port: u16) -> Result<WfpEngine, Blocker> 
     )?;
     transaction.commit()?;
 
+    let expected_allow_v4 = [
+        ExpectedWfpCondition {
+            field: FWPM_CONDITION_ALE_PACKAGE_ID,
+            value: ExpectedWfpValue::Sid(sid),
+        },
+        ExpectedWfpCondition {
+            field: FWPM_CONDITION_IP_REMOTE_ADDRESS,
+            value: ExpectedWfpValue::U32(0x7f00_0001),
+        },
+        ExpectedWfpCondition {
+            field: FWPM_CONDITION_IP_REMOTE_PORT,
+            value: ExpectedWfpValue::U16(port),
+        },
+        ExpectedWfpCondition {
+            field: FWPM_CONDITION_IP_PROTOCOL,
+            value: ExpectedWfpValue::U8(6),
+        },
+    ];
+    let expected_package_only = [ExpectedWfpCondition {
+        field: FWPM_CONDITION_ALE_PACKAGE_ID,
+        value: ExpectedWfpValue::Sid(sid),
+    }];
+
     verify_filter(
         &engine,
         allow_id,
         FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         FWP_ACTION_PERMIT,
-        4,
+        15,
+        &expected_allow_v4,
     )?;
     verify_filter(
         &engine,
         block_v4_id,
         FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         FWP_ACTION_BLOCK,
-        1,
+        0,
+        &expected_package_only,
     )?;
     verify_filter(
         &engine,
         block_v6_id,
         FWPM_LAYER_ALE_AUTH_CONNECT_V6,
         FWP_ACTION_BLOCK,
-        1,
+        0,
+        &expected_package_only,
     )?;
-    Ok(engine)
+    Ok((engine, [allow_id, block_v4_id, block_v6_id]))
+}
+
+fn verify_wfp_dynamic_cleanup(filter_ids: [u64; 3]) -> Result<(), Blocker> {
+    let engine = open_dynamic_wfp_engine()?;
+    for id in filter_ids {
+        let mut filter = std::ptr::null_mut();
+        // SAFETY: output pointer is writable and engine/id are live.
+        let status = unsafe { FwpmFilterGetById0(engine.0, id, &mut filter) };
+        if status == 0 {
+            let mut allocation = filter.cast::<core::ffi::c_void>();
+            if !filter.is_null() {
+                // SAFETY: successful Get returned a BFE-owned allocation.
+                unsafe { FwpmFreeMemory0(&mut allocation) };
+            }
+            return Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "WFP_DYNAMIC_FILTER_STILL_PRESENT",
+            ));
+        }
+        if status != FWP_E_FILTER_NOT_FOUND as u32 || !filter.is_null() {
+            return Err(Blocker::new(
+                Gate::WfpPolicyRemoved,
+                "WFP_DYNAMIC_FILTER_CLEANUP_QUERY_FAILED",
+            ));
+        }
+    }
+    let mut sublayer = std::ptr::null_mut();
+    // SAFETY: output pointer is writable and engine/key are live.
+    let status = unsafe { FwpmSubLayerGetByKey0(engine.0, &WFP_SUBLAYER_KEY, &mut sublayer) };
+    if status == 0 {
+        let mut allocation = sublayer.cast::<core::ffi::c_void>();
+        if !sublayer.is_null() {
+            // SAFETY: successful Get returned a BFE-owned allocation.
+            unsafe { FwpmFreeMemory0(&mut allocation) };
+        }
+        return Err(Blocker::new(
+            Gate::WfpPolicyRemoved,
+            "WFP_DYNAMIC_SUBLAYER_STILL_PRESENT",
+        ));
+    }
+    if status != FWP_E_SUBLAYER_NOT_FOUND as u32 || !sublayer.is_null() {
+        return Err(Blocker::new(
+            Gate::WfpPolicyRemoved,
+            "WFP_DYNAMIC_SUBLAYER_CLEANUP_QUERY_FAILED",
+        ));
+    }
+    Ok(())
 }
 
 fn reject_reparse_points(path: &std::path::Path, gate: Gate) -> Result<(), Blocker> {
@@ -1644,7 +1824,8 @@ impl IsolationBackend for NativeWindowsBackend {
             .appcontainer_sid
             .as_ref()
             .ok_or_else(|| Blocker::new(Gate::WfpTransaction, "PACKAGE_SID_MISSING"))?;
-        self.wfp_engine = Some(install_wfp_default_deny(sid.0, plan.proxy_port)?);
+        let (engine, _filter_ids) = install_wfp_default_deny(sid.0, plan.proxy_port)?;
+        self.wfp_engine = Some(engine);
         Ok(())
     }
 
@@ -1816,5 +1997,22 @@ mod tests {
             parse_pe_identity(&image),
             Err(Blocker::new(Gate::BinaryIdentity, "PE_MACHINE_NOT_AMD64"))
         );
+    }
+
+    #[test]
+    fn wfp_condition_match_rejects_field_type_and_value_substitution() {
+        let expected = ExpectedWfpCondition {
+            field: FWPM_CONDITION_IP_REMOTE_PORT,
+            value: ExpectedWfpValue::U16(43_117),
+        };
+        let exact = uint16_condition(FWPM_CONDITION_IP_REMOTE_PORT, 43_117);
+        assert!(wfp_condition_matches(&exact, &expected));
+
+        let wrong_field = uint16_condition(FWPM_CONDITION_IP_PROTOCOL, 43_117);
+        assert!(!wfp_condition_matches(&wrong_field, &expected));
+        let wrong_type = uint32_condition(FWPM_CONDITION_IP_REMOTE_PORT, 43_117);
+        assert!(!wfp_condition_matches(&wrong_type, &expected));
+        let wrong_value = uint16_condition(FWPM_CONDITION_IP_REMOTE_PORT, 43_118);
+        assert!(!wfp_condition_matches(&wrong_value, &expected));
     }
 }

@@ -2,15 +2,16 @@ use std::env;
 use std::process::ExitCode;
 
 use pkm_codex_qualifier::{
-    native_static_blockers, process_is_elevated, run_native_child_policy_diagnostic,
-    run_native_helper_diagnostic, run_native_preflight, run_native_preflight_diagnostic,
+    native_static_blockers, process_is_elevated, run_native_appcontainer_profile_diagnostic,
+    run_native_child_policy_diagnostic, run_native_helper_diagnostic, run_native_preflight,
+    run_native_preflight_diagnostic, run_native_wfp_policy_diagnostic,
 };
 
 fn main() -> ExitCode {
     let arguments: Vec<_> = env::args_os().skip(1).collect();
     if arguments.len() != 1 {
         eprintln!(
-            "pkm-codex-qualifier: expected exactly `doctor`, `preflight`, `diagnose-preflight`, `diagnose-helper`, or `diagnose-child-policy`"
+            "pkm-codex-qualifier: expected exactly `doctor`, `preflight`, `diagnose-preflight`, `diagnose-helper`, `diagnose-child-policy`, `diagnose-appcontainer-profile`, or `diagnose-wfp-policy`"
         );
         return ExitCode::from(2);
     }
@@ -34,9 +35,19 @@ fn main() -> ExitCode {
         println!("{}", result.to_json());
         return ExitCode::from(result.exit_code);
     }
+    if arguments[0] == "diagnose-appcontainer-profile" {
+        let result = run_native_appcontainer_profile_diagnostic();
+        println!("{}", result.to_json());
+        return ExitCode::from(result.exit_code);
+    }
+    if arguments[0] == "diagnose-wfp-policy" {
+        let result = run_native_wfp_policy_diagnostic();
+        println!("{}", result.to_json());
+        return ExitCode::from(result.exit_code);
+    }
     if arguments[0] != "doctor" {
         eprintln!(
-            "pkm-codex-qualifier: expected exactly `doctor`, `preflight`, `diagnose-preflight`, `diagnose-helper`, or `diagnose-child-policy`"
+            "pkm-codex-qualifier: expected exactly `doctor`, `preflight`, `diagnose-preflight`, `diagnose-helper`, `diagnose-child-policy`, `diagnose-appcontainer-profile`, or `diagnose-wfp-policy`"
         );
         return ExitCode::from(2);
     }

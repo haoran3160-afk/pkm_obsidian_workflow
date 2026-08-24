@@ -41,8 +41,11 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::System::WindowsProgramming::PROCESS_CREATION_CHILD_PROCESS_RESTRICTED;
 
 use super::{
-    create_qualified_job, file_id_from_handle, native_preflight_contract, sha256_open_file,
-    verify_authenticode, verify_pe_file, wide_null, OwnedKernelHandle, PREFLIGHT_DEADLINE,
+    appcontainer_sid_bytes, appcontainer_sids_equal, create_qualified_job,
+    create_zero_capability_profile, delete_profile, derive_appcontainer_sid, file_id_from_handle,
+    install_wfp_default_deny, native_preflight_contract, process_is_elevated, sha256_open_file,
+    verify_authenticode, verify_pe_file, verify_wfp_dynamic_cleanup, wide_null, OwnedKernelHandle,
+    PREFLIGHT_DEADLINE,
 };
 use crate::{
     Blocker, FileCreationAuthority, Gate, NtfsFileIdentity, EXPECTED_CODEX_EXE_SHA256,
@@ -59,6 +62,8 @@ pub use helper::{
 const PREFLIGHT_SCRATCH_ROOT: &str = r"D:\personal\obsidian_workflow-runtime\scratch";
 const PREFLIGHT_RUN_PREFIX: &str = "codex-t13b-preflight-";
 const CHILD_POLICY_RUN_PREFIX: &str = "codex-t13b-child-policy-";
+const APPCONTAINER_PROFILE_RUN_PREFIX: &str = "codex-t13b-appcontainer-profile-";
+const WFP_POLICY_RUN_PREFIX: &str = "codex-t13b-wfp-policy-";
 const DIAGNOSTIC_RUN_PREFIXES: [&str; 4] = [
     "codex-t13b-diagnostic-a-",
     "codex-t13b-diagnostic-b-",
@@ -166,6 +171,92 @@ pub struct NativeChildPolicyDiagnosticResult {
     pub job_total_processes: Option<u32>,
     pub job_active_processes: Option<u32>,
     pub descendants_zero: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeAppContainerProfileDiagnosticResult {
+    pub exit_code: u8,
+    pub terminal: &'static str,
+    pub blocker: &'static str,
+    pub production: bool,
+    pub live: bool,
+    pub run_root: Option<PathBuf>,
+    pub receipt_path: Option<PathBuf>,
+    pub receipt_sha256: Option<String>,
+    pub profile_name_sha256: Option<String>,
+    pub package_sid_sha256: Option<String>,
+    pub zero_capabilities: bool,
+    pub first_create: bool,
+    pub derived_sid_match: bool,
+    pub first_delete: bool,
+    pub recreate: bool,
+    pub sid_stable: bool,
+    pub final_delete: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeWfpPolicyDiagnosticResult {
+    pub exit_code: u8,
+    pub terminal: &'static str,
+    pub blocker: &'static str,
+    pub production: bool,
+    pub live: bool,
+    pub run_root: Option<PathBuf>,
+    pub receipt_path: Option<PathBuf>,
+    pub receipt_sha256: Option<String>,
+    pub profile_created: bool,
+    pub wfp_installed: bool,
+    pub filter_readback: bool,
+    pub cleanup_verified: bool,
+    pub negative_matrix: bool,
+    pub package_sid_sha256: Option<String>,
+    pub wfp_policy_sha256: Option<String>,
+}
+
+impl NativeWfpPolicyDiagnosticResult {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"profile_created\":{},\"wfp_installed\":{},\"filter_readback\":{},\"cleanup_verified\":{},\"negative_matrix\":{},\"package_sid_sha256\":{},\"wfp_policy_sha256\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
+            json_escape(self.terminal),
+            json_escape(self.blocker),
+            json_bool(self.production),
+            json_bool(self.live),
+            json_bool(self.profile_created),
+            json_bool(self.wfp_installed),
+            json_bool(self.filter_readback),
+            json_bool(self.cleanup_verified),
+            json_bool(self.negative_matrix),
+            json_string_or_null(self.package_sid_sha256.as_deref()),
+            json_string_or_null(self.wfp_policy_sha256.as_deref()),
+            json_path_or_null(self.run_root.as_deref()),
+            json_path_or_null(self.receipt_path.as_deref()),
+            json_string_or_null(self.receipt_sha256.as_deref()),
+        )
+    }
+}
+
+impl NativeAppContainerProfileDiagnosticResult {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"profile_name_sha256\":{},\"package_sid_sha256\":{},\"zero_capabilities\":{},\"first_create\":{},\"derived_sid_match\":{},\"first_delete\":{},\"recreate\":{},\"sid_stable\":{},\"final_delete\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
+            json_escape(self.terminal),
+            json_escape(self.blocker),
+            json_bool(self.production),
+            json_bool(self.live),
+            json_string_or_null(self.profile_name_sha256.as_deref()),
+            json_string_or_null(self.package_sid_sha256.as_deref()),
+            json_bool(self.zero_capabilities),
+            json_bool(self.first_create),
+            json_bool(self.derived_sid_match),
+            json_bool(self.first_delete),
+            json_bool(self.recreate),
+            json_bool(self.sid_stable),
+            json_bool(self.final_delete),
+            json_path_or_null(self.run_root.as_deref()),
+            json_path_or_null(self.receipt_path.as_deref()),
+            json_string_or_null(self.receipt_sha256.as_deref()),
+        )
+    }
 }
 
 impl NativeChildPolicyDiagnosticResult {
@@ -2222,6 +2313,327 @@ pub fn run_native_child_policy_diagnostic() -> NativeChildPolicyDiagnosticResult
         result.blocker = "CHILD_POLICY_MAINTENANCE_RELEASE_FAILED";
         return result;
     }
+    result.receipt_path = Some(receipt.identity.path.clone());
+    result.receipt_sha256 = Some(receipt.identity.sha256.clone());
+    result
+}
+
+pub fn run_native_appcontainer_profile_diagnostic() -> NativeAppContainerProfileDiagnosticResult {
+    let mut result = NativeAppContainerProfileDiagnosticResult {
+        exit_code: 3,
+        terminal: "BLOCKED_APPCONTAINER_PROFILE_DIAGNOSTIC",
+        blocker: "APPCONTAINER_PROFILE_DIAGNOSTIC_EVIDENCE_INCOMPLETE",
+        production: false,
+        live: false,
+        run_root: None,
+        receipt_path: None,
+        receipt_sha256: None,
+        profile_name_sha256: None,
+        package_sid_sha256: None,
+        zero_capabilities: true,
+        first_create: false,
+        derived_sid_match: false,
+        first_delete: false,
+        recreate: false,
+        sid_stable: false,
+        final_delete: false,
+    };
+    let maintenance = match MaintenanceMutex::acquire() {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let runtime = match RuntimeAuthority::create_with_prefix(APPCONTAINER_PROFILE_RUN_PREFIX) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.run_root = Some(runtime.run_root.clone());
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", runtime.run_id);
+    let profile_name_sha256 = match crate::sha256_digest(profile_name.as_bytes()) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.profile_name_sha256 = Some(profile_name_sha256.clone());
+
+    let first = match create_zero_capability_profile(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.first_create = true;
+    let derived = match derive_appcontainer_sid(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "APPCONTAINER_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    if !appcontainer_sids_equal(&first, &derived) {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => "APPCONTAINER_DERIVED_SID_MISMATCH",
+            Err(_) => "APPCONTAINER_PROFILE_ROLLBACK_FAILED",
+        };
+        return result;
+    }
+    result.derived_sid_match = true;
+    let first_sid_bytes = match appcontainer_sid_bytes(&first) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "APPCONTAINER_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let package_sid_sha256 = match crate::sha256_digest(&first_sid_bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "APPCONTAINER_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.package_sid_sha256 = Some(package_sid_sha256.clone());
+    if let Err(error) = delete_profile(&profile_name) {
+        result.blocker = error.code;
+        return result;
+    }
+    result.first_delete = true;
+    drop(derived);
+    drop(first);
+
+    let second = match create_zero_capability_profile(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.recreate = true;
+    let second_sid_bytes = match appcontainer_sid_bytes(&second) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "APPCONTAINER_PROFILE_FINAL_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let second_sid_sha256 = match crate::sha256_digest(&second_sid_bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "APPCONTAINER_PROFILE_FINAL_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.sid_stable = second_sid_sha256 == package_sid_sha256;
+    if !result.sid_stable {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => "APPCONTAINER_SID_NOT_STABLE",
+            Err(_) => "APPCONTAINER_PROFILE_FINAL_ROLLBACK_FAILED",
+        };
+        return result;
+    }
+    if let Err(error) = delete_profile(&profile_name) {
+        result.blocker = error.code;
+        return result;
+    }
+    result.final_delete = true;
+    drop(second);
+    if maintenance.release().is_err() {
+        result.blocker = "APPCONTAINER_MAINTENANCE_RELEASE_FAILED";
+        return result;
+    }
+    result.blocker = "APPCONTAINER_PROFILE_OBSERVED_NOT_RELEASE_BOUND";
+    let receipt_bytes = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-profile-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_APPCONTAINER_PROFILE_DIAGNOSTIC\",\"blocker\":\"{}\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"profile_name_sha256\":\"{}\",\"package_sid_sha256\":\"{}\",\"zero_capabilities\":true,\"first_create\":true,\"derived_sid_match\":true,\"first_delete\":true,\"recreate\":true,\"sid_stable\":true,\"final_delete\":true}}\n",
+        result.blocker,
+        runtime.run_id,
+        json_escape(&runtime.run_root.to_string_lossy()),
+        profile_name_sha256,
+        package_sid_sha256,
+    )
+    .into_bytes();
+    let receipt = match create_new_artifact(
+        &runtime
+            .run_root
+            .join("appcontainer-profile-diagnostic-receipt.json"),
+        &runtime.run_root_directory,
+        &receipt_bytes,
+        Gate::CleanupFinalized,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.receipt_path = Some(receipt.identity.path.clone());
+    result.receipt_sha256 = Some(receipt.identity.sha256.clone());
+    result
+}
+
+pub fn run_native_wfp_policy_diagnostic() -> NativeWfpPolicyDiagnosticResult {
+    let mut result = NativeWfpPolicyDiagnosticResult {
+        exit_code: 3,
+        terminal: "BLOCKED_WFP_POLICY_DIAGNOSTIC",
+        blocker: "WFP_POLICY_DIAGNOSTIC_EVIDENCE_INCOMPLETE",
+        production: false,
+        live: false,
+        run_root: None,
+        receipt_path: None,
+        receipt_sha256: None,
+        profile_created: false,
+        wfp_installed: false,
+        filter_readback: false,
+        cleanup_verified: false,
+        negative_matrix: false,
+        package_sid_sha256: None,
+        wfp_policy_sha256: None,
+    };
+    match process_is_elevated() {
+        Ok(true) => {}
+        Ok(false) => {
+            result.blocker = "ELEVATION_REQUIRED";
+            return result;
+        }
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    }
+    let maintenance = match MaintenanceMutex::acquire() {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let runtime = match RuntimeAuthority::create_with_prefix(WFP_POLICY_RUN_PREFIX) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.run_root = Some(runtime.run_root.clone());
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", runtime.run_id);
+    let sid = match create_zero_capability_profile(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.profile_created = true;
+    let sid_bytes = match appcontainer_sid_bytes(&sid) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "WFP_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    let sid_sha256 = match crate::sha256_digest(&sid_bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "WFP_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.package_sid_sha256 = Some(sid_sha256.clone());
+    let policy_bytes = format!(
+        "pkm-wfp-v1|sid={sid_sha256}|permit=ipv4,tcp,127.0.0.1,{}|block=ipv4,all|block=ipv6,all",
+        crate::GOLDEN_PROXY_PORT,
+    );
+    let policy_sha256 = match crate::sha256_digest(policy_bytes.as_bytes()) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "WFP_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.wfp_policy_sha256 = Some(policy_sha256.clone());
+    let (engine, filter_ids) = match install_wfp_default_deny(sid.0, crate::GOLDEN_PROXY_PORT) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile(&profile_name) {
+                Ok(()) => error.code,
+                Err(_) => "WFP_PROFILE_ROLLBACK_FAILED",
+            };
+            return result;
+        }
+    };
+    result.wfp_installed = true;
+    result.filter_readback = true;
+    drop(engine);
+    if let Err(error) = verify_wfp_dynamic_cleanup(filter_ids) {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => error.code,
+            Err(_) => "WFP_PROFILE_FINAL_ROLLBACK_FAILED",
+        };
+        return result;
+    }
+    if let Err(error) = delete_profile(&profile_name) {
+        result.blocker = error.code;
+        return result;
+    }
+    drop(sid);
+    if maintenance.release().is_err() {
+        result.blocker = "WFP_MAINTENANCE_RELEASE_FAILED";
+        return result;
+    }
+    result.cleanup_verified = true;
+    result.blocker = "WFP_NEGATIVE_MATRIX_NOT_RUN";
+    let receipt_bytes = format!(
+        "{{\"schema\":\"pkm.codex.wfp-policy-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_WFP_POLICY_DIAGNOSTIC\",\"blocker\":\"WFP_NEGATIVE_MATRIX_NOT_RUN\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"package_sid_sha256\":\"{}\",\"wfp_policy_sha256\":\"{}\",\"proxy_port\":{},\"profile_created\":true,\"wfp_installed\":true,\"filter_readback\":true,\"cleanup_verified\":true,\"negative_matrix\":false}}\n",
+        runtime.run_id,
+        json_escape(&runtime.run_root.to_string_lossy()),
+        sid_sha256,
+        policy_sha256,
+        crate::GOLDEN_PROXY_PORT,
+    )
+    .into_bytes();
+    let receipt = match create_new_artifact(
+        &runtime.run_root.join("wfp-policy-diagnostic-receipt.json"),
+        &runtime.run_root_directory,
+        &receipt_bytes,
+        Gate::CleanupFinalized,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
     result.receipt_path = Some(receipt.identity.path.clone());
     result.receipt_sha256 = Some(receipt.identity.sha256.clone());
     result

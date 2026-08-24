@@ -14,13 +14,15 @@ mod windows_backend;
 pub use windows_backend::{
     native_helper_diagnostic_contract, native_preflight_contract,
     native_preflight_diagnostic_contract, native_static_blockers, process_is_elevated,
-    run_native_child_policy_diagnostic, run_native_helper_diagnostic, run_native_preflight,
-    run_native_preflight_diagnostic, NativeChildPolicyDiagnosticResult, NativeHelperDebugEvent,
-    NativeHelperDiagnosticContract, NativeHelperDiagnosticResult,
-    NativeHelperDiagnosticVariantResult, NativeHelperHomeChangeEvent, NativeHelperHomeEntry,
-    NativeHelperJobEvent, NativeHelperProcessEvidence, NativePreflightContract,
-    NativePreflightDiagnosticContract, NativePreflightDiagnosticResult,
-    NativePreflightDiagnosticVariantResult, NativePreflightResult, NativeWindowsBackend,
+    run_native_appcontainer_profile_diagnostic, run_native_child_policy_diagnostic,
+    run_native_helper_diagnostic, run_native_preflight, run_native_preflight_diagnostic,
+    run_native_wfp_policy_diagnostic, NativeAppContainerProfileDiagnosticResult,
+    NativeChildPolicyDiagnosticResult, NativeHelperDebugEvent, NativeHelperDiagnosticContract,
+    NativeHelperDiagnosticResult, NativeHelperDiagnosticVariantResult, NativeHelperHomeChangeEvent,
+    NativeHelperHomeEntry, NativeHelperJobEvent, NativeHelperProcessEvidence,
+    NativePreflightContract, NativePreflightDiagnosticContract, NativePreflightDiagnosticResult,
+    NativePreflightDiagnosticVariantResult, NativePreflightResult, NativeWfpPolicyDiagnosticResult,
+    NativeWindowsBackend,
 };
 
 pub const EXPECTED_CODEX_VERSION: &str = "codex-cli 0.147.0";
