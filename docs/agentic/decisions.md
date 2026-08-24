@@ -418,3 +418,31 @@ startup discovery、directory durability、LPAC direct flag、elevated WFP、pro
 
 范围后果：本决定不授权 production、认证、模型、网络、Vault、Task 或发布；intent 与两级
 receipt 永久 append-only 保留，不删除、不覆盖。
+
+## D-016 — Startup intent discovery 仅作为实验性预资格成果冻结
+
+状态：`ACCEPTED_EXPERIMENTAL_FROZEN`（2026-08-24，非 MVP 生产依赖）
+
+决定：fresh Phase B 不再接收 run_id，而是在固定 scratch root 中按确定性顺序发现
+owner-restart intent。Scanner 持有 scratch 与候选目录的 no-share-delete 句柄；intent 与
+Phase-B receipt 必须是有界、单链接、非 reparse 的普通文件，并与 run_id 及允许的 canonical
+bytes 精确全等。已有 terminal receipt 不能仅凭文件名跳过，必须再用原子
+`CreateAppContainerProfile` presence probe 证明 profile 不存在；receipt 损坏或 terminal/profile
+冲突一律 fail-closed，且不修改、不覆盖、不删除原文件。历史 no-profile receipt 仅按一份固定
+legacy canonical bytes 兼容，仍须通过同一 presence probe。
+
+存在性语义：`CreateAppContainerProfile == S_OK` 只表示 probe 入口无同名 profile；校验返回
+SID 后删除本次 probe。`HRESULT_ALREADY_EXISTS` 表示入口存在 profile；恢复分支随后执行受控
+删除、同名重建、SID 稳定性比较与最终删除。其他结果全部阻断。不得用
+`DeleteAppContainerProfile == S_OK` 推断 profile 原本存在，也不依赖未文档化注册表映射。
+
+证据边界：只允许声明 `owner_process_restart_recovery_observed=true` 与
+`startup_intent_discovery_observed=true`。`qualifier_restart_recovery_observed=false`、
+`directory_metadata_durability_observed=false`、`production=false`、`live=false` 固定保留。
+真实测试覆盖 no-profile 独立 OS absence observer、current/legacy terminal 与残留 profile 冲突、
+legacy 兼容、marker file identity/SHA 不变以及 fixed CLI 成功路径。
+
+冻结后果：本成果不属于 v7.4 MVP 生产链路，不授权认证、模型、网络、真实 Vault、Home、Status、
+Task 或发布。WFP elevation qualification、完整 LPAC/WFP 生产隔离、qualifier 自身重启、目录
+metadata/掉电持久性、stage0 自升级和 Task bundle 代际切换仍未完成。T1.3b 整体不得标记完成；
+除非用户重新授权，不再扩张上述原生研究。

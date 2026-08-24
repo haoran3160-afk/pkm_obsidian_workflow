@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
@@ -11,6 +12,9 @@ use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile,
 };
 use windows_sys::Win32::Security::{FreeSid, IsValidSid};
+use windows_sys::Win32::Storage::FileSystem::{
+    GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+};
 
 use pkm_codex_qualifier::{
     native_helper_diagnostic_contract, native_preflight_contract,
@@ -57,6 +61,22 @@ fn file_sha256(path: &Path) -> String {
         write!(&mut encoded, "{byte:02x}").expect("write SHA-256 hex");
     }
     format!("sha256:{encoded}")
+}
+
+fn file_identity(path: &Path) -> (u32, u64, u32, u64) {
+    let file = std::fs::File::open(path).expect("open artifact for independent file identity");
+    let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    assert_ne!(
+        unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), &mut information) },
+        0,
+        "read independent file identity"
+    );
+    (
+        information.dwVolumeSerialNumber,
+        ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
+        information.nNumberOfLinks,
+        ((information.nFileSizeHigh as u64) << 32) | information.nFileSizeLow as u64,
+    )
 }
 
 fn json_string_values(document: &str, key: &str) -> Vec<String> {
@@ -1119,7 +1139,209 @@ fn appcontainer_owner_restart_uses_flushed_intent_and_a_fresh_recovery_process()
     let _guard = NATIVE_CHILD_TEST_LOCK
         .lock()
         .expect("native child test lock");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time after epoch")
+        .as_nanos();
+    let absent_run_id = format!("{unique:032x}");
+    let absent_root = std::path::PathBuf::from(r"D:\personal\obsidian_workflow-runtime\scratch")
+        .join(format!(
+            "codex-t13b-appcontainer-owner-restart-{absent_run_id}"
+        ));
+    std::fs::create_dir(&absent_root).expect("create pending no-profile fixture");
+    let absent_profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{absent_run_id}");
+    let absent_intent = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-intent.v1\",\"run_id\":\"{absent_run_id}\",\"profile_name\":\"{absent_profile_name}\",\"phase\":\"PREPARED_BEFORE_PROFILE\"}}\n"
+    );
+    let mut absent_intent_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(absent_root.join("create-intent.json"))
+        .expect("create pending no-profile intent");
+    std::io::Write::write_all(&mut absent_intent_file, absent_intent.as_bytes())
+        .expect("write pending no-profile intent");
+    std::io::Write::flush(&mut absent_intent_file).expect("flush pending no-profile intent");
+    absent_intent_file
+        .sync_all()
+        .expect("OS-flush pending no-profile intent");
+    drop(absent_intent_file);
     let executable = env!("CARGO_BIN_EXE_pkm-codex-qualifier");
+    let conflict_run_id = format!("{:032x}", unique + 1);
+    let conflict_root = std::path::PathBuf::from(r"D:\personal\obsidian_workflow-runtime\scratch")
+        .join(format!(
+            "codex-t13b-appcontainer-owner-restart-{conflict_run_id}"
+        ));
+    std::fs::create_dir(&conflict_root).expect("create terminal/profile conflict fixture");
+    let conflict_profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{conflict_run_id}");
+    let conflict_intent = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-intent.v1\",\"run_id\":\"{conflict_run_id}\",\"profile_name\":\"{conflict_profile_name}\",\"phase\":\"PREPARED_BEFORE_PROFILE\"}}\n"
+    );
+    let conflict_receipt = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-phase-b.v1\",\"run_id\":\"{conflict_run_id}\",\"intent_verified\":true,\"stale_profile_deleted\":true,\"recreate\":true,\"sid_stable\":true,\"final_delete\":true}}\n"
+    );
+    for (leaf, bytes) in [
+        ("create-intent.json", conflict_intent.as_bytes()),
+        ("phase-b-recovery-receipt.json", conflict_receipt.as_bytes()),
+    ] {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(conflict_root.join(leaf))
+            .expect("create conflict fixture artifact");
+        std::io::Write::write_all(&mut file, bytes).expect("write conflict fixture artifact");
+        file.sync_all().expect("OS-flush conflict fixture artifact");
+    }
+    let conflict_intent_path = conflict_root.join("create-intent.json");
+    let conflict_receipt_path = conflict_root.join("phase-b-recovery-receipt.json");
+    let conflict_intent_before = (
+        file_identity(&conflict_intent_path),
+        file_sha256(&conflict_intent_path),
+    );
+    let conflict_receipt_before = (
+        file_identity(&conflict_receipt_path),
+        file_sha256(&conflict_receipt_path),
+    );
+    let conflict_profile_name_wide = wide_null(std::ffi::OsStr::new(&conflict_profile_name));
+    let conflict_display_name = wide_null(std::ffi::OsStr::new("PKM terminal conflict fixture"));
+    let conflict_description = wide_null(std::ffi::OsStr::new(
+        "A terminal marker must not hide a registered profile",
+    ));
+    let mut conflict_sid = std::ptr::null_mut();
+    let conflict_create_status = unsafe {
+        CreateAppContainerProfile(
+            conflict_profile_name_wide.as_ptr(),
+            conflict_display_name.as_ptr(),
+            conflict_description.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut conflict_sid,
+        )
+    };
+    assert_eq!(conflict_create_status, 0);
+    assert!(!conflict_sid.is_null() && unsafe { IsValidSid(conflict_sid) } != 0);
+    let conflicted = Command::new(executable)
+        .arg("diagnose-appcontainer-owner-restart-recovery")
+        .output()
+        .expect("run terminal/profile conflict diagnostic");
+    assert_eq!(conflicted.status.code(), Some(3));
+    assert!(conflicted.stderr.is_empty());
+    let conflicted_stdout = String::from_utf8(conflicted.stdout).expect("UTF-8 conflict stdout");
+    assert!(
+        conflicted_stdout.contains("\"blocker\":\"APPCONTAINER_OWNER_RESTART_PHASE_B_MISMATCH\"")
+    );
+    assert!(conflicted_stdout.contains("\"startup_intent_discovery_observed\":false"));
+    assert!(conflicted_stdout.contains("\"production\":false"));
+    assert_eq!(
+        conflict_intent_before,
+        (
+            file_identity(&conflict_intent_path),
+            file_sha256(&conflict_intent_path)
+        ),
+        "scanner changed conflict intent"
+    );
+    assert_eq!(
+        conflict_receipt_before,
+        (
+            file_identity(&conflict_receipt_path),
+            file_sha256(&conflict_receipt_path)
+        ),
+        "scanner changed conflict receipt"
+    );
+    let conflict_delete_status =
+        unsafe { DeleteAppContainerProfile(conflict_profile_name_wide.as_ptr()) };
+    let _ = unsafe { FreeSid(conflict_sid) };
+    assert_eq!(
+        conflict_delete_status, 0,
+        "terminal conflict fixture cleanup failed"
+    );
+
+    let legacy_run_id = format!("{:032x}", unique + 2);
+    let legacy_root = std::path::PathBuf::from(r"D:\personal\obsidian_workflow-runtime\scratch")
+        .join(format!(
+            "codex-t13b-appcontainer-owner-restart-{legacy_run_id}"
+        ));
+    std::fs::create_dir(&legacy_root).expect("create legacy terminal fixture");
+    let legacy_profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{legacy_run_id}");
+    let legacy_intent = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-intent.v1\",\"run_id\":\"{legacy_run_id}\",\"profile_name\":\"{legacy_profile_name}\",\"phase\":\"PREPARED_BEFORE_PROFILE\"}}\n"
+    );
+    let legacy_receipt = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-phase-b.v1\",\"run_id\":\"{legacy_run_id}\",\"intent_verified\":true,\"stale_profile_deleted\":false,\"profile_absent_after_prepared_intent\":true,\"recreate\":false,\"sid_stable\":null,\"final_delete\":true}}\n"
+    );
+    for (leaf, bytes) in [
+        ("create-intent.json", legacy_intent.as_bytes()),
+        ("phase-b-recovery-receipt.json", legacy_receipt.as_bytes()),
+    ] {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(legacy_root.join(leaf))
+            .expect("create legacy fixture artifact");
+        std::io::Write::write_all(&mut file, bytes).expect("write legacy fixture artifact");
+        file.sync_all().expect("OS-flush legacy fixture artifact");
+    }
+    let legacy_intent_path = legacy_root.join("create-intent.json");
+    let legacy_receipt_path = legacy_root.join("phase-b-recovery-receipt.json");
+    let legacy_intent_before = (
+        file_identity(&legacy_intent_path),
+        file_sha256(&legacy_intent_path),
+    );
+    let legacy_receipt_before = (
+        file_identity(&legacy_receipt_path),
+        file_sha256(&legacy_receipt_path),
+    );
+    let legacy_profile_name_wide = wide_null(std::ffi::OsStr::new(&legacy_profile_name));
+    let legacy_display_name = wide_null(std::ffi::OsStr::new("PKM legacy conflict fixture"));
+    let legacy_description = wide_null(std::ffi::OsStr::new(
+        "Legacy terminal marker must not hide a registered profile",
+    ));
+    let mut legacy_sid = std::ptr::null_mut();
+    let legacy_create_status = unsafe {
+        CreateAppContainerProfile(
+            legacy_profile_name_wide.as_ptr(),
+            legacy_display_name.as_ptr(),
+            legacy_description.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut legacy_sid,
+        )
+    };
+    assert_eq!(legacy_create_status, 0);
+    assert!(!legacy_sid.is_null() && unsafe { IsValidSid(legacy_sid) } != 0);
+    let legacy_conflicted = Command::new(executable)
+        .arg("diagnose-appcontainer-owner-restart-recovery")
+        .output()
+        .expect("run legacy terminal/profile conflict diagnostic");
+    assert_eq!(legacy_conflicted.status.code(), Some(3));
+    assert!(legacy_conflicted.stderr.is_empty());
+    let legacy_conflicted_stdout =
+        String::from_utf8(legacy_conflicted.stdout).expect("UTF-8 legacy conflict stdout");
+    assert!(legacy_conflicted_stdout
+        .contains("\"blocker\":\"APPCONTAINER_OWNER_RESTART_PHASE_B_MISMATCH\""));
+    assert!(legacy_conflicted_stdout.contains("\"startup_intent_discovery_observed\":false"));
+    assert_eq!(
+        legacy_intent_before,
+        (
+            file_identity(&legacy_intent_path),
+            file_sha256(&legacy_intent_path)
+        ),
+        "scanner changed legacy intent"
+    );
+    assert_eq!(
+        legacy_receipt_before,
+        (
+            file_identity(&legacy_receipt_path),
+            file_sha256(&legacy_receipt_path)
+        ),
+        "scanner changed legacy receipt"
+    );
+    let legacy_delete_status =
+        unsafe { DeleteAppContainerProfile(legacy_profile_name_wide.as_ptr()) };
+    let _ = unsafe { FreeSid(legacy_sid) };
+    assert_eq!(
+        legacy_delete_status, 0,
+        "legacy conflict fixture cleanup failed"
+    );
     let output = Command::new(executable)
         .arg("diagnose-appcontainer-owner-restart-recovery")
         .output()
@@ -1146,7 +1368,8 @@ fn appcontainer_owner_restart_uses_flushed_intent_and_a_fresh_recovery_process()
         "\"phase_b_final_delete\":true",
         "\"owner_process_restart_recovery_observed\":true",
         "\"qualifier_restart_recovery_observed\":false",
-        "\"startup_intent_discovery_observed\":false",
+        "\"startup_intent_discovery_observed\":true",
+        "\"phase_b_run_id_supplied\":false",
         "\"directory_metadata_durability_observed\":false",
         "\"profile_retained_for_recovery\":false",
         "\"receipt_sha256\":\"sha256:",
@@ -1160,6 +1383,57 @@ fn appcontainer_owner_restart_uses_flushed_intent_and_a_fresh_recovery_process()
     assert_eq!(
         receipt_hashes[0],
         file_sha256(std::path::Path::new(&receipt_paths[0]))
+    );
+    assert_eq!(
+        legacy_intent_before,
+        (
+            file_identity(&legacy_intent_path),
+            file_sha256(&legacy_intent_path)
+        ),
+        "successful scan changed legacy intent"
+    );
+    assert_eq!(
+        legacy_receipt_before,
+        (
+            file_identity(&legacy_receipt_path),
+            file_sha256(&legacy_receipt_path)
+        ),
+        "successful scan changed legacy receipt"
+    );
+    let absent_receipt = std::fs::read_to_string(absent_root.join("phase-b-recovery-receipt.json"))
+        .expect("fresh Phase B reconciled the no-profile intent");
+    let expected_absent_receipt = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-phase-b.v1\",\"run_id\":\"{absent_run_id}\",\"intent_verified\":true,\"stale_profile_deleted\":false,\"profile_absent_at_recovery_entry\":true,\"probe_created_and_deleted\":true,\"recreate\":false,\"sid_stable\":null,\"final_delete\":true}}\n"
+    );
+    assert_eq!(absent_receipt, expected_absent_receipt);
+    let absent_profile_name = wide_null(std::ffi::OsStr::new(&absent_profile_name));
+    let absent_display_name = wide_null(std::ffi::OsStr::new(
+        "PKM no-profile branch absence observer",
+    ));
+    let absent_description = wide_null(std::ffi::OsStr::new(
+        "Independent recreate proves the no-profile branch left no profile",
+    ));
+    let mut absent_sid = std::ptr::null_mut();
+    let absent_create_status = unsafe {
+        CreateAppContainerProfile(
+            absent_profile_name.as_ptr(),
+            absent_display_name.as_ptr(),
+            absent_description.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut absent_sid,
+        )
+    };
+    assert_eq!(
+        absent_create_status, 0,
+        "no-profile recovery branch left a registered profile"
+    );
+    assert!(!absent_sid.is_null() && unsafe { IsValidSid(absent_sid) } != 0);
+    let absent_delete_status = unsafe { DeleteAppContainerProfile(absent_profile_name.as_ptr()) };
+    let _ = unsafe { FreeSid(absent_sid) };
+    assert_eq!(
+        absent_delete_status, 0,
+        "no-profile observer cleanup failed"
     );
 
     let receipt = std::fs::read_to_string(&receipt_paths[0]).expect("read owner-restart receipt");

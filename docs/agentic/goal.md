@@ -1,6 +1,10 @@
-# Active Goal — T1.3b Codex Generator → Reviewer 本机资格
+# Frozen Experimental Goal — T1.3b Codex Generator → Reviewer 本机资格
 
-状态：`IN_PROGRESS / BLOCKED_PREQUALIFICATION`
+状态：`FROZEN_EXPERIMENTAL / NOT_PRODUCTION / NOT_COMPLETE`
+
+2026-08-24 工程收敛决定：T1.3b 在 startup intent discovery 安全着陆后冻结，不再阻塞
+v7.4 个人单机 MVP。后续生产链路不得依赖本原生 qualifier；除非用户重新授权，不继续 WFP、
+完整 LPAC、qualifier 自身重启、目录掉电证明、stage0 自升级或 Task bundle 代际切换。
 
 只执行 D-010 的 qualification shadow：固定官方 Windows 原生 Codex CLI `0.147.0`，
 先证明 AppContainer/LPAC、package-SID WFP、one-shot loopback proxy、精确文件边界、
@@ -44,8 +48,10 @@ cleanup 通过。Windows 26100 的 direct LPAC token class 不受支持，因此
 不能标绿。Creator-kill reconciliation 也已证明 profile creator 被 Job kill 后，同一存活
 authority 可删除残留、重建并验证 SID；它明确不证明 owner/qualifier 整体崩溃后的 durable
 discovery 与 fresh-process recovery。随后 owner-process Phase A/Phase B 诊断又证明：intent
-file 先 flush、Phase A 被 kill、fresh Phase B 可读取 exact intent并完成恢复；但 qualifier
-restart、startup intent discovery 与 directory metadata/power-loss durability 仍明确为 false。
+file 先 flush、Phase A 被 kill、fresh Phase B 不接收 run_id，能扫描固定 root、精确验证
+intent/receipt，并通过原子 Create probe 处理 pending 与核验 completed terminal；因此
+owner-process recovery 与 startup intent discovery 已观察。qualifier restart 与 directory
+metadata/power-loss durability 仍明确为 false。
 非管理员 WFP 入口已证明先于任何系统 mutation 返回
 `ELEVATION_REQUIRED`。当前仍阻断在
 frozen candidate 未独立复现/签名、release-bound direct LPAC token/crash recovery、

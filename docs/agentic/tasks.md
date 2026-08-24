@@ -144,10 +144,10 @@ LPAC suspended token 诊断已证明 attribute accepted、AppContainer、zero ca
 Job/child-policy 和 cleanup；Windows 26100 direct LPAC flag 不支持并保持 null。
 Creator-kill reconciliation 已通过真实 Job kill、残留 delete、recreate/SID stable、final
 delete 与独立 absence observer。Owner-process Phase A→fresh Phase B 也已证明 flushed intent
-可驱动跨进程恢复；qualifier restart、startup discovery 与 directory/power-loss durability仍未
-证明。其余硬门是独立 build/release binding、direct LPAC token/qualifier crash recovery、loopback exemption + sealed
-proxy、文件/进程 trace、专用套餐认证、真实
-Terra→Sol、覆盖/mutation 与两轮最终红队。
+可驱动跨进程恢复；fresh Phase B 无 run_id 的 startup intent discovery 已观察，但 qualifier
+restart 与 directory/power-loss durability 仍未证明。该原生预资格成果现已冻结且不属于 v7.4
+MVP 生产链路；独立 build/release binding、direct LPAC token、完整 WFP/proxy/file trace、
+qualifier crash recovery 等保留为后续增强，不再阻塞真实日报 shadow。
 
 T1.3a/b 只产生 curation/review qualification shadow，不是用户日报或 M3 内容质量
 样本；feed URL/摘要不能被表述为已验证 article 正文、canonical 或原始链接。

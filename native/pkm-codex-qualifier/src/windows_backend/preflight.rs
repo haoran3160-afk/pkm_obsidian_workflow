@@ -110,7 +110,8 @@ const APPCONTAINER_CRASH_CANARY_DEADLINE: Duration = Duration::from_millis(750);
 const APPCONTAINER_OWNER_RECOVERY_DEADLINE: Duration = Duration::from_secs(5);
 const EXPECTED_APPCONTAINER_CRASH_CANARY_STDOUT: &str =
     "{\"terminal\":\"APPCONTAINER_PROFILE_CREATED_WAITING_FOR_KILL\",\"profile_created\":true}\n";
-const EXPECTED_APPCONTAINER_OWNER_RECOVERY_STDOUT: &str = "{\"terminal\":\"APPCONTAINER_OWNER_RESTART_RECOVERED\",\"intent_verified\":true,\"stale_profile_deleted\":true,\"recreate\":true,\"sid_stable\":true,\"final_delete\":true}\n";
+const EXPECTED_APPCONTAINER_OWNER_RECOVERY_STDOUT: &str =
+    "{\"terminal\":\"APPCONTAINER_OWNER_RESTART_SCAN_COMPLETED\",\"scan_completed\":true}\n";
 const EXPECTED_CHILD_POLICY_CANARY_STDOUT: &str = "{\"terminal\":\"CHILD_CREATION_BLOCKED_BY_POLICY\",\"child_creation_attempted\":true,\"child_creation_blocked\":true,\"win32_error\":367}\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -290,6 +291,7 @@ pub struct NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
     pub phase_a_timed_out: bool,
     pub phase_a_descendants_zero: bool,
     pub phase_b_fresh_process: bool,
+    pub phase_b_run_id_supplied: bool,
     pub phase_b_intent_verified: bool,
     pub phase_b_descendants_zero: bool,
     pub phase_b_stale_profile_deleted: bool,
@@ -307,7 +309,7 @@ pub struct NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
 impl NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"phase_a_intent_file_flushed_and_observed\":{},\"phase_a_ready\":{},\"phase_a_timed_out\":{},\"phase_a_descendants_zero\":{},\"phase_b_fresh_process\":{},\"phase_b_intent_verified\":{},\"phase_b_descendants_zero\":{},\"phase_b_stale_profile_deleted\":{},\"phase_b_recreate\":{},\"phase_b_sid_stable\":{},\"phase_b_final_delete\":{},\"owner_process_restart_recovery_observed\":{},\"qualifier_restart_recovery_observed\":{},\"startup_intent_discovery_observed\":{},\"directory_metadata_durability_observed\":{},\"profile_retained_for_recovery\":{},\"failure_cleanup_deleted_profile\":{},\"canary_sha256\":{},\"intent_artifact_sha256\":{},\"phase_b_artifact_sha256\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
+            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"phase_a_intent_file_flushed_and_observed\":{},\"phase_a_ready\":{},\"phase_a_timed_out\":{},\"phase_a_descendants_zero\":{},\"phase_b_fresh_process\":{},\"phase_b_run_id_supplied\":{},\"phase_b_intent_verified\":{},\"phase_b_descendants_zero\":{},\"phase_b_stale_profile_deleted\":{},\"phase_b_recreate\":{},\"phase_b_sid_stable\":{},\"phase_b_final_delete\":{},\"owner_process_restart_recovery_observed\":{},\"qualifier_restart_recovery_observed\":{},\"startup_intent_discovery_observed\":{},\"directory_metadata_durability_observed\":{},\"profile_retained_for_recovery\":{},\"failure_cleanup_deleted_profile\":{},\"canary_sha256\":{},\"intent_artifact_sha256\":{},\"phase_b_artifact_sha256\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
             json_escape(self.terminal),
             json_escape(self.blocker),
             json_bool(self.production),
@@ -317,6 +319,7 @@ impl NativeAppContainerOwnerRestartRecoveryDiagnosticResult {
             json_bool(self.phase_a_timed_out),
             json_bool(self.phase_a_descendants_zero),
             json_bool(self.phase_b_fresh_process),
+            json_bool(self.phase_b_run_id_supplied),
             json_bool(self.phase_b_intent_verified),
             json_bool(self.phase_b_descendants_zero),
             json_bool(self.phase_b_stale_profile_deleted),
@@ -3681,6 +3684,7 @@ pub fn run_native_appcontainer_owner_restart_recovery_diagnostic(
         phase_a_timed_out: false,
         phase_a_descendants_zero: false,
         phase_b_fresh_process: false,
+        phase_b_run_id_supplied: false,
         phase_b_intent_verified: false,
         phase_b_descendants_zero: false,
         phase_b_stale_profile_deleted: false,
@@ -3866,13 +3870,24 @@ pub fn run_native_appcontainer_owner_restart_recovery_diagnostic(
         }
     };
     for (key, value) in [
-        ("PKM_APPCONTAINER_CRASH_RUN_ID", runtime.run_id.as_str()),
         ("PKM_APPCONTAINER_RECOVERY_MODE", "RECOVER"),
         ("PKM_APPCONTAINER_RUNTIME_KIND", "OWNER_RESTART"),
     ] {
         phase_b_environment.push((key.to_owned(), value.to_owned()));
     }
     phase_b_environment.sort_by(|left, right| left.0.cmp(&right.0));
+    result.phase_b_run_id_supplied = phase_b_environment
+        .iter()
+        .any(|(key, _)| key == "PKM_APPCONTAINER_CRASH_RUN_ID");
+    if result.phase_b_run_id_supplied {
+        apply_owner_restart_failure_cleanup(
+            &mut result,
+            &profile_name,
+            true,
+            "APPCONTAINER_OWNER_RESTART_PHASE_B_RUN_ID_FORBIDDEN",
+        );
+        return result;
+    }
     let mut phase_b = match ChildTransaction::create(
         &canary_path,
         OsStr::new(&command_line),
@@ -3955,13 +3970,14 @@ pub fn run_native_appcontainer_owner_restart_recovery_diagnostic(
     result.phase_b_sid_stable = true;
     result.phase_b_final_delete = true;
     result.owner_process_restart_recovery_observed = true;
+    result.startup_intent_discovery_observed = true;
     if maintenance.release().is_err() {
         result.blocker = "APPCONTAINER_OWNER_RESTART_MAINTENANCE_RELEASE_FAILED";
         return result;
     }
     result.blocker = "APPCONTAINER_OWNER_RESTART_RECOVERY_OBSERVED_NOT_RELEASE_BOUND";
     let receipt_bytes = format!(
-        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-recovery-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_APPCONTAINER_OWNER_RESTART_RECOVERY_DIAGNOSTIC\",\"blocker\":\"APPCONTAINER_OWNER_RESTART_RECOVERY_OBSERVED_NOT_RELEASE_BOUND\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"canary_sha256\":\"{}\",\"intent_artifact\":{},\"phase_b_artifact\":{},\"phase_a_intent_file_flushed_and_observed\":true,\"phase_a_ready\":true,\"phase_a_timed_out\":true,\"phase_a_descendants_zero\":true,\"phase_b_fresh_process\":true,\"phase_b_intent_verified\":true,\"phase_b_descendants_zero\":true,\"phase_b_stale_profile_deleted\":true,\"phase_b_recreate\":true,\"phase_b_sid_stable\":true,\"phase_b_final_delete\":true,\"owner_process_restart_recovery_observed\":true,\"qualifier_restart_recovery_observed\":false,\"startup_intent_discovery_observed\":false,\"directory_metadata_durability_observed\":false,\"profile_retained_for_recovery\":false,\"failure_cleanup_deleted_profile\":false}}\n",
+        "{{\"schema\":\"pkm.codex.appcontainer-owner-restart-recovery-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_APPCONTAINER_OWNER_RESTART_RECOVERY_DIAGNOSTIC\",\"blocker\":\"APPCONTAINER_OWNER_RESTART_RECOVERY_OBSERVED_NOT_RELEASE_BOUND\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"canary_sha256\":\"{}\",\"intent_artifact\":{},\"phase_b_artifact\":{},\"phase_a_intent_file_flushed_and_observed\":true,\"phase_a_ready\":true,\"phase_a_timed_out\":true,\"phase_a_descendants_zero\":true,\"phase_b_fresh_process\":true,\"phase_b_run_id_supplied\":false,\"phase_b_intent_verified\":true,\"phase_b_descendants_zero\":true,\"phase_b_stale_profile_deleted\":true,\"phase_b_recreate\":true,\"phase_b_sid_stable\":true,\"phase_b_final_delete\":true,\"owner_process_restart_recovery_observed\":true,\"qualifier_restart_recovery_observed\":false,\"startup_intent_discovery_observed\":true,\"directory_metadata_durability_observed\":false,\"profile_retained_for_recovery\":false,\"failure_cleanup_deleted_profile\":false}}\n",
         runtime.run_id,
         json_escape(&runtime.run_root.to_string_lossy()),
         canary_sha256,
