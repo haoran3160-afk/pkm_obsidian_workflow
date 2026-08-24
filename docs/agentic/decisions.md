@@ -293,12 +293,15 @@ generation 必须把整个 Cargo workspace manifest closure、源码、测试、
 覆盖、日志和二进制 hash 一并冻结，并继续标注非 production、非 live。
 
 当前 create-new candidate 为
-`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-05`；
-qualifier SHA-256 `ba1ddc6f37a3f3d304c1bd91f9d7506f9a624dcab50a1a63409636921afa0efb`，
-canary SHA-256 `c3323ab2347510bdb770aa82de82f1a1f98d040ab6df99e1441c7db9453c156c`，
-build receipt SHA-256 `d4cfa4bf3e8b2c32e4a50f71feea9ce7b5dbcd571f9fa8bf50501a016efd8fa7`。
-receipt 明确记录 dirty source closure、ambient build、不可复现、未签名、未绑定 Windows build、
-LPAC/WFP 未完成与未获用户激活批准，因此只能作为 prequalification candidate。
+`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-06`；
+qualifier SHA-256 `3aebfaa9fa0e67b73b56b97ed956493dad7de2f98edf1211126308449d000554`，
+canary SHA-256 `eb5b509fea498327531c72563f79da027dccf978064091d79f006291893cde93`，
+build receipt SHA-256 `fd9992a92ccbf94161e98158dfb92908a712864deebe0fcef536202e46e37ef2`。
+receipt 的 13 项 source closure 已提交并绑定 Git `ee67acf`；它仍明确记录 ambient build、
+不可复现、未签名、未绑定 Windows build、LPAC/WFP 未完成与未获用户激活批准，因此只能
+作为 prequalification candidate。真实 backend 保留三条 filter ID；checked engine close
+失败保留 handle 且不运行 absence verifier，close 成功后才用独立 engine 回读 filter/sublayer
+全部不存在；任一失败保留状态并阻断后续清理。
 
 范围后果：该决定不授权认证、模型调用、Task、Vault、Home、Status、发布、删除、移动、
 重命名或覆盖；也不解除 loopback exemption、sealed proxy、文件/进程 trace、真实

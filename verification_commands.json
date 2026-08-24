@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": "t13b-prequalification-20260824-02",
+  "generation": "t13b-prequalification-20260824-03",
   "authorization": "user-requested-t13b-shadow",
   "harness_mutation_policy": [
     "verification-create-only",
@@ -1834,9 +1834,9 @@
         ],
         "stderr_must_be_empty": true
       },
-      "executable_path": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\pkm-codex-qualifier.exe",
-      "executable_sha256": "ba1ddc6f37a3f3d304c1bd91f9d7506f9a624dcab50a1a63409636921afa0efb",
-      "working_directory": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05",
+      "executable_path": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-06\\pkm-codex-qualifier.exe",
+      "executable_sha256": "3aebfaa9fa0e67b73b56b97ed956493dad7de2f98edf1211126308449d000554",
+      "working_directory": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-06",
       "argv_schema": [
         { "literal": "doctor" }
       ],
@@ -1853,9 +1853,9 @@
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
-        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\build-receipt.json",
-        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\pkm-child-policy-canary.exe",
-        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\pkm-codex-qualifier.exe",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-06\\build-receipt.json",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-06\\pkm-child-policy-canary.exe",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-06\\pkm-codex-qualifier.exe",
         "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
       ],
       "allowed_mutations": [

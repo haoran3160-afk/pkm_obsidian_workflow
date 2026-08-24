@@ -138,7 +138,9 @@ canary candidate 和 build receipt 已 create-new 冻结。Cargo fmt/check/clipp
 AppContainer profile 的 create→independent derive→delete→same-name recreate→stable SID→
 final delete 已通过真实本机诊断；WFP 非管理员入口已证明在任何 profile/filter/runtime
 mutation 前 fail-closed。WFP elevated 精确 filter readback/cleanup 与真实 allow/deny 负向矩阵
-仍需用户显式管理员授权。其余硬门是独立 build/release binding、LPAC token/capability/
+仍需用户显式管理员授权；真实 backend 已把 checked engine close、filter ID retention、
+post-drop filter/sublayer absence readback 与失败重试纳入清理状态机。其余硬门是独立
+build/release binding、LPAC token/capability/
 crash recovery、loopback exemption + sealed proxy、文件/进程 trace、专用套餐认证、真实
 Terra→Sol、覆盖/mutation 与两轮最终红队。
 
