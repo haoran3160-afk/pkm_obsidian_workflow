@@ -1,5 +1,9 @@
 # Lightweight Architecture
 
+> v7.4 override（2026-08-24）：T1.3b native isolation 已冻结为非生产实验。当前架构以可信
+> 个人 Windows 主机上的单一 Python 引擎为 MVP TCB；AppContainer/WFP、Rust stage0/broker、
+> qualifier restart 与物理掉电证明不再阻塞 shadow。远程 feed 与模型输出仍是不可信数据。
+
 ## 设计原则
 
 1. 一个进程能可靠完成的事，不拆成服务。
@@ -71,7 +75,7 @@ result = CoverageEvaluator().evaluate(proof)
 - `fetch_service` 只能访问 registry 枚举的 endpoint，并执行 SSRF、redirect、peer、MIME、大小和超时校验。
 - parser、coverage、renderer、publisher 均不联网。
 - Codex 只接收本次 run directory 中密封的 evidence/schema，内部工具全部关闭；它的网络只用于套餐服务，不用于网页搜索。
-- 普通 fetch 与首发发布路径仍不需要 WFP。T1.3b 是 D-010 的窄例外：Codex package SID
+- 普通 fetch 与 v7.4 发布路径不需要 WFP。以下 T1.3b/D-010 是冻结的历史窄例外：Codex package SID
   只能通过动态 WFP 策略访问一个固定 loopback proxy 端口；其他 v4/v6、DNS、UDP、QUIC、
   loopback 与直连默认拒绝。Windows 所需的 package-specific loopback exemption 仅在该
   动态 WFP 已提交且读回精确一致时临时启用，并在运行后恢复系统原列表；它不是独立安全
@@ -90,12 +94,13 @@ result = CoverageEvaluator().evaluate(proof)
 - schema 修复最多一次；相同 evidence/policy 的已成功结果可复用。
 - auth、quota、工具事件或 schema 不一致均停止发布。
 
-T1.3a 先冻结并验证 curation/review contract，不调用外部模型；T1.3b 只有在固定原生
-Codex CLI、专用套餐登录与 Windows sandbox 真实 preflight 通过后才执行。选择性审核
+T1.3a 已冻结并验证 curation/review contract。v7.4 Codex runner 使用固定原生 Codex CLI、
+专用 CODEX_HOME、isolated non-git cwd、sanitized environment 和零工具配置；真实 shadow
+必须证明零 tool event、零额外子进程、零密封根外成功读取。选择性审核
 仍是长期额度优化方向，但不得依赖 Generator 自报的 risk/fact class；降低范围必须新增
 decision，并用真实 holdout 证明确定性分类器不能降级受保护 claim。
 
-T1.3b 直接启动官方 release 的原生 `codex.exe`，不经过 npm/PowerShell wrapper。
+以下为冻结的历史 T1.3b native 资格记录，不是 v7.4 MVP 运行要求：T1.3b 直接启动官方 release 的原生 `codex.exe`，不经过 npm/PowerShell wrapper。
 Windows CUI child 固定使用 `DETACHED_PROCESS`；禁止 `CREATE_NO_WINDOW`，因为真实控制组会
 创建 `conhost.exe` 并破坏零额外 child 与 child-process policy。resume 前同时要求
 ProcessChildProcessPolicy flags=1 的 OS readback 和固定 negative canary 的
@@ -115,15 +120,28 @@ Vault publisher 只暴露枚举接口，例如：
 publish(workflow, content_date, artifact_kind, run_id, backing_path, expected_hash)
 ```
 
-它不接受任意 target。内部通过固定映射得到父目录与 leaf，确认 resolved parent 位于精确白名单，确认 runtime/Vault 同一 NTFS volume，再使用 `os.link` create-new。
+它不接受任意 target。内部通过固定映射得到父目录与 leaf，确认 resolved parent 位于精确
+白名单，确认 runtime/Vault 同一 NTFS volume。Renderer 的审计 A 与发布 backing B 是不同
+file ID、相同 bytes；create-new PREPARED 后只用 `os.link(B, target)` 原子发布，最终 Vault
+leaf 从不流式写入。
 
-由于 hard link 共享 file identity，发布后用户编辑 target 也会修改 backing。因此“审计原件”不能与发布 backing 共用同一文件。若需要保留发布时内容，receipt 记录 hash，并另建独立 create-new audit copy；首发不需要 v7.3 A/B 事务协议。reconcile 以 target 当前 hash、receipt 和独立 audit hash 区分“发布中断”与“用户编辑”。
+由于 hard link 共享 file identity，用户编辑 target 会修改 B；A 永不链接 Vault，保留发布时
+内容。reconcile 以 PREPARED、A/B/target identity 与 terminal 区分“发布中断”“同 run 已发布”
+和“用户编辑”，不使用 v7.3 native 目录 flush/掉电事务协议。
 
 ## 调度边界
 
-一个 Task 使用多个 trigger，统一执行 `pkm run --due-only --cause task`。due 计算是 Python 纯函数，Task XML 不携带业务逻辑。`IgnoreNew` 是第一层并发控制，全局文件锁是第二层。
+恰好三个 Task（AI、IELTS、Weekly）各使用 calendar/logon/unlock triggers，统一执行绝对固定、
+content-addressed 的最小 activation launcher。launcher 只读最高有效 activation chain，核验
+release/config 后 exec `scripts/run_workflow.py --workflow <enum> --mode production --due-only`；
+malformed/fork/hash 不符时不执行业务 release。
+due 计算是 Python 纯函数，Task XML 不携带业务逻辑。`IgnoreNew` 只抑制单 Task 重入；
+create-once 全局文件锁与持久 demand 串行化跨 Task/manual/reconcile 并发。
 
-升级只替换固定安装位置中的已验 wheel/config，并保留版本与 hash 记录。首发不需要 PromotionLedger；失败时禁用唯一 Task，修复后由用户重新批准启用。
+升级只选择 content-addressed 已验 wheel/config，并保留版本与 hash 记录。三个 Task 先全部
+disabled 注册并精确 readback；Gate D 后只启用批准 workflow，失败则 disable 全部并确认。
+回滚追加更高 activation generation，由同一 Task action/launcher 选择旧 release；launcher
+自身变化才需要新 all-disabled Task bundle。
 
 ## 可信范围
 
@@ -133,7 +151,6 @@ publish(workflow, content_date, artifact_kind, run_id, backing_path, expected_ha
 
 ## 历史 native 代码
 
-旧 `native/pkm-stage0` 与 `native/pkm-broker` 继续只是历史实验，不进入 wheel、Task、
-发布或验收 denominator。D-010 允许为 T1.3b 新建独立 qualification launcher/proxy，
-但禁止借机扩展旧 publisher/broker；任何新增 native 组件都必须保持 shadow-only、
-content-addressed、fail-closed，并有独立 Windows 真实资格证据。
+旧 `native/pkm-stage0`、`native/pkm-broker` 与 D-010 qualifier 继续只是历史实验，不进入
+wheel、Task、发布或 MVP 验收 denominator。commit `8437a97` 后冻结；除非用户重新授权，
+不得新增或扩张 native 组件。

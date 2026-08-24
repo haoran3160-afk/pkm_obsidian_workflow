@@ -48,7 +48,7 @@ AI Daily 的优先级：
 生产候选必须同时满足：
 
 - 50–100 条历史资讯回放完成。
-- AI Daily 连续 7 个真实 shadow 日；Weekly 完成 2 个真实周期。
+- AI Daily 与 IELTS 连续 7 个真实 shadow 日；Weekly 完成历史回放和至少 1 个真实周。
 - 核心证据 URL 可达且内容匹配率 100%。
 - accepted critical claim 的实质错误为 0。
 - 覆盖、删除、移动、重命名和范围外 Vault 读取为 0。

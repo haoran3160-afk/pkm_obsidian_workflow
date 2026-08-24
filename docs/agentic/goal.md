@@ -1,3 +1,28 @@
+# Active Goal — T1.4 Python 密封入口与路径/激活策略
+
+状态：`NEXT / SHADOW_ONLY / PRODUCTION_BLOCKED`
+
+目标行为：
+
+1. `scripts/run_workflow.py` 只接受 `--workflow {ai,weekly,ielts}`、
+   `--mode {doctor,dry-run,shadow,production}` 和可选 `--due-only`；不接受自由路径、model、prompt
+   或 command。
+2. wrapper、打包 CLI 与四种 mode 调用同一个 engine/policy 函数；不得复制测试实现。
+3. doctor/dry-run/shadow 不写真实 Vault；production 在 exact、连续、hash/scope 匹配的 activation
+   generation 不存在时 exit 3。
+4. wrapper 原样传递领域 exit 2/3/4/5/8/10；旧 native blocker、Rust stage0/broker 与旧 9-task
+   bundle 不再决定 v7.4 MVP gate。
+5. 测试先证明当前 CLI/参数/activation 缺口，再实现最小 seam；不触发 Codex、网络、真实 Vault、
+   Home/Status 或 Task。
+
+主要文件预算：`scripts/run_workflow.py`、`src/pkm_workflow/cli.py`、一个小型 engine/policy 模块、
+一个新行为测试和必要的现有 CLI 测试。不得修改或暂存 `AGENTS.md` 和无关未跟踪用户资产。
+
+验证：目标 pytest、Ruff、Mypy、`git diff --check`、tracked delete/rename=0；检查 production
+缺 activation、malformed/unknown/hash/scope/fork generation、自由参数和 exit passthrough 负例。
+
+---
+
 # Frozen Experimental Goal — T1.3b Codex Generator → Reviewer 本机资格
 
 状态：`FROZEN_EXPERIMENTAL / NOT_PRODUCTION / NOT_COMPLETE`

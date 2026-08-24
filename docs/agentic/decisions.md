@@ -446,3 +446,31 @@ legacy 兼容、marker file identity/SHA 不变以及 fixed CLI 成功路径。
 Task 或发布。WFP elevation qualification、完整 LPAC/WFP 生产隔离、qualifier 自身重启、目录
 metadata/掉电持久性、stage0 自升级和 Task bundle 代际切换仍未完成。T1.3b 整体不得标记完成；
 除非用户重新授权，不再扩张上述原生研究。
+
+## D-017 — v7.4 MVP 以可信单机 Python 链路取代 native 首发门
+
+状态：`ACCEPTED`（2026-08-24，生产仍需用户批准）
+
+本决定取代 D-001/D-005 的“单一 Task”作为当前调度设计；旧决定保留为历史，不删除。
+
+决定：当前唯一产品关键路径为三个 Windows Task→固定最小 activation launcher→同一 Python 密封入口→完整来源/Coverage→
+零工具 Codex Generator/Reviewer→确定性 renderer→独立审计 A + 发布 backing B + PREPARED +
+`os.link` create-new→create-new event/可重建 JSONL projection→Obsidian。Python create-once 全局
+文件锁与持久 demand 串行化 Task/manual/reconcile；Task 必须全部 disabled 注册并精确 readback，
+Gate D 后才按 workflow 启用。
+
+可信边界：信任用户 Windows 账户、Python/NTFS/Task Scheduler、用户批准的 content-addressed
+release/config。远程 feed 与模型输出不可信；Codex 使用独立 CODEX_HOME、isolated cwd、
+sanitized environment 和零工具配置，真实 shadow 必须证明零 tool event、零额外子进程和密封根外
+成功读取为零。AppContainer/WFP、stage0/broker、qualifier restart、native 目录 flush 和掉电证明
+保留为后续增强，不进入 MVP denominator。
+
+激活不是自由文本文件：Task action 固定到不可自动升级的 content-addressed launcher；launcher
+只读最高有效 activation chain，核验 release/config 后 exec 所选业务 release，不能写 activation
+或 Vault。release/config 使用内容寻址 create-new manifest；独立交互入口在用户
+明确批准 exact challenge 后追加链式 ActivationGeneration，绑定 workflow scope、release/config、
+source policy、prompt/schema/model、Task、UserContext、shadow 与红队证据 hashes。normal engine、
+Task、Codex 均不能创建 activation；回滚只追加更高 generation 并重新 shadow/批准。
+
+范围后果：本决定不授权当前代码写真实 Vault、注册 Task、调用模型或进入 production。先完成
+T1.4 sealed entry 的真实负向测试和小步提交，再按 v7.4 任务顺序推进。

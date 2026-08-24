@@ -1,22 +1,27 @@
 # Development Workflow
 
+> v7.4 current task（2026-08-24）：T1.3b 已在 `8437a97` checkpoint 后冻结。当前只执行
+> Python 密封入口与路径/activation policy；不得继续 AppContainer/WFP/native 扩张。生产、
+> 真实 Vault 和 Task 注册仍保持阻断。
+
 ## 工作单位
 
 一次开发会话只完成 [tasks.md](tasks.md) 中一个任务。任务开始时写清：目标行为、明确非目标、最多 5 个主要文件、失败测试和验证命令。任务完成时提供代码、测试、证据和未解决风险；不能只报告“测试通过”。
 
 ## 当前安全命令
 
-当前实现尚未打通 shadow engine，以下命令预期返回非零 `BLOCKED`：
+当前实现尚未迁移到 v7.4 sealed entry，以下旧命令预期返回非零 `BLOCKED`：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\run_workflow.py --doctor --json
 .\.venv\Scripts\python.exe scripts\run_workflow.py --dry-run --workflow ai --json
 ```
 
-输出中的 native publisher/stage0 blocker 仍是 v7.3 遗留诊断；但 AppContainer/LPAC、
-WFP、sealed proxy 和 Job kill-tree 现在是 D-010 下 T1.3b 的真实资格门。它们只能由
-release-bound Windows 证据解除，不得直接硬编码为绿色，也不得据此解锁 T1.5/生产。
+输出中的 native publisher/stage0/AppContainer/WFP blocker 是 v7.3 遗留诊断；当前任务应
+通过同一 Python engine 的真实 v7.4 gate 取代它们，不能硬编码绿色。AppContainer/WFP 未完成
+项保留为后续增强，不再阻塞 MVP shadow。
 
+以下 Rust/Cargo 规则仅适用于已冻结 T1.3b 的历史复核；未获用户重新授权不得继续执行。
 T1.3b 的 Cargo 构建必须把 `CARGO_TARGET_DIR` 指向
 `D:\personal\obsidian_workflow-runtime\scratch` 下的 create-new 目录；不得清理、覆盖或
 继续使用仓库中的既有 `native/target` 缓存。qualification closure 还必须记录实际

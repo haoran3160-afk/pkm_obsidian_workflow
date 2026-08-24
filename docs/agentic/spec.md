@@ -1,8 +1,17 @@
-# Lightweight PKM Workflow Specification
+# PKM Workflow v7.4 MVP Specification
 
 状态：`READY_FOR_DEVELOPMENT`
 
 实现状态：`NOT_YET_PRODUCTION_ELIGIBLE`
+
+## 0. v7.4 工程收敛覆盖条款
+
+2026-08-24 起，个人可信 Windows 单机 MVP 不再以 Rust stage0/broker、AppContainer/LPAC、
+WFP、qualifier restart、目录掉电证明或 Task 多代切换作为 shadow/生产前置条件。T1.3b 已在
+`8437a97` 安全着陆并冻结为非生产实验。当前实现必须优先打通固定 Python 入口、来源与
+Coverage、零工具 Codex 双审、最小 A/B create-new 发布、append-only 状态、三个 Task 和
+Obsidian 阅读体验。本文后续保留的 D-009/D-010 原生条款仅是历史资格记录，不得重新进入
+v7.4 生产调用图。
 
 ## 1. 不可破坏约束
 
@@ -38,6 +47,11 @@
 ### 1.3 外部服务
 
 - 生产路径不购买 API、不读取 DeepSeek key、不建立 DeepSeek 生产回退。
+- v7.4 Codex 运行在可信个人主机，但必须使用独立 `CODEX_HOME`、isolated non-git cwd、
+  sanitized environment 和固定零工具配置；shell、apply_patch、web、apps、plugins、memory、
+  collab、MCP 全部关闭。任意 tool event、额外子进程、未知事件或密封根外成功读取使结果无效。
+- 以下 D-009/T1.3c 与 D-010/T1.3b 条款只描述冻结的历史 shadow 资格，不授权调用 DeepSeek，
+  也不要求 v7.4 恢复 AppContainer/WFP。
 - D-009 仅为 T1.3c 增加一次用户明确批准的 DeepSeek-V4-Flash shadow 资格例外：
   固定从当前 Windows 用户 Credential Manager 的 `PKM/DeepSeek/shadow-v1` 读取凭据，
   固定调用 `https://api.deepseek.com/chat/completions` 与
@@ -66,20 +80,25 @@
 - Codex 使用用户现有套餐。非交互认证或套餐额度不可用时 fail-closed。
 - 不由工作流自动升级 Codex CLI；使用经过本机资格验证的固定版本。首个候选版本为 `0.147.0`，版本号本身不替代资格测试。
 - 首个候选模型为 Generator `gpt-5.6-terra`、Reviewer `gpt-5.6-sol`；模型变化必须创建新 policy generation，重跑受影响内容集和至少 3 个 shadow 日。
-- T1.3b 固定使用 D-010 的 AppContainer/LPAC + package-SID WFP + one-shot loopback
-  proxy + Job Object 资格边界。只有官方 `0.147.0` asset、parser、签名、SHA、专用
-  `CODEX_HOME`、隔离和 trace 全部绑定通过后才能执行真实 Terra/Sol；否则结构化返回
-  `BLOCKED_PREQUALIFICATION`，不尝试模型、不使用 API/DeepSeek/fallback。
+- 历史 T1.3b 曾固定使用 D-010 的 AppContainer/LPAC + package-SID WFP + one-shot
+  loopback proxy + Job Object；该实验现已冻结，始终 `production=false`，不再阻塞 v7.4
+  Terra/Sol shadow。v7.4 仍必须固定 Codex binary/version/hash、argv、prompt、schema、模型、
+  专用 `CODEX_HOME` 和零工具/文件事件证据，失败时不使用 API/DeepSeek/fallback。
 
 ## 2. 工作流行为
 
 ### 2.1 调度
 
-- Windows Task Scheduler 是唯一生产触发器；只有一个 Task、一个 action、多个 trigger。
-- action 调用同一个 Python CLI：`pkm run --due-only --cause task`。
+- Windows Task Scheduler 是唯一生产触发技术；恰好三个 Task（AI、IELTS、Weekly），每个
+  Task 含 calendar、logon、unlock triggers 和一个固定 Python action。
+- action 固定调用 content-addressed、不可自动升级的最小 activation launcher；launcher 只读最高
+  有效 ActivationGeneration，核验 release/config hash 后 exec 同一个密封入口：
+  `scripts/run_workflow.py --workflow <enum> --mode production --due-only`。launcher 不解析业务
+  内容，也不能写 activation 或 Vault。
 - trigger：AI 07:10、IELTS 08:00、Weekly 周日 09:30，以及登录/解锁补跑。
 - `WakeToRun=false`、`StartWhenAvailable=true`、`MultipleInstances=IgnoreNew`。
-- Python 仍使用一个跨 workflow 全局锁，避免 Task、手动运行和补跑竞态。
+- Python 使用 create-once lock anchor 的跨 workflow 全局 OS 文件锁，并以
+  workflow/content_date demand 记录避免 Task、手动运行和补跑竞态。
 - due-only 先处理今天，最多补昨天；更早缺口只显示状态，不批量制造历史日报。
 - 同时到期时顺序为 AI → IELTS → Weekly。
 - Task 同步等待命令结束并保留真实退出码。
@@ -166,7 +185,9 @@ Coverage 车道：官方实验室、科研论文、开源/产品 release、产�
 - Generator 只从输入 evidence 提取候选 claim、机制、影响和不确定性。
 - Reviewer 只判断 evidence 是否支持 claim、是否夸大或错配；不得凭常识补证据。
 - 模型不得提供 URL、HTML、wikilink、文件路径或自定义 URI。
-- Codex 会话使用隔离 run directory，不读取仓库、Vault、用户配置、skills 或 plugins；shell、web、apply_patch、apps、memory、collab 等工具不可用。
+- Codex 会话使用 isolated non-git run directory，不读取仓库、Vault、用户配置、skills 或 plugins；shell、web、apply_patch、apps、memory、collab、MCP 等工具不可用。真实 shadow 的进程/文件事件必须证明零 tool event、零额外子进程和密封根外成功读取为零。
+- 下列 DETACHED_PROCESS/AppContainer/WFP 条款是已冻结 T1.3b 的历史证据边界，不是 v7.4
+  MVP 调用要求；其未完成项不得重新阻塞 Python shadow。
 - 任意 tool event、未知文件访问、schema 失败或额外子进程使本次模型输出无效。
 - Windows Codex child 必须使用 `DETACHED_PROCESS`，不得使用会创建 `conhost.exe` 的
   `CREATE_NO_WINDOW`。配置 child-process attribute 还不够：resume 前必须精确回读
@@ -222,21 +243,25 @@ Coverage 车道：官方实验室、科研论文、开源/产品 release、产�
 ### 6.2 create-new 发布协议
 
 1. doctor 证明 runtime 与 Vault 位于同一 NTFS volume，且 hard link 受支持；否则保持 shadow，不降级为覆盖或复制写。
-2. 用独占创建写完整 backing，flush、`os.fsync` 并计算 SHA-256。
-3. 用 `os.link(backing, target)` 创建 canonical Vault 文件；该调用必须是 create-new。
-4. 如果 canonical target 已存在，不修改它；尝试创建包含 `run_id` 的冲突副本，并把运行标记为 `CONFLICT`。
-5. 重新打开 target，核验路径、大小、hash 和可用的 file identity。
-6. create-new 写 publish receipt 与 status。
+2. create-new 写审计 A=`runs/<run_id>/rendered.md`，再 create-new 写相同 bytes 的发布 backing
+   B；A/B 是不同 file ID、长度/hash 全等并分别 flush。A 永不链接 Vault。
+3. create-new 写 `PREPARED` event，绑定 A/B identity/hash 与 canonical/conflict target。
+4. 用 `os.link(B, target)` 创建 canonical Vault 文件；该调用必须是 create-new，最终 Vault
+   leaf 绝不能作为流式写入目标。
+5. 如果 canonical target 已存在，先判断是否为同一 run 的 B/link；匹配则 reconcile 原 run，
+   不匹配才尝试包含 `run_id` 的冲突副本，冲突副本也只由 B 原子 link 创建。
+6. 重新打开 target，核验路径、大小、hash 和 file identity，然后 create-new 写 terminal event。
+   link 后、terminal 前强杀由同一 PREPARED run 补 terminal，不制造重复或假冲突。
 
 本协议承诺防止进程级崩溃造成半文件、覆盖和丢失追踪；不宣称对物理掉电、磁盘固件或恶意本地管理员提供事务保证。
 
 ### 6.3 reconcile
 
 - 根据 backing、target、hash 和 receipt 恢复进程强杀后的中断状态。
-- target 与 backing 匹配时补建缺失 receipt/status；不重新生成内容。
+- target 与 PREPARED/B identity 匹配时补建缺失 terminal/status；不重新生成内容。
 - target 存在但不匹配时进入 `CONFLICT`。
 - backing、receipt 和冲突产物都不删除。
-- 用户发布后编辑日报是允许的；只记录 drift，不回写或恢复旧内容。
+- 用户编辑 B/target 时，独立审计 A 保持发布时内容；只记录 drift，不回写或恢复旧内容。
 
 ## 7. 状态与 Home
 
@@ -292,8 +317,10 @@ pkm reconcile [--workflow {ai,ielts,weekly}] --json
 - Rust stage0/native publisher、CNG MAC chain、PromotionLedger、DPAPI-NG 恢复包。
 - 物理掉电矩阵、全模块 mutation≥85%、Weekly 等待四个真实周、所有内容双模型审核。
 
-AppContainer/LPAC 与 WFP 不是整个首发发布器的要求，但按 D-010 是 T1.3b Codex
-qualification 的硬门；T1.3b 未通过时 M1 不能把 Codex shadow 标为完成。
+AppContainer/LPAC 与 WFP 不属于 v7.4 首发要求；T1.3b 已冻结为实验性、非生产且未整体完成。
+MVP Codex shadow 的硬门改为固定 binary/argv/config/prompt/schema/model、独立 CODEX_HOME、
+isolated cwd、零工具事件、零额外子进程、密封根外成功读取为零，以及 auth/quota/schema
+fail-closed。
 
 关键 delete/overwrite/path-escape/evidence-mismatch 测试必须通过；mutation 只用于这些高风险模块，不追求全仓数字。
 

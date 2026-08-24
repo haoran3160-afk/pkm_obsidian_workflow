@@ -108,12 +108,13 @@ hash 精确匹配；任意 assertive claim 都被标记为 review-required。
   `POLICY_OVERFLOW`，全部 evidence 仍留在审计 clusters。当前 canonical M1 gate
   （CLI + T1.1–T1.3a）231 passed，line+branch 90.97%。
 
-### T1.3b 固定 Codex Generator/Reviewer 资格 — NEXT（运行仍 BLOCKED_PREQUALIFICATION）
+### T1.3b 固定 Codex Generator/Reviewer 原生资格 — FROZEN_EXPERIMENTAL
 
-用户已明确批准实施 D-010；这只把开发任务置为 `NEXT`，不解除运行阻断。T1.3a 已
-`DONE`；原生 Codex CLI 0.147.0、官方 release asset/signature/SHA-256、专用
+T1.3b 已在 commit `8437a97` 完成 startup discovery 安全着陆并冻结；它不是 MVP 生产依赖，
+不得继续阻塞 Python shadow，也不得标记整体完成。在该冻结 native 实验自身的资格语义中，
+原生 Codex CLI 0.147.0、官方 release asset/signature/SHA-256、专用
 `CODEX_HOME` 套餐登录、AppContainer/LPAC、WFP、sealed proxy、Job kill-tree 和完整
-Windows trace 全部通过前，任何真实模型调用仍返回 `BLOCKED_PREQUALIFICATION`。
+Windows trace 全部通过前仍返回 `BLOCKED_PREQUALIFICATION`；该 blocker 不适用于 v7.4 Python runner。
 
 目标：以固定原生 Codex CLI 完成真实 Terra Generator + Sol Reviewer fresh-thread
 qualification shadow；所有 assertive claim 均由 Reviewer 审核。
@@ -152,7 +153,29 @@ qualifier crash recovery 等保留为后续增强，不再阻塞真实日报 sha
 T1.3a/b 只产生 curation/review qualification shadow，不是用户日报或 M3 内容质量
 样本；feed URL/摘要不能被表述为已验证 article 正文、canonical 或原始链接。
 
-### T1.4 确定性输出契约 — PLANNED
+### T1.4 Python 密封入口与路径/激活策略 — NEXT
+
+目标：把 `scripts/run_workflow.py` 与 `src/pkm_workflow/cli.py` 迁移为 production/manual/
+shadow/dry-run 共用的单一 engine seam；参数只有 workflow/mode/due-only 枚举，无自由 Vault、
+输出、模型、prompt 或 command 路径。production 缺 exact activation generation 必须拒绝。
+
+主要文件（≤5）：`scripts/run_workflow.py`、`src/pkm_workflow/cli.py`、一个小型 engine/policy
+模块、一个新行为测试和必要的现有 CLI 测试。不得修改或暂存 `AGENTS.md` 和无关未跟踪资产。
+
+验收：四种 mode 调用同一生产函数；doctor/dry-run/shadow 不写真实 Vault；production 缺失/
+损坏/未知字段/hash/scope/stale/fork activation 全部 exit 3；caller 不能传入路径；wrapper
+原样返回 2/3/4/5/8/10；旧 native blockers 和旧 9-task/stage0 seam 不再决定 MVP gate。
+
+### T1.5 确定性 Codex Generator/Reviewer pipeline — PLANNED
+
+目标：在可信个人主机上用独立 CODEX_HOME、isolated cwd、sanitized environment 和零工具配置
+完成真实 fresh Generator→Reviewer；固定 binary/argv/prompt/schema/model/hash，任意 tool event、
+额外子进程、未知事件或密封根外读取使结果无效。不使用 API、DeepSeek 或 fallback。
+
+验收：逐 claim structured review、高风险无 ACCEPT 即删除、Top 失真时整份 abstain；auth/quota/
+timeout/schema 失败不产生 Markdown/terminal；真实 shadow 记录调用次数、时长与文件事件。
+
+### T1.6 确定性输出契约 — PLANNED
 
 目标：accepted stories 与渲染字段严格全等；no-news 不产生 digest。
 
@@ -160,9 +183,9 @@ T1.3a/b 只产生 curation/review qualification shadow，不是用户日报或 M
 
 验收：Top≤3、无填充、无模型 URL/Markdown、用户上下文 hash 精确匹配、重大故事不因 Top 配额丢失。
 
-### T1.5 单一 Orchestrator shadow — PLANNED
+### T1.7 单一 Orchestrator shadow — PLANNED
 
-目标：一个 Python 入口串联 T1.1–T1.4，使用全局锁、真实退出码和 scratch run root。
+目标：一个 Python 入口串联 T1.1–T1.6，使用全局锁、真实退出码和 scratch run root。
 
 主要文件（≤5）：`orchestrator.py`（新）、`cli.py`、`scripts/run_workflow.py`、两个测试。
 
@@ -188,13 +211,17 @@ M1 Gate：5–8 个工作日内打通至少一份真实 AI shadow 样本。若 C
 
 验收：今日三 workflow latest、deadline 失联、no-news 无链接、验证失败 target 清空；真实 Obsidian Desktop 验证通过。
 
-### T2.3 单一 Windows Task — PLANNED
+### T2.3 三个多触发器 Windows Task 与 activation launcher — PLANNED
 
-目标：一个 disabled Task bundle，多个 trigger，一个 `--due-only` action。
+目标：一个由 AI/IELTS/Weekly 三个 disabled Task 组成的 bundle；每个 Task 含 calendar/logon/
+unlock triggers，action 固定到 content-addressed activation launcher，再 exec 同一 Python sealed
+entry。global lock+demand 串行化跨 Task/manual/reconcile。
 
 主要文件（≤5）：`task_bundle.py`、安装脚本、CLI due tests、Task XML tests。
 
-验收：时间/登录/解锁、IgnoreNew、StartWhenAvailable、no-wake、真实 exit code、禁用/启用和补跑均在 disposable namespace 通过。
+验收：时间/登录/解锁、同时触发/manual 并发、IgnoreNew、global lock+demand、StartWhenAvailable、
+no-wake、真实 exit 2/4/5/8、all-disabled register/readback/失败回退、同一 launcher action 的
+N→N-1 activation rollback 均在 disposable namespace 通过。
 
 M2 Gate：disposable 环境全部通过后，经用户单独批准才允许 AI Daily 在真实白名单目录做受控 pilot；Weekly/IELTS 保持 disabled。
 

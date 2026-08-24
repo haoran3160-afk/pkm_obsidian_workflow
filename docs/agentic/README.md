@@ -4,7 +4,7 @@
 
 生产状态：`SHADOW_ONLY / BLOCKED`
 
-方向生效日期：2026-08-17
+v7.4 方向生效日期：2026-08-24
 
 这里是 PKM Workflow 的唯一规范文档集。目标是让开发 Agent 用最少上下文完成正确实现，不再从 README、历史工作流和验证产物中拼接相互矛盾的要求。
 
@@ -45,9 +45,9 @@ Windows Task Scheduler
         ↓
 固定来源抓取 → 证据标准化 → Coverage
         ↓
-确定性候选筛选 → Codex Generator(JSON)
+确定性候选筛选 → 零工具 Codex Generator(JSON)
         ↓
-确定性事实校验 → Codex Reviewer（T1.3 qualification 审核全部 assertive claims）
+确定性事实校验 → fresh Codex Reviewer（逐 claim 结构化决策）
         ↓
 确定性 Markdown Renderer
         ↓
