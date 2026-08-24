@@ -38,8 +38,11 @@ CHILD_PROCESS_RESTRICTED` 无认证 preflight；OS readback flags=1，拒绝型 
 `ERROR_CHILD_PROCESS_BLOCKED (367)`，进程树始终为 1→0。`CREATE_NO_WINDOW` 控制组仍产生
 `conhost.exe`，仅保留为反事实证据，不得进入 canonical launch。零 capability
 AppContainer profile lifecycle 与 SID 稳定性也已由真实 OS API 证明并完成最终清理；
-非管理员 WFP 入口已证明先于任何系统 mutation 返回 `ELEVATION_REQUIRED`。当前仍阻断在
-frozen candidate 未独立复现/签名、release-bound LPAC token/capability/crash recovery、
+LPAC suspended diagnostic 进一步证明 Windows 接受 opt-out attribute，且真实 token 为
+AppContainer、零 capability、package SID exact；Job/child-policy/zero descendants/profile
+cleanup 通过。Windows 26100 的 direct LPAC token class 不受支持，因此 LPAC flag 仍是 null，
+不能标绿。非管理员 WFP 入口已证明先于任何系统 mutation 返回 `ELEVATION_REQUIRED`。当前仍阻断在
+frozen candidate 未独立复现/签名、release-bound direct LPAC token/crash recovery、
 管理员 WFP 精确回读与网络负向矩阵、loopback proxy、文件 ETW、专用认证和真实双审。
 
 ---

@@ -306,3 +306,43 @@ receipt 的 13 项 source closure 已提交并绑定 Git `ee67acf`；它仍明�
 范围后果：该决定不授权认证、模型调用、Task、Vault、Home、Status、发布、删除、移动、
 重命名或覆盖；也不解除 loopback exemption、sealed proxy、文件/进程 trace、真实
 Terra→Sol、覆盖/mutation、两轮红队和用户最终批准门。
+
+## D-013 — LPAC token 资格必须区分属性接受、已观察事实与未知值
+
+状态：`ACCEPTED`（2026-08-24，Windows 11 build 26100 实测）
+
+决定：T1.3b 增加固定、无参数、无认证、无网络且永远 exit 3 的
+`diagnose-lpac-token`。诊断按微软 [AppContainer/LPAC 启动规范](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)
+同时提交 zero-capability `SECURITY_CAPABILITIES`、
+`PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT`、atomic Job list 与
+`CHILD_PROCESS_RESTRICTED`；child 以 `CREATE_SUSPENDED | DETACHED_PROCESS` 创建且永不
+resume。`LOCALAPPDATA` 只使用官方
+[`GetAppContainerFolderPath`](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-getappcontainerfolderpath)
+返回值，并分别按 API 约定使用 `LocalFree`/`CoTaskMemFree`。
+
+观察要求：在 child suspended 时从真实 primary token 回读 AppContainer=true、零 capability、
+package SID exact match；从 OS 回读 child policy=1、Job 1/1，随后 TerminateJob、Wait 和 Job
+accounting 必须证明 1/0，才允许删除 profile。partial `CreateProcessW` 只要报告成功或任一
+process/thread handle 非空，就视为可能已创建 child；缺少 process handle或任何 drain 证据时
+保留 profile。失败状态分别携带 child-created、descendants-zero 与 attribute-accepted，禁止
+用一个布尔值代替三个事实。
+
+低信边界：当前 build 26100 对
+[`TokenIsLessPrivilegedAppContainer`](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_information_class)
+经 `GetTokenInformation` 返回 unsupported，直接 `NtQueryInformationToken` 也只允许把
+`STATUS_NOT_IMPLEMENTED`、`STATUS_INVALID_INFO_CLASS`、`STATUS_NOT_SUPPORTED` 三个精确值
+归为平台不支持；其他 NTSTATUS 均是故障。unsupported 时 `token_is_lpac=null`，不能写 false
+或 true。因而本诊断证明 LPAC attribute 已被 CreateProcess 接受，并证明 AppContainer/SID/
+zero-capability/Job/child-policy/cleanup；它不证明当前 token 的 LPAC flag，仍保持
+`LPAC_TOKEN_DIAGNOSTIC_NOT_RELEASE_BOUND` 与 `BLOCKED_PREQUALIFICATION`。
+
+当前 create-new candidate 为
+`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-07`；
+qualifier SHA-256 `20895555532cb67058410fa55b5e5b515c0d50342ee7d868b335d7e5265e06a2`，
+canary SHA-256 `e959c5e5e889ae2c036a3bdb502caab416737f4f8f48f47c005f8d43ac113098`，
+build receipt SHA-256 `96126f51af922c5c1fc0719cd74bcfc7e168215d5de892c9b386a4c86dcf10f7`。
+13 项 source closure 已提交并绑定 Git `fa8b2a5`；ambient build、不可复现、未签名、Windows
+build/release binding、direct LPAC readback、elevated WFP、proxy/trace 和用户批准仍是 blocker。
+
+范围后果：本决定不授权 child resume、认证、Codex、模型、网络、Vault、Task 或发布；也不
+把 AppContainer diagnostic receipt 当成 production OS-observed closure。
