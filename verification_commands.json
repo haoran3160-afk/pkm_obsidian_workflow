@@ -1,0 +1,1864 @@
+{
+  "schema_version": 1,
+  "generation": "t13b-prequalification-20260821-01",
+  "authorization": "user-requested-t13b-shadow",
+  "harness_mutation_policy": [
+    "verification-create-only",
+    "verification-root-acl-tighten"
+  ],
+  "spec_sha256": "afdb6993f813c807fedf5700a764647918cc2bfad596650ad0547614d1b50df4",
+  "release_hash": null,
+  "allowed_verification_roots": [
+    "D:\\personal\\obsidian_workflow\\verification-artifacts"
+  ],
+  "protected_roots": [
+    "D:\\Agent_programs\\obsidian_workflow_open",
+    "D:\\personal\\obsidian_workflow"
+  ],
+  "commands": {
+    "self-test": {
+      "internal": true,
+      "task_ids": [
+        "E00.5"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-verification-harness": {
+      "internal": false,
+      "task_ids": [
+        "E00.5",
+        "T1.3b"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_verification_harness.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\scripts\\run_task_verification.ps1",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_verification_harness.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-workflow-contracts": {
+      "internal": false,
+      "task_ids": [
+        "E00.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_workflow_contracts.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\pyproject.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-baseline-inventory": {
+      "internal": false,
+      "task_ids": [
+        "E00.2",
+        "E00.4"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_baseline_inventory.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\baseline_inventory.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_baseline_inventory.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-path-policy": {
+      "internal": false,
+      "task_ids": [
+        "E10.1",
+        "E10.2",
+        "E10.3"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_path_policy.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-writer-policy": {
+      "internal": false,
+      "task_ids": [
+        "E10.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_writer.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\writer.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_writer.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-run-store": {
+      "internal": false,
+      "task_ids": [
+        "E12.1",
+        "E12.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_run_store.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-config-migration": {
+      "internal": false,
+      "task_ids": [
+        "E01.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_config_migration.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\config_schema.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\config_migration.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_config_migration.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-source-registry": {
+      "internal": false,
+      "task_ids": [
+        "E11.1",
+        "E11.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_source_registry.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\source_registry.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_source_registry.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-run-service": {
+      "internal": false,
+      "task_ids": [
+        "E13.1",
+        "E13.2",
+        "E13.3",
+        "E25.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_run_service.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_run_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-commit-service": {
+      "internal": false,
+      "task_ids": [
+        "E31.1",
+        "E31.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_commit_service.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\commit_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_commit_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-no-delete-guard": {
+      "internal": false,
+      "task_ids": [
+        "E10.5"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_no_delete_guard.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\no_delete_guard.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_no_delete_guard.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-filesystem-broker": {
+      "internal": false,
+      "task_ids": [
+        "E10.6"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_filesystem_broker.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\filesystem_broker.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\scripts\\restricted_fs_probe.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\commit_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_filesystem_broker.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-artifact-naming": {
+      "internal": false,
+      "task_ids": [
+        "E30.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_artifact_naming.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\writer.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\path_policy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_artifact_naming.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-fetcher-registry": {
+      "internal": false,
+      "task_ids": [
+        "E20.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_fetcher_registry.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\fetcher_registry.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\fetcher.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\main.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_fetcher_registry.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-fetch-diagnostics": {
+      "internal": false,
+      "task_ids": [
+        "E20.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_fetch_diagnostics.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\fetcher.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_fetch_diagnostics.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-curation-contract": {
+      "internal": false,
+      "task_ids": [
+        "E21.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_curation_contract.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\daily_curation.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_curation_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-formatter-contract": {
+      "internal": false,
+      "task_ids": [
+        "E21.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_formatter_contract.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\formatter.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\daily_curation.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_formatter_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-source-lanes": {
+      "internal": false,
+      "task_ids": [
+        "E22.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_source_lanes.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\fetcher.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\fetcher_registry.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\source_registry.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\main.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_source_lanes.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-state-schema": {
+      "internal": false,
+      "task_ids": [
+        "E32.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_state_schema.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\state_schema.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_store.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_state_schema.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-pkm-bridge": {
+      "internal": false,
+      "task_ids": [
+        "E33.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_pkm_bridge.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\pkm_bridge.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\commit_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_pkm_bridge.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-intent-clustering": {
+      "internal": false,
+      "task_ids": [
+        "E23.1",
+        "E23.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_curation_contract.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\daily_curation.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_curation_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-llm-curation": {
+      "internal": false,
+      "task_ids": [
+        "E24.1",
+        "E24.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_llm_digest.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\llm_digest.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\formatter.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\run_service.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_llm_digest.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-credential-provider": {
+      "internal": false,
+      "task_ids": [
+        "E02.1",
+        "E02.2"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_credential_provider.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\credential_provider.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\config_schema.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\ui_server.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\main.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_credential_provider.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-release-manifest": {
+      "internal": false,
+      "task_ids": [
+        "E03.1"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        {
+          "literal": "-m"
+        },
+        {
+          "literal": "pytest"
+        },
+        {
+          "literal": "-q"
+        },
+        {
+          "literal": "-p"
+        },
+        {
+          "literal": "no:cacheprovider"
+        },
+        {
+          "literal": "--basetemp"
+        },
+        {
+          "verification_path": true
+        },
+        {
+          "literal": "tests/test_release_manifest.py"
+        }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_TEST_ROOT": "{verification_root}\\test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\release_manifest.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\workflow_contracts.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_release_manifest.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-t13b-offline": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        { "literal": "-I" },
+        { "literal": "-S" },
+        { "literal": "scripts/run_t13b_coverage.py" }
+      ],
+      "expected_success_terminal": {
+        "schema_version": "pkm.t13b.coverage.v1",
+        "terminal": "PASSED",
+        "threshold_percent": 90,
+        "exact_keys": [
+          "branch",
+          "bytecode_writes",
+          "coverage_percent",
+          "coverage_root",
+          "data_file",
+          "input_closure_sha256",
+          "input_records",
+          "isolated_mode",
+          "module_results",
+          "modules",
+          "pycache_root",
+          "pytest_basetemp",
+          "pytest_basetemp_created",
+          "pytest_cacheprovider",
+          "pytest_cov_plugin",
+          "pytest_exit_code",
+          "pytest_failures",
+          "pytest_output_bytes",
+          "pytest_output_limit_bytes",
+          "pytest_output_overflow",
+          "pytest_output_sha256",
+          "pytest_plugin_autoload",
+          "pytest_reservation",
+          "pytest_stderr_sha256",
+          "pytest_stdout_sha256",
+          "pytest_tmp_path_mode",
+          "runtime_identities",
+          "schema_version",
+          "terminal",
+          "tests",
+          "threshold_percent",
+          "totals"
+        ],
+        "modules": [
+          "src/pkm_workflow/curation.py",
+          "src/pkm_workflow/codex_job.py",
+          "src/pkm_workflow/codex_proxy.py",
+          "src/pkm_workflow/codex_runner.py",
+          "src/pkm_workflow/model_contract.py",
+          "src/pkm_workflow/review_contract.py"
+        ],
+        "tests": [
+          "tests/test_v8_curation.py",
+          "tests/test_v8_codex_job.py",
+          "tests/test_v8_codex_proxy.py",
+          "tests/test_v8_codex_runner.py",
+          "tests/test_v73_codex_runner.py",
+          "tests/test_v8_model_contract.py",
+          "tests/test_v8_review_contract.py"
+        ],
+        "false_fields": [
+          "bytecode_writes",
+          "pytest_plugin_autoload",
+          "pytest_cacheprovider",
+          "pytest_cov_plugin",
+          "pytest_basetemp_created"
+        ],
+        "output_limit_bytes": 1048576,
+        "input_python_roots": [
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests"
+        ],
+        "required_input_paths": [
+          "D:\\Agent_programs\\obsidian_workflow_open\\scripts\\run_t13b_coverage.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\curation.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_job.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_proxy.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_runner.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\model_contract.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\review_contract.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_curation.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_job.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_proxy.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_runner.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v73_codex_runner.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_model_contract.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_review_contract.py",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\fixtures\\v8_curation_manifest.json",
+          "D:\\Agent_programs\\obsidian_workflow_open\\tests\\fixtures\\v8_fetch_manifest.json",
+          "D:\\Agent_programs\\obsidian_workflow_open\\pyproject.toml"
+        ],
+        "input_closure_sha256": "sha256:f18e25af9288e50e953f592bd25626b13e65aa1ffa81fe760f798de8fb82a28c",
+        "runtime_identity_keys": [
+          "coverage",
+          "distribution_closure_sha256",
+          "distribution_file_count",
+          "pytest",
+          "sealed_runtime_root"
+        ],
+        "runtime_identity_path_keys": [
+          "coverage",
+          "pytest",
+          "sealed_runtime_root"
+        ],
+        "runtime_identity_root_key": "sealed_runtime_root",
+        "runtime_identity_relative_paths": {
+          "coverage": "Lib\\site-packages\\coverage\\__init__.py",
+          "pytest": "Lib\\site-packages\\pytest\\__init__.py"
+        },
+        "coverage_root_template": "{verification_root}\\python-artifacts",
+        "runtime_root_leaf_regex": "^rt-[0-9a-f]{16}$",
+        "pytest_reservation_leaf_regex": "^pt-[0-9a-f]{16}$",
+        "pytest_basetemp_leaf": "basetemp",
+        "pycache_root_leaf_regex": "^pc-[0-9a-f]{16}$",
+        "pytest_tmp_path_mode": "CREATE_NEW_NO_CLEANUP",
+        "runtime_closure_digest_key": "distribution_closure_sha256",
+        "runtime_closure_count_key": "distribution_file_count",
+        "runtime_closure_sha256": "sha256:f02dd6b952b95691b969598341ac8ea75514ff9cced8d4e1f8fe2dfa5e688d53",
+        "runtime_closure_file_count": 566
+      },
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_T13B_COVERAGE_ROOT": "{verification_root}\\python-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\python-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\scripts\\run_t13b_coverage.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests",
+        "D:\\Agent_programs\\obsidian_workflow_open\\pyproject.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-t13b-coverage-runner": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        { "literal": "-m" },
+        { "literal": "pytest" },
+        { "literal": "-q" },
+        { "literal": "-p" },
+        { "literal": "no:cacheprovider" },
+        { "literal": "--basetemp" },
+        { "verification_path": true },
+        { "literal": "tests/test_t13b_coverage_runner.py" }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTEST_ADDOPTS": "",
+        "PYTEST_PLUGINS": "",
+        "PKM_T13B_RUNNER_TEST_ROOT": "{verification_root}\\coverage-runner-test-artifacts"
+      },
+      "create_directories": [
+        "{verification_root}\\coverage-runner-test-artifacts"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\scripts\\run_t13b_coverage.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_t13b_coverage_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\pyproject.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "ruff-t13b": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        { "literal": "-m" },
+        { "literal": "ruff" },
+        { "literal": "check" },
+        { "literal": "--no-cache" },
+        { "literal": "src/pkm_workflow/curation.py" },
+        { "literal": "src/pkm_workflow/review_contract.py" },
+        { "literal": "src/pkm_workflow/model_contract.py" },
+        { "literal": "src/pkm_workflow/codex_runner.py" },
+        { "literal": "src/pkm_workflow/codex_proxy.py" },
+        { "literal": "src/pkm_workflow/codex_job.py" },
+        { "literal": "tests/test_v8_curation.py" },
+        { "literal": "tests/test_v8_review_contract.py" },
+        { "literal": "tests/test_v8_model_contract.py" },
+        { "literal": "tests/test_v73_codex_runner.py" },
+        { "literal": "tests/test_v8_codex_runner.py" },
+        { "literal": "tests/test_v8_codex_proxy.py" },
+        { "literal": "tests/test_v8_codex_job.py" },
+        { "literal": "tests/test_v8_codex_live_qualification.py" },
+        { "literal": "tests/test_verification_harness.py" },
+        { "literal": "scripts/run_t13b_coverage.py" },
+        { "literal": "tests/test_t13b_coverage_runner.py" }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\curation.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\review_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\model_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_proxy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_job.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_curation.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_review_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_model_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v73_codex_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_proxy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_job.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_live_qualification.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_verification_harness.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\scripts\\run_t13b_coverage.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_t13b_coverage_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "mypy-t13b": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        { "literal": "-m" },
+        { "literal": "mypy" },
+        { "literal": "--no-incremental" },
+        { "literal": "--no-sqlite-cache" },
+        { "literal": "--no-fixed-format-cache" },
+        { "literal": "--cache-dir" },
+        { "verification_path": true },
+        { "literal": "src/pkm_workflow/curation.py" },
+        { "literal": "src/pkm_workflow/review_contract.py" },
+        { "literal": "src/pkm_workflow/model_contract.py" },
+        { "literal": "src/pkm_workflow/codex_runner.py" },
+        { "literal": "src/pkm_workflow/codex_proxy.py" },
+        { "literal": "src/pkm_workflow/codex_job.py" }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\curation.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\review_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\model_contract.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_proxy.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_job.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\pyproject.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "pytest-t13b-asset-identity": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "D:\\Agent_programs\\obsidian_workflow_open\\.venv\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open",
+      "argv_schema": [
+        { "literal": "-m" },
+        { "literal": "pytest" },
+        { "literal": "-q" },
+        { "literal": "-p" },
+        { "literal": "no:cacheprovider" },
+        { "literal": "--basetemp" },
+        { "verification_path": true },
+        { "literal": "tests/test_v8_codex_live_qualification.py" }
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PKM_T13B_CODEX_EXE": "D:\\personal\\obsidian_workflow-runtime\\durable\\codex\\0.147.0-prequal-20260818-01\\expanded\\codex-x86_64-pc-windows-msvc.exe",
+        "PKM_T13B_RELEASE_EVIDENCE": "D:\\personal\\obsidian_workflow-runtime\\scratch\\codex-t13b-binary-7bfe6f9d8ba542b7a98b1de50a39aa82\\release-evidence.json"
+      },
+      "snapshot_roots": [
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\codex\\0.147.0-prequal-20260818-01\\expanded\\codex-x86_64-pc-windows-msvc.exe",
+        "D:\\personal\\obsidian_workflow-runtime\\scratch\\codex-t13b-binary-7bfe6f9d8ba542b7a98b1de50a39aa82\\release-evidence.json",
+        "D:\\Agent_programs\\obsidian_workflow_open\\src\\pkm_workflow\\codex_runner.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\tests\\test_v8_codex_live_qualification.py",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "cargo-fmt-t13b": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+      "executable_sha256": "dc19c8e6d66802d120bf0696b1924b748bd90f3ca16f21391e54a290ff12b7c5",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open\\native",
+      "argv_schema": [
+        { "literal": "fmt" },
+        { "literal": "--all" },
+        { "literal": "--" },
+        { "literal": "--check" }
+      ],
+      "environment": {
+        "RUSTC": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+        "RUSTC_WRAPPER": "",
+        "RUSTC_WORKSPACE_WRAPPER": ""
+      },
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.lock",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\bin\\pkm-child-policy-canary.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\native_doctor.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\qualification_contract.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "cargo-check-t13b": {
+      "internal": false,
+      "scratch_toolchain_only": true,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+      "executable_sha256": "dc19c8e6d66802d120bf0696b1924b748bd90f3ca16f21391e54a290ff12b7c5",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open\\native",
+      "argv_schema": [
+        { "literal": "check" },
+        { "literal": "--frozen" },
+        { "literal": "--all-targets" }
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "D:\\personal\\obsidian_workflow-runtime\\scratch\\harness-cargo-t13b-check",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTC": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+        "RUSTC_WRAPPER": "",
+        "RUSTC_WORKSPACE_WRAPPER": "",
+        "RUSTFLAGS": "",
+        "CARGO_ENCODED_RUSTFLAGS": ""
+      },
+      "mutable_scratch_roots": [
+        "D:\\personal\\obsidian_workflow-runtime\\scratch\\harness-cargo-t13b-check"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.lock",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\tests\\exit_codes.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\tests\\exit_codes.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\bin\\pkm-child-policy-canary.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\native_doctor.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\qualification_contract.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "cargo-clippy-t13b": {
+      "internal": false,
+      "scratch_toolchain_only": true,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+      "executable_sha256": "dc19c8e6d66802d120bf0696b1924b748bd90f3ca16f21391e54a290ff12b7c5",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open\\native",
+      "argv_schema": [
+        { "literal": "clippy" },
+        { "literal": "--frozen" },
+        { "literal": "--all-targets" },
+        { "literal": "--" },
+        { "literal": "-D" },
+        { "literal": "warnings" }
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "D:\\personal\\obsidian_workflow-runtime\\scratch\\harness-cargo-t13b-clippy",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTC": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+        "RUSTC_WRAPPER": "",
+        "RUSTC_WORKSPACE_WRAPPER": "",
+        "RUSTFLAGS": "",
+        "CARGO_ENCODED_RUSTFLAGS": ""
+      },
+      "mutable_scratch_roots": [
+        "D:\\personal\\obsidian_workflow-runtime\\scratch\\harness-cargo-t13b-clippy"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.lock",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\tests\\exit_codes.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\tests\\exit_codes.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\bin\\pkm-child-policy-canary.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\native_doctor.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\qualification_contract.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "cargo-test-t13b": {
+      "internal": false,
+      "scratch_toolchain_only": true,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "executable_path": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+      "executable_sha256": "dc19c8e6d66802d120bf0696b1924b748bd90f3ca16f21391e54a290ff12b7c5",
+      "working_directory": "D:\\Agent_programs\\obsidian_workflow_open\\native",
+      "argv_schema": [
+        { "literal": "test" },
+        { "literal": "--frozen" },
+        { "literal": "--all-targets" }
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "D:\\personal\\obsidian_workflow-runtime\\scratch\\harness-cargo-t13b-test",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTC": "C:\\Users\\lenovo\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\rustc.exe",
+        "RUSTC_WRAPPER": "",
+        "RUSTC_WORKSPACE_WRAPPER": "",
+        "RUSTFLAGS": "",
+        "CARGO_ENCODED_RUSTFLAGS": ""
+      },
+      "mutable_scratch_roots": [
+        "D:\\personal\\obsidian_workflow-runtime\\scratch\\harness-cargo-t13b-test"
+      ],
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.lock",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\tests\\exit_codes.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\tests\\exit_codes.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\bin\\pkm-child-policy-canary.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\native_doctor.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\tests\\qualification_contract.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    },
+    "native-doctor-t13b": {
+      "internal": false,
+      "task_ids": [
+        "T1.3b"
+      ],
+      "expected_exit_codes": [
+        3
+      ],
+      "expected_blocked_terminal": {
+        "terminal": "BLOCKED_PREQUALIFICATION",
+        "exact_keys": [
+          "blockers",
+          "child_created",
+          "child_resumed",
+          "network_or_auth_used",
+          "secret_materialized_in_child",
+          "terminal"
+        ],
+        "nonempty_blockers": true,
+        "required_blockers_in_order": [
+          "CLOSED_NATIVE_PLAN_BUILDER_NOT_READY",
+          "RUNTIME_ROOT_CREATE_NEW_AUTHORITY_NOT_READY",
+          "WINDOWS_BUILD_QUALIFICATION_NOT_BOUND",
+          "CODEX_0147_BINARY_QUALIFICATION_NOT_RUN",
+          "CODEX_0147_DETACHED_PREFLIGHT_NOT_RELEASE_BOUND",
+          "CHILD_PROCESS_RESTRICTION_NEGATIVE_CANARY_NOT_RELEASE_BOUND",
+          "PREFLIGHT_FULL_TOKEN_AUTH_ISOLATION_NOT_QUALIFIED",
+          "PREFLIGHT_NETWORK_ENFORCEMENT_NOT_QUALIFIED",
+          "PER_RUN_APPCONTAINER_IDENTITY_NOT_QUALIFIED",
+          "APPCONTAINER_PROFILE_CRASH_RECOVERY_NOT_QUALIFIED",
+          "APPCONTAINER_CAPABILITY_READBACK_NOT_QUALIFIED",
+          "ZERO_NETWORK_CAPABILITY_LOOPBACK_SMOKE_NOT_QUALIFIED",
+          "PROXY_PROCESS_IDENTITY_NOT_QUALIFIED",
+          "PROXY_EXECUTION_NOT_IMPLEMENTED",
+          "PROXY_SECRET_ONESHOT_CHILD_ENV_NOT_READY",
+          "CODEX_0147_PROXY_AUTH_TRACE_REQUIRED",
+          "SUBSCRIPTION_AUDIENCE_TRACE_REQUIRED",
+          "WFP_EXACT_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
+          "LOOPBACK_EXEMPTION_NOT_QUALIFIED",
+          "ANCESTOR_HANDLE_CHAIN_NOT_QUALIFIED",
+          "AUTH_CACHE_ACL_HANDLE_NOT_QUALIFIED",
+          "FILE_ACCESS_ETW_TRACE_REQUIRED",
+          "MAINTENANCE_LOCK_LIFECYCLE_NOT_QUALIFIED",
+          "CREATE_SUSPENDED_LPAC_LAUNCH_NOT_READY",
+          "CREATE_RESUME_RAII_TRANSACTION_NOT_READY",
+          "STDIN_PIPE_BOUNDED_CAPTURE_NOT_READY",
+          "CHILD_ENVIRONMENT_TRACE_NOT_QUALIFIED",
+          "TRACE_ZERO_TOOL_SUBPROCESS_NOT_INTEGRATED",
+          "OUTPUT_ARTIFACT_ATTESTATION_NOT_READY",
+          "OUTPUT_SECRET_LEAK_SCAN_NOT_READY",
+          "OS_OBSERVED_CLOSURE_NOT_PRODUCED",
+          "JOB_WFP_TEARDOWN_NOT_QUALIFIED",
+          "POST_CLEANUP_OBSERVATION_NOT_READY"
+        ],
+        "optional_leading_blockers": [
+          "ELEVATION_REQUIRED",
+          "TOKEN_ELEVATION_QUERY_FAILED"
+        ],
+        "false_fields": [
+          "child_created",
+          "child_resumed",
+          "secret_materialized_in_child",
+          "network_or_auth_used"
+        ],
+        "stderr_must_be_empty": true
+      },
+      "executable_path": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\pkm-codex-qualifier.exe",
+      "executable_sha256": "45384ace4410ddb493a53fb3a3d5674b1afbbbd3aadef9c77245be1ae9515ad5",
+      "working_directory": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04",
+      "argv_schema": [
+        { "literal": "doctor" }
+      ],
+      "environment": {},
+      "snapshot_roots": [
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.lock",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\lib.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\main.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\bin\\pkm-child-policy-canary.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\build-receipt.json",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\pkm-child-policy-canary.exe",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\pkm-codex-qualifier.exe",
+        "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
+      ],
+      "allowed_mutations": [
+        "verification-create-only"
+      ]
+    }
+  }
+}
