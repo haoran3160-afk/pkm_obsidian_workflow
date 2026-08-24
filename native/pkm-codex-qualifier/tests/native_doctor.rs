@@ -1,4 +1,5 @@
 use std::fmt::Write as _;
+use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
@@ -6,6 +7,10 @@ use std::sync::Mutex;
 use windows_sys::Win32::Security::Cryptography::{
     BCryptCloseAlgorithmProvider, BCryptHash, BCryptOpenAlgorithmProvider, BCRYPT_SHA256_ALGORITHM,
 };
+use windows_sys::Win32::Security::Isolation::{
+    CreateAppContainerProfile, DeleteAppContainerProfile,
+};
+use windows_sys::Win32::Security::{FreeSid, IsValidSid};
 
 use pkm_codex_qualifier::{
     native_helper_diagnostic_contract, native_preflight_contract,
@@ -68,6 +73,10 @@ fn json_string_values(document: &str, key: &str) -> Vec<String> {
         remaining = &tail[end + 1..];
     }
     values
+}
+
+fn wide_null(value: &std::ffi::OsStr) -> Vec<u16> {
+    value.encode_wide().chain(std::iter::once(0)).collect()
 }
 
 #[test]
@@ -902,6 +911,32 @@ fn appcontainer_profile_diagnostic_recreates_and_removes_zero_capability_identit
         receipt_hashes[0],
         file_sha256(std::path::Path::new(&receipt_paths[0]))
     );
+    let receipt =
+        std::fs::read_to_string(&receipt_paths[0]).expect("read profile lifecycle receipt");
+    let run_ids = json_string_values(&receipt, "run_id");
+    assert_eq!(run_ids.len(), 1);
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", run_ids[0]);
+    let profile_name = wide_null(std::ffi::OsStr::new(&profile_name));
+    let display_name = wide_null(std::ffi::OsStr::new("PKM independent absence observer"));
+    let description = wide_null(std::ffi::OsStr::new(
+        "Recreate proves the diagnostic left no registered profile",
+    ));
+    let mut sid = std::ptr::null_mut();
+    let create_status = unsafe {
+        CreateAppContainerProfile(
+            profile_name.as_ptr(),
+            display_name.as_ptr(),
+            description.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut sid,
+        )
+    };
+    assert_eq!(create_status, 0, "diagnostic left a registered profile");
+    assert!(!sid.is_null() && unsafe { IsValidSid(sid) } != 0);
+    let delete_status = unsafe { DeleteAppContainerProfile(profile_name.as_ptr()) };
+    let _ = unsafe { FreeSid(sid) };
+    assert_eq!(delete_status, 0, "independent observer cleanup failed");
 
     let rejected = Command::new(executable)
         .args(["diagnose-appcontainer-profile", "caller-name"])
@@ -994,5 +1029,87 @@ fn lpac_token_diagnostic_records_direct_readback_blocker_before_any_resume() {
         .args(["diagnose-lpac-token", "caller-binary"])
         .output()
         .expect("reject caller-controlled LPAC arguments");
+    assert_eq!(rejected.status.code(), Some(2));
+}
+
+#[test]
+fn appcontainer_creator_kill_reconciliation_cleans_a_real_profile() {
+    let _guard = NATIVE_CHILD_TEST_LOCK
+        .lock()
+        .expect("native child test lock");
+    let executable = env!("CARGO_BIN_EXE_pkm-codex-qualifier");
+    let output = Command::new(executable)
+        .arg("diagnose-appcontainer-creator-kill-reconciliation")
+        .output()
+        .expect("run fixed AppContainer creator-kill reconciliation diagnosis");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("creator-kill diagnostic UTF-8");
+    for expected in [
+        "\"terminal\":\"BLOCKED_APPCONTAINER_CREATOR_KILL_RECONCILIATION_DIAGNOSTIC\"",
+        "\"blocker\":\"APPCONTAINER_CREATOR_KILL_RECONCILIATION_OBSERVED_NOT_RELEASE_BOUND\"",
+        "\"production\":false",
+        "\"live\":false",
+        "\"auth_materialized_by_launcher\":false",
+        "\"network_requested\":false",
+        "\"canary_ready\":true",
+        "\"canary_timed_out\":true",
+        "\"canary_resumed\":true",
+        "\"descendants_zero\":true",
+        "\"stale_profile_deleted\":true",
+        "\"recreate\":true",
+        "\"sid_stable\":true",
+        "\"final_delete\":true",
+        "\"owner_restart_recovery_observed\":false",
+        "\"receipt_sha256\":\"sha256:",
+    ] {
+        assert!(stdout.contains(expected), "missing {expected}: {stdout}");
+    }
+    let receipt_paths = json_string_values(&stdout, "receipt_path");
+    let receipt_hashes = json_string_values(&stdout, "receipt_sha256");
+    assert_eq!(receipt_paths.len(), 1);
+    assert_eq!(receipt_hashes.len(), 1);
+    assert_eq!(
+        receipt_hashes[0],
+        file_sha256(std::path::Path::new(&receipt_paths[0]))
+    );
+
+    let receipt = std::fs::read_to_string(&receipt_paths[0]).expect("read creator-kill receipt");
+    let run_ids = json_string_values(&receipt, "run_id");
+    assert_eq!(run_ids.len(), 1);
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", run_ids[0]);
+    let profile_name = wide_null(std::ffi::OsStr::new(&profile_name));
+    let display_name = wide_null(std::ffi::OsStr::new("PKM creator-kill absence observer"));
+    let description = wide_null(std::ffi::OsStr::new(
+        "Independent recreate proves the reconciliation left no profile",
+    ));
+    let mut sid = std::ptr::null_mut();
+    let create_status = unsafe {
+        CreateAppContainerProfile(
+            profile_name.as_ptr(),
+            display_name.as_ptr(),
+            description.as_ptr(),
+            std::ptr::null(),
+            0,
+            &mut sid,
+        )
+    };
+    assert_eq!(create_status, 0, "reconciliation left a registered profile");
+    assert!(!sid.is_null() && unsafe { IsValidSid(sid) } != 0);
+    let delete_status = unsafe { DeleteAppContainerProfile(profile_name.as_ptr()) };
+    let _ = unsafe { FreeSid(sid) };
+    assert_eq!(
+        delete_status, 0,
+        "independent reconciliation cleanup failed"
+    );
+
+    let rejected = Command::new(executable)
+        .args([
+            "diagnose-appcontainer-creator-kill-reconciliation",
+            "caller-profile",
+        ])
+        .output()
+        .expect("reject caller-controlled reconciliation arguments");
     assert_eq!(rejected.status.code(), Some(2));
 }

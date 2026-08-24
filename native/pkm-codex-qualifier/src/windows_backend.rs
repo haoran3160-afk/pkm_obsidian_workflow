@@ -72,9 +72,11 @@ use crate::{
 
 mod preflight;
 pub use preflight::{
+    run_native_appcontainer_creator_kill_reconciliation_diagnostic,
     run_native_appcontainer_profile_diagnostic, run_native_child_policy_diagnostic,
     run_native_helper_diagnostic, run_native_lpac_token_diagnostic, run_native_preflight,
     run_native_preflight_diagnostic, run_native_wfp_policy_diagnostic,
+    NativeAppContainerCreatorKillReconciliationDiagnosticResult,
     NativeAppContainerProfileDiagnosticResult, NativeChildPolicyDiagnosticResult,
     NativeHelperDebugEvent, NativeHelperDiagnosticResult, NativeHelperDiagnosticVariantResult,
     NativeHelperHomeChangeEvent, NativeHelperHomeEntry, NativeHelperJobEvent,
@@ -908,6 +910,28 @@ fn delete_profile(profile_name: &str) -> Result<(), Blocker> {
         ));
     }
     Ok(())
+}
+
+fn delete_profile_if_present(profile_name: &str) -> Result<bool, Blocker> {
+    let profile_name = wide_null(std::ffi::OsStr::new(profile_name));
+    // SAFETY: the name is a live NUL-terminated UTF-16 buffer for the call.
+    let status = unsafe { DeleteAppContainerProfile(profile_name.as_ptr()) };
+    classify_profile_reconcile_delete_status(status)
+}
+
+fn classify_profile_reconcile_delete_status(status: i32) -> Result<bool, Blocker> {
+    if status == 0 {
+        return Ok(true);
+    }
+    const HRESULT_FILE_NOT_FOUND: i32 = 0x8007_0002u32 as i32;
+    const HRESULT_NOT_FOUND: i32 = 0x8007_0490u32 as i32;
+    if status == HRESULT_FILE_NOT_FOUND || status == HRESULT_NOT_FOUND {
+        return Ok(false);
+    }
+    Err(Blocker::new(
+        Gate::AppContainerRemoved,
+        "APPCONTAINER_PROFILE_RECONCILE_DELETE_FAILED",
+    ))
 }
 
 fn create_zero_capability_profile(profile_name: &str) -> Result<OwnedSid, Blocker> {
@@ -2212,5 +2236,22 @@ mod tests {
             })
             .expect("retry WFP engine close");
         assert!(engine.0.is_null());
+    }
+
+    #[test]
+    fn profile_reconcile_delete_classifies_only_exact_absence_statuses() {
+        assert_eq!(classify_profile_reconcile_delete_status(0), Ok(true));
+        for status in [0x8007_0002u32 as i32, 0x8007_0490u32 as i32] {
+            assert_eq!(classify_profile_reconcile_delete_status(status), Ok(false));
+        }
+        for status in [0x8007_0005u32 as i32, 0x8000_4005u32 as i32] {
+            assert_eq!(
+                classify_profile_reconcile_delete_status(status),
+                Err(Blocker::new(
+                    Gate::AppContainerRemoved,
+                    "APPCONTAINER_PROFILE_RECONCILE_DELETE_FAILED",
+                ))
+            );
+        }
     }
 }

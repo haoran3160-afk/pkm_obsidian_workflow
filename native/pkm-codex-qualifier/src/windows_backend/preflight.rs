@@ -54,10 +54,10 @@ use windows_sys::Win32::System::WindowsProgramming::{
 
 use super::{
     appcontainer_sid_bytes, appcontainer_sids_equal, create_qualified_job,
-    create_zero_capability_profile, delete_profile, derive_appcontainer_sid, file_id_from_handle,
-    install_wfp_default_deny, native_preflight_contract, process_is_elevated, sha256_open_file,
-    verify_authenticode, verify_pe_file, verify_wfp_dynamic_cleanup, wide_null, OwnedKernelHandle,
-    PREFLIGHT_DEADLINE,
+    create_zero_capability_profile, delete_profile, delete_profile_if_present,
+    derive_appcontainer_sid, file_id_from_handle, install_wfp_default_deny,
+    native_preflight_contract, process_is_elevated, sha256_open_file, verify_authenticode,
+    verify_pe_file, verify_wfp_dynamic_cleanup, wide_null, OwnedKernelHandle, PREFLIGHT_DEADLINE,
 };
 use crate::{
     Blocker, FileCreationAuthority, Gate, NtfsFileIdentity, EXPECTED_CODEX_EXE_SHA256,
@@ -87,6 +87,7 @@ const PREFLIGHT_RUN_PREFIX: &str = "codex-t13b-preflight-";
 const CHILD_POLICY_RUN_PREFIX: &str = "codex-t13b-child-policy-";
 const APPCONTAINER_PROFILE_RUN_PREFIX: &str = "codex-t13b-appcontainer-profile-";
 const LPAC_TOKEN_RUN_PREFIX: &str = "codex-t13b-lpac-token-";
+const APPCONTAINER_CREATOR_KILL_RUN_PREFIX: &str = "codex-t13b-appcontainer-creator-kill-";
 const WFP_POLICY_RUN_PREFIX: &str = "codex-t13b-wfp-policy-";
 const DIAGNOSTIC_RUN_PREFIXES: [&str; 4] = [
     "codex-t13b-diagnostic-a-",
@@ -104,6 +105,9 @@ const PREFLIGHT_PROMPT: &[u8] = b"PREFLIGHT_ONLY\n";
 const PREFLIGHT_SCHEMA: &[u8] = b"{}\n";
 const DIAGNOSTIC_VARIANT_DEADLINE: Duration = Duration::from_secs(10);
 const CHILD_POLICY_CANARY_DEADLINE: Duration = Duration::from_secs(10);
+const APPCONTAINER_CRASH_CANARY_DEADLINE: Duration = Duration::from_millis(750);
+const EXPECTED_APPCONTAINER_CRASH_CANARY_STDOUT: &str =
+    "{\"terminal\":\"APPCONTAINER_PROFILE_CREATED_WAITING_FOR_KILL\",\"profile_created\":true}\n";
 const EXPECTED_CHILD_POLICY_CANARY_STDOUT: &str = "{\"terminal\":\"CHILD_CREATION_BLOCKED_BY_POLICY\",\"child_creation_attempted\":true,\"child_creation_blocked\":true,\"win32_error\":367}\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -216,6 +220,53 @@ pub struct NativeAppContainerProfileDiagnosticResult {
     pub recreate: bool,
     pub sid_stable: bool,
     pub final_delete: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeAppContainerCreatorKillReconciliationDiagnosticResult {
+    pub exit_code: u8,
+    pub terminal: &'static str,
+    pub blocker: &'static str,
+    pub production: bool,
+    pub live: bool,
+    pub run_root: Option<PathBuf>,
+    pub receipt_path: Option<PathBuf>,
+    pub receipt_sha256: Option<String>,
+    pub canary_sha256: Option<String>,
+    pub canary_ready: bool,
+    pub canary_timed_out: bool,
+    pub canary_resumed: bool,
+    pub descendants_zero: bool,
+    pub stale_profile_deleted: bool,
+    pub recreate: bool,
+    pub sid_stable: bool,
+    pub final_delete: bool,
+    pub owner_restart_recovery_observed: bool,
+}
+
+impl NativeAppContainerCreatorKillReconciliationDiagnosticResult {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\"terminal\":\"{}\",\"blocker\":\"{}\",\"production\":{},\"live\":{},\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"canary_ready\":{},\"canary_timed_out\":{},\"canary_resumed\":{},\"descendants_zero\":{},\"stale_profile_deleted\":{},\"recreate\":{},\"sid_stable\":{},\"final_delete\":{},\"owner_restart_recovery_observed\":{},\"canary_sha256\":{},\"run_root\":{},\"receipt_path\":{},\"receipt_sha256\":{}}}",
+            json_escape(self.terminal),
+            json_escape(self.blocker),
+            json_bool(self.production),
+            json_bool(self.live),
+            json_bool(self.canary_ready),
+            json_bool(self.canary_timed_out),
+            json_bool(self.canary_resumed),
+            json_bool(self.descendants_zero),
+            json_bool(self.stale_profile_deleted),
+            json_bool(self.recreate),
+            json_bool(self.sid_stable),
+            json_bool(self.final_delete),
+            json_bool(self.owner_restart_recovery_observed),
+            json_string_or_null(self.canary_sha256.as_deref()),
+            json_path_or_null(self.run_root.as_deref()),
+            json_path_or_null(self.receipt_path.as_deref()),
+            json_string_or_null(self.receipt_sha256.as_deref()),
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3175,6 +3226,253 @@ pub fn run_native_appcontainer_profile_diagnostic() -> NativeAppContainerProfile
         &runtime
             .run_root
             .join("appcontainer-profile-diagnostic-receipt.json"),
+        &runtime.run_root_directory,
+        &receipt_bytes,
+        Gate::CleanupFinalized,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.receipt_path = Some(receipt.identity.path.clone());
+    result.receipt_sha256 = Some(receipt.identity.sha256.clone());
+    result
+}
+
+pub fn run_native_appcontainer_creator_kill_reconciliation_diagnostic(
+) -> NativeAppContainerCreatorKillReconciliationDiagnosticResult {
+    let mut result = NativeAppContainerCreatorKillReconciliationDiagnosticResult {
+        exit_code: 3,
+        terminal: "BLOCKED_APPCONTAINER_CREATOR_KILL_RECONCILIATION_DIAGNOSTIC",
+        blocker: "APPCONTAINER_CREATOR_KILL_RECONCILIATION_EVIDENCE_INCOMPLETE",
+        production: false,
+        live: false,
+        run_root: None,
+        receipt_path: None,
+        receipt_sha256: None,
+        canary_sha256: None,
+        canary_ready: false,
+        canary_timed_out: false,
+        canary_resumed: false,
+        descendants_zero: false,
+        stale_profile_deleted: false,
+        recreate: false,
+        sid_stable: false,
+        final_delete: false,
+        owner_restart_recovery_observed: false,
+    };
+    let maintenance = match MaintenanceMutex::acquire() {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let runtime = match RuntimeAuthority::create_with_prefix(APPCONTAINER_CREATOR_KILL_RUN_PREFIX) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.run_root = Some(runtime.run_root.clone());
+    let profile_name = format!("OpenAI.PKMWorkflow.Codex.T13b.{}", runtime.run_id);
+    let mut environment = match build_environment_entries(&runtime) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    environment.push((
+        "PKM_APPCONTAINER_CRASH_RUN_ID".to_owned(),
+        runtime.run_id.clone(),
+    ));
+    environment.sort_by(|left, right| left.0.cmp(&right.0));
+    let qualifier_path = match std::env::current_exe() {
+        Ok(value) => value,
+        Err(_) => {
+            result.blocker = "APPCONTAINER_CRASH_QUALIFIER_PATH_UNAVAILABLE";
+            return result;
+        }
+    };
+    let canary_path = match qualifier_path.parent() {
+        Some(parent) => parent.join("pkm-appcontainer-crash-canary.exe"),
+        None => {
+            result.blocker = "APPCONTAINER_CRASH_CANARY_PARENT_UNAVAILABLE";
+            return result;
+        }
+    };
+    if std::fs::symlink_metadata(&canary_path)
+        .map(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+        .unwrap_or(true)
+    {
+        result.blocker = "APPCONTAINER_CRASH_CANARY_REPARSE_OR_MISSING";
+        return result;
+    }
+    let canary_file = match OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&canary_path)
+    {
+        Ok(value) => value,
+        Err(_) => {
+            result.blocker = "APPCONTAINER_CRASH_CANARY_OPEN_FAILED";
+            return result;
+        }
+    };
+    let canary_identity = match file_id_from_handle(&canary_file, Gate::BinaryIdentity) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let canary_sha256 = match sha256_open_file(&canary_file, Gate::BinaryIdentity) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    if !(1..=2).contains(&canary_identity.2) || canary_identity.3 == 0 {
+        result.blocker = "APPCONTAINER_CRASH_CANARY_IDENTITY_INVALID";
+        return result;
+    }
+    if let Err(error) = verify_pe_file(&canary_file) {
+        result.blocker = error.code;
+        return result;
+    }
+    result.canary_sha256 = Some(canary_sha256.clone());
+    let command_line = format!("\"{}\"", canary_path.display());
+    let mut child = match ChildTransaction::create(
+        &canary_path,
+        OsStr::new(&command_line),
+        &runtime,
+        &environment,
+        CANONICAL_PREFLIGHT_POLICY,
+        ConsoleCreationMode::DetachedProcess,
+        APPCONTAINER_CRASH_CANARY_DEADLINE,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    if let Err(error) = child.prepare_job_membership(CANONICAL_PREFLIGHT_POLICY) {
+        result.descendants_zero = child.drained;
+        result.blocker = error.code;
+        return result;
+    }
+    let outcome = match child.run() {
+        Ok(value) => value,
+        Err(error) => {
+            result.canary_resumed = child.resumed;
+            result.descendants_zero = child.drained;
+            if child.drained {
+                match delete_profile_if_present(&profile_name) {
+                    Ok(deleted) => result.stale_profile_deleted = deleted,
+                    Err(cleanup_error) => {
+                        result.blocker = cleanup_error.code;
+                        return result;
+                    }
+                }
+            }
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.canary_resumed = child.resumed;
+    result.canary_timed_out = outcome.timed_out;
+    result.descendants_zero = child.drained;
+    let stdout = std::str::from_utf8(&outcome.stdout.bytes).ok();
+    let stderr = std::str::from_utf8(&outcome.stderr.bytes).ok();
+    result.canary_ready = stdout == Some(EXPECTED_APPCONTAINER_CRASH_CANARY_STDOUT);
+    let canary_valid = outcome.timed_out
+        && child.drained
+        && outcome.total_processes == 1
+        && outcome.active_processes == 0
+        && !outcome.stdout.overflow
+        && !outcome.stderr.overflow
+        && stderr == Some("")
+        && result.canary_ready;
+    drop(child);
+    if !canary_valid {
+        match delete_profile_if_present(&profile_name) {
+            Ok(deleted) => result.stale_profile_deleted = deleted,
+            Err(error) => {
+                result.blocker = error.code;
+                return result;
+            }
+        }
+        result.blocker = "APPCONTAINER_CRASH_CANARY_MISMATCH";
+        return result;
+    }
+
+    let first = match derive_appcontainer_sid(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = match delete_profile_if_present(&profile_name) {
+                Ok(_) => error.code,
+                Err(cleanup_error) => cleanup_error.code,
+            };
+            return result;
+        }
+    };
+    result.stale_profile_deleted = match delete_profile_if_present(&profile_name) {
+        Ok(true) => true,
+        Ok(false) => {
+            result.blocker = "APPCONTAINER_CRASH_PROFILE_NOT_OBSERVED";
+            return result;
+        }
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    let second = match create_zero_capability_profile(&profile_name) {
+        Ok(value) => value,
+        Err(error) => {
+            result.blocker = error.code;
+            return result;
+        }
+    };
+    result.recreate = true;
+    result.sid_stable = appcontainer_sids_equal(&first, &second);
+    if !result.sid_stable {
+        result.blocker = match delete_profile(&profile_name) {
+            Ok(()) => "APPCONTAINER_CRASH_SID_NOT_STABLE",
+            Err(_) => "APPCONTAINER_CRASH_FINAL_DELETE_FAILED",
+        };
+        return result;
+    }
+    if let Err(error) = delete_profile(&profile_name) {
+        result.blocker = error.code;
+        return result;
+    }
+    result.final_delete = true;
+    drop(second);
+    drop(first);
+    if maintenance.release().is_err() {
+        result.blocker = "APPCONTAINER_CRASH_MAINTENANCE_RELEASE_FAILED";
+        return result;
+    }
+    result.blocker = "APPCONTAINER_CREATOR_KILL_RECONCILIATION_OBSERVED_NOT_RELEASE_BOUND";
+    let receipt_bytes = format!(
+        "{{\"schema\":\"pkm.codex.appcontainer-creator-kill-reconciliation-diagnostic.receipt.v1\",\"terminal\":\"BLOCKED_APPCONTAINER_CREATOR_KILL_RECONCILIATION_DIAGNOSTIC\",\"blocker\":\"APPCONTAINER_CREATOR_KILL_RECONCILIATION_OBSERVED_NOT_RELEASE_BOUND\",\"production\":false,\"live\":false,\"auth_materialized_by_launcher\":false,\"network_requested\":false,\"run_id\":\"{}\",\"run_root\":\"{}\",\"canary_sha256\":\"{}\",\"canary_release_bound\":false,\"canary_ready\":true,\"canary_timed_out\":true,\"canary_resumed\":true,\"descendants_zero\":true,\"stale_profile_deleted\":true,\"recreate\":true,\"sid_stable\":true,\"final_delete\":true,\"owner_restart_recovery_observed\":false}}\n",
+        runtime.run_id,
+        json_escape(&runtime.run_root.to_string_lossy()),
+        canary_sha256,
+    )
+    .into_bytes();
+    let receipt = match create_new_artifact(
+        &runtime
+            .run_root
+            .join("appcontainer-creator-kill-reconciliation-diagnostic-receipt.json"),
         &runtime.run_root_directory,
         &receipt_bytes,
         Gate::CleanupFinalized,

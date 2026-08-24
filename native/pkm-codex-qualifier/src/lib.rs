@@ -14,9 +14,11 @@ mod windows_backend;
 pub use windows_backend::{
     native_helper_diagnostic_contract, native_preflight_contract,
     native_preflight_diagnostic_contract, native_static_blockers, process_is_elevated,
+    run_native_appcontainer_creator_kill_reconciliation_diagnostic,
     run_native_appcontainer_profile_diagnostic, run_native_child_policy_diagnostic,
     run_native_helper_diagnostic, run_native_lpac_token_diagnostic, run_native_preflight,
     run_native_preflight_diagnostic, run_native_wfp_policy_diagnostic,
+    NativeAppContainerCreatorKillReconciliationDiagnosticResult,
     NativeAppContainerProfileDiagnosticResult, NativeChildPolicyDiagnosticResult,
     NativeHelperDebugEvent, NativeHelperDiagnosticContract, NativeHelperDiagnosticResult,
     NativeHelperDiagnosticVariantResult, NativeHelperHomeChangeEvent, NativeHelperHomeEntry,
