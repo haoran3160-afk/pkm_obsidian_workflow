@@ -1,6 +1,6 @@
 # Active Goal — T1.4 Python 密封入口与路径/激活策略
 
-状态：`NEXT / SHADOW_ONLY / PRODUCTION_BLOCKED`
+状态：`DONE / SHADOW_ONLY / PRODUCTION_BLOCKED`
 
 目标行为：
 
@@ -9,7 +9,8 @@
    或 command。
 2. wrapper、打包 CLI 与四种 mode 调用同一个 engine/policy 函数；不得复制测试实现。
 3. doctor/dry-run/shadow 不写真实 Vault；production 在 exact、连续、hash/scope 匹配的 activation
-   generation 不存在时 exit 3。
+   structure 不存在时 exit 3。结构通过后仍固定
+   `ACTIVATION_EVIDENCE_SEMANTICS_NOT_IMPLEMENTED`，不得把占位 marker 当成上线 Gate。
 4. wrapper 原样传递领域 exit 2/3/4/5/8/10；旧 native blocker、Rust stage0/broker 与旧 9-task
    bundle 不再决定 v7.4 MVP gate。
 5. 测试先证明当前 CLI/参数/activation 缺口，再实现最小 seam；不触发 Codex、网络、真实 Vault、
@@ -19,7 +20,14 @@
 一个新行为测试和必要的现有 CLI 测试。不得修改或暂存 `AGENTS.md` 和无关未跟踪用户资产。
 
 验证：目标 pytest、Ruff、Mypy、`git diff --check`、tracked delete/rename=0；检查 production
-缺 activation、malformed/unknown/hash/scope/fork generation、自由参数和 exit passthrough 负例。
+缺 activation、malformed/unknown/hash/scope/fork generation、祖先 junction、自由参数、exit
+passthrough 与 internal-error=10 负例；新控制模块 line+branch≥90%。
+
+完成证据（2026-08-24）：55 个 T1.4 行为测试通过；`cli.py` + `runtime_policy.py` line+branch
+合计 93%；目标 Ruff/Mypy 通过。真实 wrapper observer 返回 doctor/shadow/production=3、非法
+due-only/自由 Vault 参数=2；production 不存在 activation 时为 `ACTIVATION_MISSING`。真实父
+junction 负测与双红队通过，P0/P1=0。activation 只完成 structure，不宣称 evidence semantics；
+production、模型、Task 和真实 Vault 仍不可达。
 
 ---
 

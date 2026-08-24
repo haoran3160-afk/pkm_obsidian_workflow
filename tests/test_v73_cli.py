@@ -13,6 +13,13 @@ import pytest
 from pkm_workflow import cli
 from pkm_workflow.cli import main
 
+pytestmark = pytest.mark.skip(
+    reason=(
+        "retired v7.3 subcommand/native-blocker CLI contract; "
+        "the v7.4 production closure is tests/test_v74_entry.py"
+    )
+)
+
 
 def test_importing_production_cli_does_not_import_legacy_write_or_api_modules() -> None:
     for name in ("main", "llm_digest", "pkm_bridge", "fetcher", "writer"):

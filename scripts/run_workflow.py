@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Compatibility adapter for v7.3 doctor and dry-run commands only."""
+"""Thin checkout-local adapter for the sealed v7.4 engine."""
 
 from __future__ import annotations
 
-import argparse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -18,25 +17,8 @@ sys.path.insert(0, str(REPOSITORY_SRC))
 from pkm_workflow.cli import main as workflow_main  # noqa: E402
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="scripts/run_workflow.py")
-    operation = parser.add_mutually_exclusive_group(required=True)
-    operation.add_argument("--doctor", action="store_true")
-    operation.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--workflow", choices=("ai", "ielts", "weekly"), default="ai")
-    parser.add_argument("--due-only", action="store_true")
-    parser.add_argument("--json", action="store_true")
-    return parser
-
-
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(list(argv) if argv is not None else None)
-    forwarded = ["doctor"] if args.doctor else ["shadow", "--workflow", args.workflow]
-    if args.due_only and not args.doctor:
-        forwarded.append("--due-only")
-    if args.json:
-        forwarded.append("--json")
-    return workflow_main(forwarded)
+    return workflow_main(list(argv) if argv is not None else None)
 
 
 if __name__ == "__main__":

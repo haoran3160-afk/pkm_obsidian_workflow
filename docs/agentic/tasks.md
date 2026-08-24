@@ -153,7 +153,7 @@ qualifier crash recovery 等保留为后续增强，不再阻塞真实日报 sha
 T1.3a/b 只产生 curation/review qualification shadow，不是用户日报或 M3 内容质量
 样本；feed URL/摘要不能被表述为已验证 article 正文、canonical 或原始链接。
 
-### T1.4 Python 密封入口与路径/激活策略 — NEXT
+### T1.4 Python 密封入口与路径/激活策略 — DONE
 
 目标：把 `scripts/run_workflow.py` 与 `src/pkm_workflow/cli.py` 迁移为 production/manual/
 shadow/dry-run 共用的单一 engine seam；参数只有 workflow/mode/due-only 枚举，无自由 Vault、
@@ -163,8 +163,24 @@ shadow/dry-run 共用的单一 engine seam；参数只有 workflow/mode/due-only
 模块、一个新行为测试和必要的现有 CLI 测试。不得修改或暂存 `AGENTS.md` 和无关未跟踪资产。
 
 验收：四种 mode 调用同一生产函数；doctor/dry-run/shadow 不写真实 Vault；production 缺失/
-损坏/未知字段/hash/scope/stale/fork activation 全部 exit 3；caller 不能传入路径；wrapper
-原样返回 2/3/4/5/8/10；旧 native blockers 和旧 9-task/stage0 seam 不再决定 MVP gate。
+损坏/未知字段/hash/scope/stale/fork activation structure 全部 exit 3；完整祖先 reparse chain 与
+handle 物理落点受检；caller 不能传入路径；wrapper 原样返回 2/3/4/5/8/10。结构通过只输出
+`activation_structure_validated=true`，真实证据 domain validators 未接线前固定
+`activation_validated=false / ACTIVATION_EVIDENCE_SEMANTICS_NOT_IMPLEMENTED`；旧 native blockers
+和旧 9-task/stage0 seam 不再决定 MVP gate。
+
+完成证据（2026-08-24）：
+
+- flat CLI 与 wrapper 共用 `execute_workflow`；只接受 workflow/mode/due-only，所有自由路径和
+  v7.3 subcommand 均由 argparse exit 2 拒绝。
+- ActivationReader 验证完整祖先 reparse chain、Windows final-handle physical containment、
+  file type/identity/size、连续 generation/fork/scope、每代 challenge+consume、冻结 UserContext
+  raw/canonical identity，以及全部绑定 artifact 的存在/identity/hash。
+- 未接线证据语义时固定 `ACTIVATION_EVIDENCE_SEMANTICS_NOT_IMPLEMENTED`，不得由自报 marker
+  解锁；未分类异常在 direct/wrapper 边界脱敏为 JSON exit 10。
+- 55 个目标测试通过；控制模块 line+branch 93%；目标 Ruff/Mypy 通过；T1.1–T1.4 closure 回归
+  全绿；两轮代码红队 P0/P1=0。全仓仍有已记录的 retired v7.3 writer/path/harness 契约失败，
+  未通过放宽新入口或修改期望掩盖。
 
 ### T1.5 确定性 Codex Generator/Reviewer pipeline — PLANNED
 

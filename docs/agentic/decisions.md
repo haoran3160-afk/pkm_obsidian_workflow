@@ -472,5 +472,10 @@ sanitized environment 和零工具配置，真实 shadow 必须证明零 tool ev
 source policy、prompt/schema/model、Task、UserContext、shadow 与红队证据 hashes。normal engine、
 Task、Codex 均不能创建 activation；回滚只追加更高 generation 并重新 shadow/批准。
 
+分层语义：T1.4 只验证 activation structure（chain/scope/approval/UserContext/artifact identity+hash），
+不接受 `QUALIFIED`、`P0=0/P1=0` 等自报 marker 作为内容 Gate。真实 source/schema/Task/shadow/
+red-team domain validators 未接线前固定 `activation_validated=false` 与
+`ACTIVATION_EVIDENCE_SEMANTICS_NOT_IMPLEMENTED`。
+
 范围后果：本决定不授权当前代码写真实 Vault、注册 Task、调用模型或进入 production。先完成
 T1.4 sealed entry 的真实负向测试和小步提交，再按 v7.4 任务顺序推进。
