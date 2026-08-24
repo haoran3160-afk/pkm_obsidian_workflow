@@ -292,7 +292,7 @@ stable SID/final delete；WFP 只证明了“非管理员零变更阻断”及�
 generation 必须把整个 Cargo workspace manifest closure、源码、测试、工具链、argv、环境
 覆盖、日志和二进制 hash 一并冻结，并继续标注非 production、非 live。
 
-当前 create-new candidate 为
+本决定的首个 create-new candidate 为
 `D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-06`；
 qualifier SHA-256 `3aebfaa9fa0e67b73b56b97ed956493dad7de2f98edf1211126308449d000554`，
 canary SHA-256 `eb5b509fea498327531c72563f79da027dccf978064091d79f006291893cde93`，
@@ -336,7 +336,7 @@ process/thread handle 非空，就视为可能已创建 child；缺少 process h
 zero-capability/Job/child-policy/cleanup；它不证明当前 token 的 LPAC flag，仍保持
 `LPAC_TOKEN_DIAGNOSTIC_NOT_RELEASE_BOUND` 与 `BLOCKED_PREQUALIFICATION`。
 
-当前 create-new candidate 为
+本决定的首个 create-new candidate 为
 `D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-07`；
 qualifier SHA-256 `20895555532cb67058410fa55b5e5b515c0d50342ee7d868b335d7e5265e06a2`，
 canary SHA-256 `e959c5e5e889ae2c036a3bdb502caab416737f4f8f48f47c005f8d43ac113098`，
@@ -346,3 +346,39 @@ build/release binding、direct LPAC readback、elevated WFP、proxy/trace 和用
 
 范围后果：本决定不授权 child resume、认证、Codex、模型、网络、Vault、Task 或发布；也不
 把 AppContainer diagnostic receipt 当成 production OS-observed closure。
+
+## D-014 — Creator-kill reconciliation 不等于 owner-restart crash recovery
+
+状态：`ACCEPTED`（2026-08-24，真实 Job kill 与独立 absence observer）
+
+决定：新增固定 CLI `diagnose-appcontainer-creator-kill-reconciliation` 与独立
+`pkm-appcontainer-crash-canary.exe`，只证明以下窄链路：creator canary 在父 qualifier 的
+atomic Job 中创建 zero-capability profile、flush exact READY 后等待；父进程在固定 750ms
+deadline 通过 Job kill，Wait + accounting 证明进程树 1→0；仍存活的 recovery authority 使用
+已知 run_id 删除残留、同名重建、比较 SID、最终删除。测试再从 receipt 的 run_id 独立调用
+`CreateAppContainerProfile`，只有成功时才证明最终 profile 当时确实不存在，并立即清理观察者
+自己创建的 profile。
+
+canary 在任何 profile mutation 前必须同时证明：当前进程已在 Job、
+`ProcessChildProcessPolicy.Flags == 1`、stdout 是继承的 pipe；合法 run_id 单独不足以启动。
+profile delete 只把 `S_OK` 视为删除成功，只把 `HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)` 与
+`HRESULT_FROM_WIN32(ERROR_NOT_FOUND)` 视为原本不存在；其他 HRESULT 全部失败。
+
+低信边界：本诊断没有杀死 qualifier/owner 本身，没有 durable create-intent、abandoned mutex
+reconciliation、启动时枚举或 fresh-process phase-B，因此固定输出
+`owner_restart_recovery_observed=false`。公开 CLI/type/schema/blocker 均使用 creator-kill
+reconciliation 名称；广义 `APPCONTAINER_PROFILE_CRASH_RECOVERY_NOT_QUALIFIED` 与
+`MAINTENANCE_LOCK_LIFECYCLE_NOT_QUALIFIED` 继续保留，不能被本证据关闭。
+
+当前 create-new candidate 为
+`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-08`；
+qualifier SHA-256 `0cfb5646cbe307d498f083740d28c3d4ef2e978253661d8f7ed63cae4d7b2c56`，
+child-policy canary SHA-256 `a8316ad74c48dd4cf3cc25e91cc99186318aa8e351dc1a3f378a2b50c91cb469`，
+creator-kill canary SHA-256 `16d62304a9b7fd4e22272f5d3ba21aade340c97403ffd35bd118618e4a66998a`，
+build receipt SHA-256 `f4e541b5d685d96581600a9fc786a5e4f3e5968c10898c0b5346c52f4fd73b67`。
+14 项 source closure、三份 binary 与 Git `3e4fd4a` 已绑定；三份 binary 仍 unsigned，build
+仍 ambient/non-reproducible，owner restart、LPAC direct flag、elevated WFP、proxy/file trace
+与用户批准仍是 blocker。
+
+范围后果：本决定不授权 owner-crash recovery 标绿，不授权认证、网络、模型、Vault、Task 或
+发布；runtime 产物与 receipt 继续 create-new。

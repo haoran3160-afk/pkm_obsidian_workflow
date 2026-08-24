@@ -33,8 +33,8 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:TrustedManifestGeneration = 't13b-prequalification-20260824-04'
-$script:TrustedManifestSha256 = 'c2c0a654a6e1f4ef5d66bc26f110fd51924ebacaac541e8b2b3a570707042b08'
+$script:TrustedManifestGeneration = 't13b-prequalification-20260824-05'
+$script:TrustedManifestSha256 = '576d17d0708eb06cda3564376281848c97c1b5d8d91548b2e651692b9bc47bb2'
 $script:CanonicalManifestPath = Join-Path `
     (Split-Path -Parent $PSScriptRoot) `
     'verification_commands.json'

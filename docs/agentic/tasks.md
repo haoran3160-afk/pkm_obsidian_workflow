@@ -141,9 +141,11 @@ mutation 前 fail-closed。WFP elevated 精确 filter readback/cleanup 与真实
 仍需用户显式管理员授权；真实 backend 已把 checked engine close、filter ID retention、
 post-drop filter/sublayer absence readback 与失败重试纳入清理状态机。
 LPAC suspended token 诊断已证明 attribute accepted、AppContainer、zero capability、SID、
-Job/child-policy 和 cleanup；Windows 26100 direct LPAC flag 不支持并保持 null。其余硬门是
-独立 build/release binding、direct LPAC token/
-crash recovery、loopback exemption + sealed proxy、文件/进程 trace、专用套餐认证、真实
+Job/child-policy 和 cleanup；Windows 26100 direct LPAC flag 不支持并保持 null。
+Creator-kill reconciliation 已通过真实 Job kill、残留 delete、recreate/SID stable、final
+delete 与独立 absence observer；owner restart/durable discovery 仍未证明。其余硬门是独立
+build/release binding、direct LPAC token/owner crash recovery、loopback exemption + sealed
+proxy、文件/进程 trace、专用套餐认证、真实
 Terra→Sol、覆盖/mutation 与两轮最终红队。
 
 T1.3a/b 只产生 curation/review qualification shadow，不是用户日报或 M3 内容质量
