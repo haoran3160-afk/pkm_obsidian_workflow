@@ -36,8 +36,11 @@ WFP/trace，必须诚实停在结构化 blocker，不得放宽或伪造通过。
 当前实证（2026-08-24）：固定 0.147.0 已通过 `DETACHED_PROCESS + atomic Job +
 CHILD_PROCESS_RESTRICTED` 无认证 preflight；OS readback flags=1，拒绝型 canary 返回
 `ERROR_CHILD_PROCESS_BLOCKED (367)`，进程树始终为 1→0。`CREATE_NO_WINDOW` 控制组仍产生
-`conhost.exe`，仅保留为反事实证据，不得进入 canonical launch。当前仍阻断在 frozen
-candidate 未独立复现/签名、AppContainer/LPAC、WFP/proxy、文件 ETW、专用认证和真实双审。
+`conhost.exe`，仅保留为反事实证据，不得进入 canonical launch。零 capability
+AppContainer profile lifecycle 与 SID 稳定性也已由真实 OS API 证明并完成最终清理；
+非管理员 WFP 入口已证明先于任何系统 mutation 返回 `ELEVATION_REQUIRED`。当前仍阻断在
+frozen candidate 未独立复现/签名、release-bound LPAC token/capability/crash recovery、
+管理员 WFP 精确回读与网络负向矩阵、loopback proxy、文件 ETW、专用认证和真实双审。
 
 ---
 

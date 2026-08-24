@@ -267,3 +267,39 @@ content-addressed prequalification candidate，不能称 production/release-qual
 必须标为 `SCRATCH_TOOLCHAIN_ONLY / production=false`。strict no-delete harness 直接运行
 固定 SHA 的 qualifier `doctor`，不得用 `cargo run` 冒充运行 authority。该决定不解除
 AppContainer/LPAC、WFP、loopback proxy、文件 ETW、套餐认证、真实 Terra/Sol 或用户批准门。
+
+## D-012 — AppContainer identity 与 WFP 只能按逐层真实观测推进
+
+状态：`ACCEPTED`（2026-08-24，AppContainer 已实测；WFP elevated 门待用户授权）
+
+决定：T1.3b 不允许用配置布尔值、mock 或“API 调用返回成功”替代 Windows 安全边界证明。
+固定 qualifier 新增两个无认证、无网络、永远 exit 3 的诊断入口：
+
+- `diagnose-appcontainer-profile` 使用 create-new 的唯一 profile name，以零 capability 创建
+  profile；独立 derive SID 后逐字节比较；删除并以同名重建，要求 SID 稳定；最终删除后才
+  写 create-new、hash-only receipt。它只关闭 profile lifecycle 的观察缺口，不证明 LPAC
+  token、capability readback、崩溃恢复或 release binding。
+- `diagnose-wfp-policy` 必须先确认 elevated；非管理员时不得创建 runtime root、profile、
+  sublayer 或 filter，只返回 `ELEVATION_REQUIRED`。管理员路径用 package SID 安装一个
+  IPv4 loopback TCP permit、IPv4 deny 和 IPv6 deny；对 layer、sublayer、action、weight、
+  condition field/match/type/value 做精确回读；关闭 dynamic session 后再次查询并要求三条
+  filter 与 sublayer 全部不存在。即使通过也保持 `WFP_NEGATIVE_MATRIX_NOT_RUN`，直到真实
+  allow/deny 网络矩阵和 trace 完成。
+
+证据后果：本机普通用户已真实证明零 capability profile 的 create/derive/delete/recreate/
+stable SID/final delete；WFP 只证明了“非管理员零变更阻断”及离线精确匹配逻辑。没有用户
+明确的管理员授权，不弹 UAC、不借用高权限进程、不把 elevated 分支标绿。下一 build
+generation 必须把整个 Cargo workspace manifest closure、源码、测试、工具链、argv、环境
+覆盖、日志和二进制 hash 一并冻结，并继续标注非 production、非 live。
+
+当前 create-new candidate 为
+`D:/personal/obsidian_workflow-runtime/durable/t13b/qualifier/0.1.0-prequal-20260824-05`；
+qualifier SHA-256 `ba1ddc6f37a3f3d304c1bd91f9d7506f9a624dcab50a1a63409636921afa0efb`，
+canary SHA-256 `c3323ab2347510bdb770aa82de82f1a1f98d040ab6df99e1441c7db9453c156c`，
+build receipt SHA-256 `d4cfa4bf3e8b2c32e4a50f71feea9ce7b5dbcd571f9fa8bf50501a016efd8fa7`。
+receipt 明确记录 dirty source closure、ambient build、不可复现、未签名、未绑定 Windows build、
+LPAC/WFP 未完成与未获用户激活批准，因此只能作为 prequalification candidate。
+
+范围后果：该决定不授权认证、模型调用、Task、Vault、Home、Status、发布、删除、移动、
+重命名或覆盖；也不解除 loopback exemption、sealed proxy、文件/进程 trace、真实
+Terra→Sol、覆盖/mutation、两轮红队和用户最终批准门。

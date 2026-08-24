@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generation": "t13b-prequalification-20260821-01",
+  "generation": "t13b-prequalification-20260824-02",
   "authorization": "user-requested-t13b-shadow",
   "harness_mutation_policy": [
     "verification-create-only",
@@ -1796,7 +1796,7 @@
           "CHILD_PROCESS_RESTRICTION_NEGATIVE_CANARY_NOT_RELEASE_BOUND",
           "PREFLIGHT_FULL_TOKEN_AUTH_ISOLATION_NOT_QUALIFIED",
           "PREFLIGHT_NETWORK_ENFORCEMENT_NOT_QUALIFIED",
-          "PER_RUN_APPCONTAINER_IDENTITY_NOT_QUALIFIED",
+          "APPCONTAINER_PROFILE_DIAGNOSTIC_NOT_RELEASE_BOUND",
           "APPCONTAINER_PROFILE_CRASH_RECOVERY_NOT_QUALIFIED",
           "APPCONTAINER_CAPABILITY_READBACK_NOT_QUALIFIED",
           "ZERO_NETWORK_CAPABILITY_LOOPBACK_SMOKE_NOT_QUALIFIED",
@@ -1805,7 +1805,7 @@
           "PROXY_SECRET_ONESHOT_CHILD_ENV_NOT_READY",
           "CODEX_0147_PROXY_AUTH_TRACE_REQUIRED",
           "SUBSCRIPTION_AUDIENCE_TRACE_REQUIRED",
-          "WFP_EXACT_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
+          "WFP_ELEVATED_READBACK_AND_NEGATIVE_MATRIX_REQUIRED",
           "LOOPBACK_EXEMPTION_NOT_QUALIFIED",
           "ANCESTOR_HANDLE_CHAIN_NOT_QUALIFIED",
           "AUTH_CACHE_ACL_HANDLE_NOT_QUALIFIED",
@@ -1834,9 +1834,9 @@
         ],
         "stderr_must_be_empty": true
       },
-      "executable_path": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\pkm-codex-qualifier.exe",
-      "executable_sha256": "45384ace4410ddb493a53fb3a3d5674b1afbbbd3aadef9c77245be1ae9515ad5",
-      "working_directory": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04",
+      "executable_path": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\pkm-codex-qualifier.exe",
+      "executable_sha256": "ba1ddc6f37a3f3d304c1bd91f9d7506f9a624dcab50a1a63409636921afa0efb",
+      "working_directory": "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05",
       "argv_schema": [
         { "literal": "doctor" }
       ],
@@ -1844,6 +1844,8 @@
       "snapshot_roots": [
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.toml",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\Cargo.lock",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-stage0\\Cargo.toml",
+        "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-broker\\Cargo.toml",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\Cargo.toml",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\lib.rs",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\main.rs",
@@ -1851,9 +1853,9 @@
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend.rs",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight.rs",
         "D:\\Agent_programs\\obsidian_workflow_open\\native\\pkm-codex-qualifier\\src\\windows_backend\\preflight\\helper.rs",
-        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\build-receipt.json",
-        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\pkm-child-policy-canary.exe",
-        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-04\\pkm-codex-qualifier.exe",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\build-receipt.json",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\pkm-child-policy-canary.exe",
+        "D:\\personal\\obsidian_workflow-runtime\\durable\\t13b\\qualifier\\0.1.0-prequal-20260824-05\\pkm-codex-qualifier.exe",
         "D:\\Agent_programs\\obsidian_workflow_open\\verification_commands.json"
       ],
       "allowed_mutations": [
