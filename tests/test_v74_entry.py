@@ -139,8 +139,8 @@ def _activation_fixture(
             b"tampered\n" if tamper == "shadow" else shadow_bytes,
         )
         models[workflow] = {
-            "generator": "gpt-5.6-terra",
-            "reviewer": "gpt-5.6-sol",
+            "generator": "deepseek-v4-flash",
+            "reviewer": "deepseek-v4-flash",
         }
     task_bundle_bytes = _canonical(
         {"schema": "pkm.workflow.task-bundle.v1", "workflows": list(workflows)}

@@ -182,14 +182,24 @@ handle 物理落点受检；caller 不能传入路径；wrapper 原样返回 2/3
   全绿；两轮代码红队 P0/P1=0。全仓仍有已记录的 retired v7.3 writer/path/harness 契约失败，
   未通过放宽新入口或修改期望掩盖。
 
-### T1.5 确定性 Codex Generator/Reviewer pipeline — PLANNED
+### T1.5 确定性 DeepSeek API Generator/Reviewer pipeline — NEXT
 
-目标：在可信个人主机上用独立 CODEX_HOME、isolated cwd、sanitized environment 和零工具配置
-完成真实 fresh Generator→Reviewer；固定 binary/argv/prompt/schema/model/hash，任意 tool event、
-额外子进程、未知事件或密封根外读取使结果无效。不使用 API、DeepSeek 或 fallback。
+目标：使用固定 DeepSeek Chat Completions endpoint 与 `deepseek-v4-flash` 完成 fresh
+Generator→Reviewer；固定 prompt/schema/model/request hashes，thinking disabled、JSON mode、
+无 tools、请求预算≤4。只从固定 Credential Manager target 读 key，不使用 Codex/OpenAI/fallback，
+不自动充值。
 
 验收：逐 claim structured review、高风险无 ACCEPT 即删除、Top 失真时整份 abstain；auth/quota/
-timeout/schema 失败不产生 Markdown/terminal；真实 shadow 记录调用次数、时长与文件事件。
+timeout/schema/余额失败不产生 Markdown/terminal；真实 shadow 记录调用次数、token、时长和费用影响。
+
+进展（2026-08-25，strategy checkpoint，T1.5 尚未 DONE）：
+
+- 新增 D-018 strategy，版本化绑定未改写的 D-009 provider contract descriptor；descriptor 覆盖
+  prompt schedule、Generator/Reviewer schemas、request config/limits、endpoint/model/credential target。
+- T1.3b `model_contract` V1 与 D-009 binding/prompt/schema/hash 保持原样；正式 D-018 adapter
+  仍为 `NOT_IMPLEMENTED`，provider smoke 不冒充完整 pipeline。
+- 合成密封输入的真实 DeepSeek smoke：Generator 与 Reviewer 各 1 次请求均 `VALIDATED`，合计
+  3928 tokens、无 tool call、secret redacted、未持久化正文；证据为 runtime create-new generation 03。
 
 ### T1.6 确定性输出契约 — PLANNED
 
@@ -207,7 +217,7 @@ timeout/schema 失败不产生 Markdown/terminal；真实 shadow 记录调用次
 
 验收：AI shadow 生成完整 manifest/preview/status payload；不读写 Vault；重复/并发/阶段失败可复现。
 
-M1 Gate：5–8 个工作日内打通至少一份真实 AI shadow 样本。若 Codex 套餐 CLI 无法非交互运行，记录 `BLOCKED_AUTH_CAPABILITY` 并由用户决策，不购买 API 或偷偷降级。
+M1 Gate：打通至少一份真实 AI shadow 样本；DeepSeek key/余额不可用时记录明确 blocker，不自动充值或偷偷降级。
 
 ## M2 — 安全发布与 Obsidian 体验
 

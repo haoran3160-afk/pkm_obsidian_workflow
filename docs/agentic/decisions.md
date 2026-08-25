@@ -479,3 +479,22 @@ red-team domain validators 未接线前固定 `activation_validated=false` 与
 
 范围后果：本决定不授权当前代码写真实 Vault、注册 Task、调用模型或进入 production。先完成
 T1.4 sealed entry 的真实负向测试和小步提交，再按 v7.4 任务顺序推进。
+
+## D-018 — v7.4 模型路径改为 DeepSeek 官方 API
+
+状态：`ACCEPTED`（2026-08-25，用户明确要求；真实调用仍限 shadow）
+
+决定：v7.4 当前调用图移除 Codex CLI，以独立 D-018 strategy 复用版本化、保持不变的 D-009
+fail-closed DeepSeek HTTPS transport/schema provider。
+Generator 与 Reviewer 均固定 `deepseek-v4-flash`，使用两个 fresh Chat Completions 请求；固定
+endpoint、thinking disabled、JSON Output、stream false、无 tools、prompt/schema/input/request
+hash 和总请求预算。same-provider/same-model 不称为独立模型验证。
+
+凭据与费用：只读 Windows Credential Manager 的 `PKM/DeepSeek/shadow-v1`；不接受环境变量、
+明文文件或自由 target。只使用既有余额，不自动充值；401、402、429、5xx、timeout、length、
+tool_calls、空/坏 JSON 或 schema mismatch 全部 fail-closed。正常双审 2 次请求，含修复最多 4 次。
+
+范围后果：D-009 历史 binding/prompt/schema/hash 不原位改写；D-018 strategy 单独绑定其 hash。
+当前正式 model-contract adapter 为 `NOT_IMPLEMENTED`，因此真实 provider smoke 不得称为完整
+Generator→Reviewer pipeline。D-010/T1.3b 保留为冻结历史但不进入 v7.4 gate。Provider 仍
+`production_eligible=false`；不写 Vault、Task、Home/Status。

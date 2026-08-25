@@ -297,6 +297,39 @@ def deepseek_shadow_qualification_binding() -> dict[str, object]:
     return dict(_QUALIFICATION_BINDING)
 
 
+def deepseek_provider_contract_descriptor() -> dict[str, object]:
+    """Describe every frozen D-009 transport/schema input used by D-018."""
+
+    base: dict[str, object] = {
+        "schema": "pkm.deepseek.provider-contract.v1",
+        "provider_binding_hash": _sha256(_canonical_json(_QUALIFICATION_BINDING)),
+        "api_url": API_URL,
+        "model": MODEL_NAME,
+        "credential_target": CREDENTIAL_TARGET,
+        "generator_prompt_schedule_hash": _prompt_schedule_hash(ProviderRole.GENERATOR),
+        "reviewer_prompt_schedule_hash": _prompt_schedule_hash(ProviderRole.REVIEWER),
+        "generator_schema_hash": _sha256(_GENERATOR_OUTPUT_SCHEMA_BYTES),
+        "reviewer_schema_hash": _sha256(_REVIEWER_OUTPUT_SCHEMA_BYTES),
+        "request_config": {
+            "thinking": {"type": "disabled"},
+            "response_format": {"type": "json_object"},
+            "stream": False,
+            "temperature": 0,
+            "max_tokens": MAX_OUTPUT_TOKENS,
+            "tools": "OMITTED",
+            "tool_choice": "DEFAULT_NONE_WITHOUT_TOOLS",
+        },
+        "request_limits": {
+            "max_http_request_bytes": MAX_HTTP_REQUEST_BYTES,
+            "max_response_bytes": MAX_RESPONSE_BYTES,
+            "max_sealed_input_bytes": MAX_SEALED_INPUT_BYTES,
+            "total_timeout_seconds": TOTAL_TIMEOUT_SECONDS,
+            "connect_timeout_seconds": CONNECT_TIMEOUT_SECONDS,
+        },
+    }
+    return {**base, "descriptor_hash": _sha256(_canonical_json(base))}
+
+
 _GENERATOR_OUTPUT_SCHEMA_BYTES = _canonical_json(_GENERATOR_OUTPUT_SCHEMA)
 _REVIEWER_OUTPUT_SCHEMA_BYTES = _canonical_json(_REVIEWER_OUTPUT_SCHEMA)
 

@@ -3,6 +3,9 @@
 > v7.4 override（2026-08-24）：T1.3b native isolation 已冻结为非生产实验。当前架构以可信
 > 个人 Windows 主机上的单一 Python 引擎为 MVP TCB；AppContainer/WFP、Rust stage0/broker、
 > qualifier restart 与物理掉电证明不再阻塞 shadow。远程 feed 与模型输出仍是不可信数据。
+>
+> D-018 provider override（2026-08-25）：当前模型网络 seam 是固定 DeepSeek Chat Completions
+> HTTPS provider，不是 Codex CLI。Codex/AppContainer 段落仅保留为历史实验。
 
 ## 设计原则
 
@@ -70,11 +73,12 @@ result = CoverageEvaluator().evaluate(proof)
 
 ## 网络边界
 
-只有 `fetch_service` 和 Codex CLI 需要网络：
+只有 `fetch_service` 和 DeepSeek HTTPS provider 需要网络：
 
 - `fetch_service` 只能访问 registry 枚举的 endpoint，并执行 SSRF、redirect、peer、MIME、大小和超时校验。
 - parser、coverage、renderer、publisher 均不联网。
-- Codex 只接收本次 run directory 中密封的 evidence/schema，内部工具全部关闭；它的网络只用于套餐服务，不用于网页搜索。
+- DeepSeek provider 只发送密封 evidence/schema 到固定 `api.deepseek.com`，不提供 tools、网页搜索
+  或自由 URL；凭据在 TLS 验证后才进入 Authorization header。
 - 普通 fetch 与 v7.4 发布路径不需要 WFP。以下 T1.3b/D-010 是冻结的历史窄例外：Codex package SID
   只能通过动态 WFP 策略访问一个固定 loopback proxy 端口；其他 v4/v6、DNS、UDP、QUIC、
   loopback 与直连默认拒绝。Windows 所需的 package-specific loopback exemption 仅在该
@@ -83,7 +87,13 @@ result = CoverageEvaluator().evaluate(proof)
   它必须是最小项并进入资格 closure。child tree 未确认归零时不得撤销 WFP、exemption、
   ACL/profile 或维护锁。该例外不进入 fetch 或生产 publisher。
 
-## Codex 调用策略
+## 当前模型调用策略
+
+D-018 当前策略：`deepseek-v4-flash` Generator 与 Reviewer 各一个 fresh request，thinking
+disabled、JSON Output、stream false、无 tools；总请求预算≤4。401/402/429/5xx/timeout/
+length/tool_calls/schema mismatch 全部 fail-closed。只使用既有余额，不自动充值。
+
+以下 Codex 内容是冻结历史，不进入 v7.4 调用图。
 
 先由确定性规则把大量 feed 收敛成少量值得考虑的 candidates，再使用模型：
 
@@ -94,9 +104,9 @@ result = CoverageEvaluator().evaluate(proof)
 - schema 修复最多一次；相同 evidence/policy 的已成功结果可复用。
 - auth、quota、工具事件或 schema 不一致均停止发布。
 
-T1.3a 已冻结并验证 curation/review contract。v7.4 Codex runner 使用固定原生 Codex CLI、
-专用 CODEX_HOME、isolated non-git cwd、sanitized environment 和零工具配置；真实 shadow
-必须证明零 tool event、零额外子进程、零密封根外成功读取。选择性审核
+T1.3a 已冻结并验证 curation/review contract。D-018 当前 DeepSeek strategy 复用版本化 D-009
+transport/schema V1；正式 model-contract adapter 尚未实现，因此不能把 provider smoke 称为完整
+pipeline。选择性审核
 仍是长期额度优化方向，但不得依赖 Generator 自报的 risk/fact class；降低范围必须新增
 decision，并用真实 holdout 证明确定性分类器不能降级受保护 claim。
 

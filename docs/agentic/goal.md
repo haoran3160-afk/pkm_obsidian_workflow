@@ -1,4 +1,23 @@
-# Active Goal — T1.4 Python 密封入口与路径/激活策略
+# Active Goal — T1.5 DeepSeek API Generator/Reviewer pipeline
+
+状态：`NEXT / SHADOW_ONLY / PRODUCTION_BLOCKED`
+
+目标：新增版本化 D-018 adapter，把已验证的 `DeepSeekShadowProvider` 接到 curation 与
+`ReviewContract`；禁止修改冻结的 T1.3b `model_contract` V1。固定
+官方 `/chat/completions`、`deepseek-v4-flash`、fresh Generator/Reviewer、thinking disabled、
+JSON Output、无 tools、请求预算和错误分类。不使用 Codex CLI/OpenAI API，不自动充值。
+
+本任务只允许离线 transport/schema/integration 测试与 provider strategy 提交；真实付费 smoke
+必须单独记录请求数/token/余额影响，且不得写 Vault、Task、Home/Status 或 production terminal。
+
+验收：D-018 strategy/provider contract/model/prompt/schema/request hashes、401/402/429/5xx/timeout/
+length/tool_calls、schema repair≤1、versioned adapter 的 Generator→ReviewContract→Reviewer 全 claim
+闭包全部通过；Ruff/Mypy、
+目标覆盖与双红队无 P0/P1。
+
+---
+
+# Completed Goal — T1.4 Python 密封入口与路径/激活策略
 
 状态：`DONE / SHADOW_ONLY / PRODUCTION_BLOCKED`
 

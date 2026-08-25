@@ -9,7 +9,7 @@
 2026-08-24 起，个人可信 Windows 单机 MVP 不再以 Rust stage0/broker、AppContainer/LPAC、
 WFP、qualifier restart、目录掉电证明或 Task 多代切换作为 shadow/生产前置条件。T1.3b 已在
 `8437a97` 安全着陆并冻结为非生产实验。当前实现必须优先打通固定 Python 入口、来源与
-Coverage、零工具 Codex 双审、最小 A/B create-new 发布、append-only 状态、三个 Task 和
+Coverage、DeepSeek API 双审、最小 A/B create-new 发布、append-only 状态、三个 Task 和
 Obsidian 阅读体验。本文后续保留的 D-009/D-010 原生条款仅是历史资格记录，不得重新进入
 v7.4 生产调用图。
 
@@ -46,10 +46,17 @@ v7.4 生产调用图。
 
 ### 1.3 外部服务
 
-- 生产路径不购买 API、不读取 DeepSeek key、不建立 DeepSeek 生产回退。
-- v7.4 Codex 运行在可信个人主机，但必须使用独立 `CODEX_HOME`、isolated non-git cwd、
-  sanitized environment 和固定零工具配置；shell、apply_patch、web、apps、plugins、memory、
-  collab、MCP 全部关闭。任意 tool event、额外子进程、未知事件或密封根外成功读取使结果无效。
+- D-018 是当前 v7.4 provider 决定：只调用 DeepSeek 官方
+  `https://api.deepseek.com/chat/completions`，模型固定 `deepseek-v4-flash`。Generator 与
+  Reviewer 是两个 fresh 请求；`thinking=disabled`、`response_format=json_object`、
+  `stream=false`，不提供 tools。凭据只从 Windows Credential Manager 固定 target
+  `PKM/DeepSeek/shadow-v1` 读取，不接受 CLI/env/文件明文 key。
+- 不使用 Codex CLI 或 OpenAI API；只消费现有 DeepSeek 余额，绝不自动充值。每个完整
+  Generator→Reviewer pipeline 正常 2 次请求，含结构修复最多 4 次；auth、余额、429、5xx、
+  timeout、空 JSON、length/tool_calls 均 fail-closed，不发布半成品。
+- 以下 D-009/T1.3c 和 D-010/T1.3b 条款保留为历史资格记录；与本节冲突时以 D-018 为准。
+- 历史 D-010 Codex 实验曾要求独立 `CODEX_HOME` 与零工具配置；该要求不属于 D-018 当前
+  DeepSeek 调用图，保留仅供审计。
 - 以下 D-009/T1.3c 与 D-010/T1.3b 条款只描述冻结的历史 shadow 资格，不授权调用 DeepSeek，
   也不要求 v7.4 恢复 AppContainer/WFP。
 - D-009 仅为 T1.3c 增加一次用户明确批准的 DeepSeek-V4-Flash shadow 资格例外：
@@ -77,13 +84,13 @@ v7.4 生产调用图。
   unknown field、HTTP/timeout 和 Reviewer decision/evidence/hash 语义不一致都不得 repair。
   repair 必须保留原角色的完整安全 prompt，只追加冻结的窄修复指令；每次实际 prompt 与
   request body 分别记录 hash，且不回传第一次坏输出。
-- Codex 使用用户现有套餐。非交互认证或套餐额度不可用时 fail-closed。
-- 不由工作流自动升级 Codex CLI；使用经过本机资格验证的固定版本。首个候选版本为 `0.147.0`，版本号本身不替代资格测试。
-- 首个候选模型为 Generator `gpt-5.6-terra`、Reviewer `gpt-5.6-sol`；模型变化必须创建新 policy generation，重跑受影响内容集和至少 3 个 shadow 日。
+- DeepSeek 认证或余额不可用时分别返回 `AUTH_REQUIRED`/`INSUFFICIENT_BALANCE`，不得 fallback。
+- 历史 Codex CLI `0.147.0` 不删除但运行时不可达；工作流不得自动安装或调用 Codex CLI。
+- 当前 Generator/Reviewer 都固定为 `deepseek-v4-flash`；二者 fresh request 只能降低上下文耦合，
+  不能冒充独立模型/供应商验证。模型变化必须创建新 policy generation并重跑评估。
 - 历史 T1.3b 曾固定使用 D-010 的 AppContainer/LPAC + package-SID WFP + one-shot
   loopback proxy + Job Object；该实验现已冻结，始终 `production=false`，不再阻塞 v7.4
-  Terra/Sol shadow。v7.4 仍必须固定 Codex binary/version/hash、argv、prompt、schema、模型、
-  专用 `CODEX_HOME` 和零工具/文件事件证据，失败时不使用 API/DeepSeek/fallback。
+  Terra/Sol shadow。D-018 已取代它作为当前 provider；未完成项不再进入 v7.4 Gate。
 
 ## 2. 工作流行为
 
@@ -118,11 +125,11 @@ v7.4 生产调用图。
 4. Coverage evaluator 从完整 snapshot 与 observation set 计算 A/B/不足，调用方不得传入任意子集作为分母。
 5. 确定性 curation 验证完整上游闭包，按冻结 policy 形成无损 event clusters、稳定排序、
    明确排除理由和有界候选；overflow 是需要新 policy/input 的非瞬态阻断，不能截断后继续。
-6. Codex Generator 只处理候选的密封 feed evidence 与批准 UserContext，输出结构化 JSON，
+6. DeepSeek Generator 只处理候选的密封 feed evidence 与批准 UserContext，输出结构化 JSON，
    不输出链接或 Markdown；`item_url` 只是不可引用的 `UNVERIFIED_LOCATOR`。
 7. 程序校验时间、数字、版本、地区、availability 与 evidence mapping。T1.3 没有 article
    正文或已验证 canonical link，因此需要正文才能确认的 claim 必须 abstain。
-8. T1.3 qualification 阶段，Codex Reviewer 审核所有可能进入 story 的 assertive claim；
+8. DeepSeek Reviewer 审核所有可能进入 story 的 assertive claim；
    未审内容只能保留为隔离 `source_excerpt`。选择性 Reviewer 只有在后续 decision 和真实
    分类器证据通过后才能启用。
 9. 程序根据 review decision 删除 claim/story，重新确定性排序与渲染。
@@ -185,7 +192,8 @@ Coverage 车道：官方实验室、科研论文、开源/产品 release、产�
 - Generator 只从输入 evidence 提取候选 claim、机制、影响和不确定性。
 - Reviewer 只判断 evidence 是否支持 claim、是否夸大或错配；不得凭常识补证据。
 - 模型不得提供 URL、HTML、wikilink、文件路径或自定义 URI。
-- Codex 会话使用 isolated non-git run directory，不读取仓库、Vault、用户配置、skills 或 plugins；shell、web、apply_patch、apps、memory、collab、MCP 等工具不可用。真实 shadow 的进程/文件事件必须证明零 tool event、零额外子进程和密封根外成功读取为零。
+- DeepSeek API 不接收 tools；模型只能返回 JSON data。Provider 不接收 Vault 路径、不写文件，
+  响应中的 tool/function call 或未知字段一律拒绝。
 - 下列 DETACHED_PROCESS/AppContainer/WFP 条款是已冻结 T1.3b 的历史证据边界，不是 v7.4
   MVP 调用要求；其未完成项不得重新阻塞 Python shadow。
 - 任意 tool event、未知文件访问、schema 失败或额外子进程使本次模型输出无效。
@@ -237,7 +245,7 @@ Coverage 车道：官方实验室、科研论文、开源/产品 release、产�
 - `durable/backing/`：最终内容 backing，create-new，保留。
 - `durable/receipts/`：manifest、publish receipt、status event，create-new，保留。
 - `durable/registry/`：批准的 registry/policy generations，append-only。
-- `scratch/runs/{run_id}/`：可清理的抓取、解析和 Codex 临时文件。
+- `scratch/runs/{run_id}/`：可清理的抓取、解析和模型临时文件。
 - `locks/`：全局锁状态。
 
 ### 6.2 create-new 发布协议
@@ -294,7 +302,7 @@ pkm reconcile [--workflow {ai,ielts,weekly}] --json
 - `3`：安全/边界阻断或冲突。
 - `4`：可重试的覆盖、证据、网络或上游错误。
 - `5`：套餐额度或外部服务不可用。
-- `8`：Codex 认证需要用户处理。
+- `8`：DeepSeek 认证需要用户处理。
 - `10`：内部错误。
 
 非零不得转成成功；日历 reconciler 不能伪造 terminal。
@@ -318,9 +326,9 @@ pkm reconcile [--workflow {ai,ielts,weekly}] --json
 - 物理掉电矩阵、全模块 mutation≥85%、Weekly 等待四个真实周、所有内容双模型审核。
 
 AppContainer/LPAC 与 WFP 不属于 v7.4 首发要求；T1.3b 已冻结为实验性、非生产且未整体完成。
-MVP Codex shadow 的硬门改为固定 binary/argv/config/prompt/schema/model、独立 CODEX_HOME、
-isolated cwd、零工具事件、零额外子进程、密封根外成功读取为零，以及 auth/quota/schema
-fail-closed。
+MVP DeepSeek shadow 的硬门是固定 endpoint/model/prompt/schema/input/request hashes、TLS/SNI、
+Credential Manager、无 tools、fresh requests、预算≤4，以及 auth/balance/429/5xx/timeout/schema
+fail-closed。D-009 transport/schema V1 与 D-018 strategy 必须分别版本化，不能原位改写历史。
 
 关键 delete/overwrite/path-escape/evidence-mismatch 测试必须通过；mutation 只用于这些高风险模块，不追求全仓数字。
 

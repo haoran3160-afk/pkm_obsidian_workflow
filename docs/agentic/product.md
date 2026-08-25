@@ -11,7 +11,8 @@
 - 公开引擎：`D:/Agent_programs/obsidian_workflow_open`。
 - 私有上下文：`D:/personal/obsidian_workflow`。
 - 运行时：`D:/personal/obsidian_workflow-runtime`。
-- 不购买 OpenAI API；使用用户现有 Codex 套餐。
+- 模型路径固定为 DeepSeek 官方 Chat Completions API；使用现有 Credential Manager 凭据和余额，
+  不使用 Codex CLI/OpenAI API，不自动充值。
 - 电脑休眠或关机时不运行，也不唤醒；恢复后补跑。
 
 个性化只使用私有的 `UserContextContract-v7.3.json`，不得从 Vault 其他笔记推断用户身份、职业或兴趣。
@@ -65,7 +66,7 @@ AI Daily 的优先级：
 - 自动沉淀到 `10-Notes`、`20-Sources` 或修改既有笔记。
 - 追求每天固定条数、全网覆盖或“所有内容都经两个模型”。
 - 物理掉电后的事务级 durability、不可抵赖审计或异地灾备。
-- 自动购买 API、切换 DeepSeek 或用低质量 fallback 保持形式完整。
+- 自动充值、切换其他模型/供应商或用低质量 fallback 保持形式完整。
 
 ## 投入优先级
 

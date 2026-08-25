@@ -45,9 +45,9 @@ Windows Task Scheduler
         ↓
 固定来源抓取 → 证据标准化 → Coverage
         ↓
-确定性候选筛选 → 零工具 Codex Generator(JSON)
+确定性候选筛选 → DeepSeek Generator(JSON)
         ↓
-确定性事实校验 → fresh Codex Reviewer（逐 claim 结构化决策）
+确定性事实校验 → fresh DeepSeek Reviewer（逐 claim 结构化决策）
         ↓
 确定性 Markdown Renderer
         ↓
@@ -69,4 +69,4 @@ create-new Status + Home
 
 ## 开发就绪结论
 
-轻量化方向已完成第一性原理审查：它覆盖最可能造成实际损失的远程恶意内容、证据错误、路径越界、覆盖写、重复任务和失败误报，同时不把可信单用户本地工作流建设成多租户安全平台。尚未验证的 Codex 非交互认证、真实抓取、Obsidian 展示和 Windows 调度均被放在实施任务与上线门中，不被文档假定为已完成。
+轻量化方向已完成第一性原理审查：它覆盖最可能造成实际损失的远程恶意内容、证据错误、路径越界、覆盖写、重复任务和失败误报，同时不把可信单用户本地工作流建设成多租户安全平台。当前 DeepSeek provider 已完成 transport/schema smoke，但 versioned pipeline adapter、真实内容 shadow、Obsidian 展示和 Windows 调度仍未完成，不被文档假定为已完成。

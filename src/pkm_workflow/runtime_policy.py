@@ -355,7 +355,10 @@ def _validate_activation(
     for value in models.values():
         if type(value) is not dict or frozenset(value) != {"generator", "reviewer"}:
             raise _blocked("ACTIVATION_SCHEMA_INVALID")
-        if value != {"generator": "gpt-5.6-terra", "reviewer": "gpt-5.6-sol"}:
+        if value != {
+            "generator": "deepseek-v4-flash",
+            "reviewer": "deepseek-v4-flash",
+        }:
             raise _blocked("ACTIVATION_SCHEMA_INVALID")
     for field in ("release_manifest_hash", "config_hash", "task_bundle_hash"):
         _require_hash(payload[field])
