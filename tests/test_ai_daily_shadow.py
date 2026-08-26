@@ -224,7 +224,9 @@ def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
     assert transport.calls == 0
 
 
-def test_rejected_low_risk_optional_claim_still_removes_the_story(tmp_path: Path) -> None:
+def test_rejected_optional_claim_is_not_published_but_keeps_accepted_story(
+    tmp_path: Path,
+) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Example AI",
@@ -255,9 +257,10 @@ def test_rejected_low_risk_optional_claim_still_removes_the_story(tmp_path: Path
 
     result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
 
-    assert result.status == "NO_SIGNIFICANT_NEWS"
-    assert result.markdown_path is None
-    assert result.story_count == 0
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    assert result.story_count == 1
+    assert "所有网站都已完全兼容" not in result.markdown_path.read_text(encoding="utf-8")
 
 
 def test_only_success_or_zero_yield_counts_as_healthy_coverage() -> None:

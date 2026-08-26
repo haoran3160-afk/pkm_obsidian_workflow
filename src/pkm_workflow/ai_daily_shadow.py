@@ -492,8 +492,13 @@ def _accepted_stories(
     }
     accepted: list[dict[str, Any]] = []
     for story in stories:
+        rendered_claim_ids = {
+            story["title_claim_id"],
+            *story["mechanism_claim_ids"],
+            *story["importance_claim_ids"],
+        }
         if any(
-            verdicts.get(claim["claim_id"]) != "ACCEPT" for claim in story["claims"]
+            verdicts.get(claim_id) != "ACCEPT" for claim_id in rendered_claim_ids
         ):
             continue
         kept_claims = [
