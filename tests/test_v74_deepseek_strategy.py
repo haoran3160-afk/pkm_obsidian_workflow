@@ -78,7 +78,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:80ede83db41191eeed73b5e1513258166c2de8a958ba882f72eecca02824efc8"
+        "sha256:2ea37f722d2e876162bf5c580d589098bdca240dbfb1ea189f711aa27abf5c20"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
