@@ -8,16 +8,19 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from pkm_workflow import cli, runtime_policy
+from pkm_workflow.ai_daily_shadow import CoverageLevel, ShadowResult
 from pkm_workflow.runtime_policy import (
     ActivationBlocked,
     ActivationReader,
     ExecutionResult,
     Mode,
+    RunRequest,
     RuntimeEnvironment,
     Workflow,
 )
@@ -340,7 +343,7 @@ def test_flat_cli_rejects_legacy_commands_and_every_free_path(capsys: pytest.Cap
 def test_wrapper_and_packaged_cli_use_the_same_engine_and_contract(tmp_path: Path) -> None:
     repository = Path(__file__).resolve().parents[1]
     script = repository / "scripts" / "run_workflow.py"
-    argv = ["--workflow", "ai", "--mode", "shadow"]
+    argv = ["--workflow", "weekly", "--mode", "shadow"]
     direct_environment = dict(os.environ)
     direct_environment["PYTHONPATH"] = str(repository / "src")
     direct = subprocess.run(
@@ -364,6 +367,39 @@ def test_wrapper_and_packaged_cli_use_the_same_engine_and_contract(tmp_path: Pat
     assert direct.returncode == wrapped.returncode == 3
     assert json.loads(direct.stdout) == json.loads(wrapped.stdout)
     assert json.loads(direct.stdout)["reason"] == "SHADOW_ENGINE_NOT_IMPLEMENTED"
+
+
+def test_ai_shadow_delegates_to_the_real_shadow_seam(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "run-report.json"
+    markdown_path = tmp_path / "AI-Daily-2026-08-26-shadow.md"
+
+    def fake_shadow() -> ShadowResult:
+        return ShadowResult(
+            exit_code=0,
+            status="PUBLISHED",
+            content_date=date(2026, 8, 26),
+            coverage=CoverageLevel.A,
+            candidate_count=3,
+            story_count=2,
+            request_count=2,
+            markdown_path=markdown_path,
+            report_path=report_path,
+        )
+
+    monkeypatch.setattr(runtime_policy, "run_ai_daily_shadow", fake_shadow)
+
+    result = runtime_policy.execute_workflow(
+        RunRequest(workflow=Workflow.AI, mode=Mode.SHADOW, due_only=False),
+        RuntimeEnvironment.production(),
+    )
+
+    assert result.exit_code == 0
+    assert result.payload["status"] == "PUBLISHED"
+    assert result.payload["markdown_path"] == str(markdown_path)
+    assert result.payload["vault_write"] is False
 
 
 def test_all_modes_call_one_engine_and_cli_preserves_domain_exit(

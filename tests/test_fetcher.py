@@ -227,6 +227,7 @@ def test_fetch_rss_feed_enriches_summary_with_fulltext(monkeypatch):
     assert len(items) == 1
     assert "pass@1 41.2%" in items[0]["summary"]
     assert "420ms" in items[0]["summary"]
+    assert items[0]["fulltext_enriched"] is True
 
 
 def test_fetch_rss_feed_return_meta_detail_contains_filter_count(monkeypatch):
@@ -335,6 +336,19 @@ def test_fetch_youtube_channel_raw_returns_empty_when_parser_fails(monkeypatch):
     videos = fetcher.fetch_youtube_channel_raw(channel)
 
     assert videos == []
+
+
+def test_fetch_youtube_channel_raw_reports_terminal_failure(monkeypatch):
+    channel = {"name": "Broken", "channel_id": "id"}
+    monkeypatch.setattr(
+        fetcher, "_parse_youtube_feed", lambda cid: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    videos, meta = fetcher.fetch_youtube_channel_raw(channel, return_meta=True)
+
+    assert videos == []
+    assert meta["status"] == "error"
+    assert meta["reason_code"] == "NETWORK_ERROR"
 
 
 def test_fetch_rss_feed_ai_scoring_threshold_bucket_and_cap(monkeypatch):

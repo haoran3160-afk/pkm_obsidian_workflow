@@ -759,6 +759,7 @@ def fetch_rss_feed(
             "folder": folder,
             "domain": domain,
             "content_type": content_type,
+            "fulltext_enriched": False,
         }
 
         if is_ai_feed:
@@ -790,6 +791,7 @@ def fetch_rss_feed(
                         f"{summary}\n{full_text}", max_len=FULLTEXT_FETCH_MAX_CHARS
                     )
                     enriched_by_fulltext += 1
+                    item["fulltext_enriched"] = True
                     score, score_reasons = _score_ai_interest(
                         title,
                         summary,
@@ -928,7 +930,12 @@ def fetch_youtube_channel(
     return results
 
 
-def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
+def fetch_youtube_channel_raw(
+    channel: dict,
+    max_videos: int = 2,
+    *,
+    return_meta: bool = False,
+) -> list | tuple[list, dict[str, str]]:
     """Fetch YouTube videos in raw mode (no cache dedup) for Agent curation."""
     name = channel["name"]
     channel_id = channel["channel_id"]
@@ -937,7 +944,12 @@ def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
         d = _parse_youtube_feed(channel_id)
     except Exception as exc:
         log.error(f"[yt-fail] {name}: failed after retries (raw mode) ({exc})")
-        return []
+        meta = {
+            "status": "error",
+            "reason_code": FetchReasonCode.NETWORK_ERROR.value,
+            "detail": exc.__class__.__name__,
+        }
+        return ([], meta) if return_meta else []
 
     parsed_entries: list[Any] = list(getattr(d, "entries", []))
     results = []
@@ -959,7 +971,14 @@ def fetch_youtube_channel_raw(channel: dict, max_videos: int = 2) -> list:
         )
 
     log.info(f"  [ok] {name}: {len(results)} videos (raw)")
-    return results
+    meta = {
+        "status": "ok",
+        "reason_code": (
+            FetchReasonCode.OK.value if results else FetchReasonCode.ZERO_YIELD.value
+        ),
+        "detail": f"items={len(results)}",
+    }
+    return (results, meta) if return_meta else results
 
 
 @dataclass(frozen=True)

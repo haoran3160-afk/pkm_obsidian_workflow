@@ -1,0 +1,756 @@
+"""One-shot AI Daily shadow pipeline over the existing collection and curation flow."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections import defaultdict
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+from enum import Enum
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from .deepseek_provider import (
+    MVP_CONTRACT_VERSION,
+    DeepSeekShadowProvider,
+    ProviderResult,
+    ProviderRole,
+    RequestBudget,
+    TerminalClassification,
+    mvp_generator_output_schema,
+    mvp_reviewer_output_schema,
+)
+
+
+class CoverageLevel(str, Enum):
+    A = "A"
+    B = "B"
+    INSUFFICIENT = "INSUFFICIENT"
+
+
+@dataclass(frozen=True)
+class Candidate:
+    evidence_id: str
+    source: str
+    title: str
+    link: str
+    published: str
+    summary: str
+    content_type: str
+    fulltext_enriched: bool
+    profile_refs: tuple[str, ...] = ()
+
+    def model_payload(self) -> dict[str, object]:
+        return {
+            "content_type": self.content_type,
+            "evidence_id": self.evidence_id,
+            "fulltext_enriched": self.fulltext_enriched,
+            "published": self.published,
+            "source": self.source,
+            "summary": self.summary,
+            "title": self.title,
+        }
+
+
+@dataclass(frozen=True)
+class CollectionResult:
+    coverage: CoverageLevel
+    configured_sources: int
+    healthy_sources: int
+    candidates: tuple[Candidate, ...]
+
+
+@dataclass(frozen=True)
+class ShadowPorts:
+    collect: Callable[[date], CollectionResult]
+    provider: DeepSeekShadowProvider
+    runtime_root: Path
+    load_user_context: Callable[[], dict[str, object]]
+
+
+@dataclass(frozen=True)
+class ShadowResult:
+    exit_code: int
+    status: str
+    content_date: date
+    coverage: CoverageLevel
+    candidate_count: int
+    story_count: int
+    request_count: int
+    markdown_path: Path | None
+    report_path: Path
+    error_code: str | None = None
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "content_date": self.content_date.isoformat(),
+            "coverage": self.coverage.value,
+            "candidate_count": self.candidate_count,
+            "story_count": self.story_count,
+            "request_count": self.request_count,
+            "markdown_path": str(self.markdown_path) if self.markdown_path else None,
+            "report_path": str(self.report_path),
+            "error_code": self.error_code,
+            "vault_write": False,
+            "production_activation": False,
+        }
+
+
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _existing_state_path(root: Path, name: str) -> Path:
+    local = root / name
+    if local.is_file():
+        return local
+    preserved = Path(r"D:\Agent_programs\obsidian_workflow_open") / name
+    if preserved.is_file():
+        return preserved
+    return local
+
+
+def _read_json_object(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"{path.name} must contain a JSON object")
+    return value
+
+
+def _load_approved_user_context() -> dict[str, object]:
+    path = Path(r"D:\personal\obsidian_workflow\UserContextContract-v7.3.json")
+    raw = _read_json_object(path)
+    return {"user_context_hash": _digest(raw), "fields": raw}
+
+
+def _quality_config(config: object) -> dict[str, object]:
+    fields = (
+        "max_ai_items_per_feed",
+        "min_ai_interest_score",
+        "enable_fulltext_enrichment",
+        "fulltext_enrichment_per_feed",
+        "ai_interest_topics",
+        "ai_priority_topics",
+        "ai_exclude_keywords",
+    )
+    return {field: getattr(config, field) for field in fields}
+
+
+def _candidate(source: str, item: Mapping[str, object], content_date: date) -> Candidate:
+    title = str(item.get("title") or "Untitled").strip()
+    link = str(item.get("link") or "").strip()
+    evidence_id = "evidence-" + hashlib.sha256(
+        f"{source}\n{link}\n{title}".encode()
+    ).hexdigest()[:24]
+    return Candidate(
+        evidence_id=evidence_id,
+        source=source,
+        title=title,
+        link=link,
+        published=str(item.get("published") or content_date.isoformat()).strip(),
+        summary=str(item.get("summary") or title).strip(),
+        content_type=str(item.get("content_type") or "news").strip(),
+        fulltext_enriched=bool(item.get("fulltext_enriched", False)),
+    )
+
+
+def _current_items(items: list[dict[str, Any]], content_date: date) -> list[dict[str, Any]]:
+    window_start = content_date - timedelta(days=1)
+    current: list[dict[str, Any]] = []
+    for item in items:
+        published = str(item.get("published") or "")[:10]
+        try:
+            published_date = date.fromisoformat(published)
+        except ValueError:
+            continue
+        if window_start <= published_date <= content_date:
+            current.append(item)
+    return current
+
+
+def _collect_existing_sources(content_date: date) -> CollectionResult:
+    """Run the proven local fetch/curation path without persisting its state."""
+
+    import config_schema
+    import daily_curation
+    import fetcher
+
+    root = _repository_root()
+    config = config_schema.load_and_validate(root / "pkm_config.json")
+    rss_feeds = [feed for feed in config.rss_feeds if feed.enabled]
+    youtube_channels = [channel for channel in config.youtube_channels if channel.enabled]
+    configured_sources = len(rss_feeds) + len(youtube_channels)
+    if configured_sources == 0:
+        return CollectionResult(CoverageLevel.INSUFFICIENT, 0, 0, ())
+    feed_cache_raw = _read_json_object(_existing_state_path(root, "feed_cache.json"))
+    feed_cache = dict(feed_cache_raw)
+    items_by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    healthy_sources = 0
+    quality = _quality_config(config)
+    for feed in rss_feeds:
+        feed_value = feed.model_dump()
+        items, meta = fetcher.fetch_rss_feed(
+            feed_value,
+            feed_cache,
+            content_date.isoformat(),
+            max_papers=config.max_papers_per_day,
+            raw_only=False,
+            quality_config=quality,
+            return_meta=True,
+        )
+        if meta.get("status") != "error":
+            healthy_sources += 1
+        items_by_source[feed.name].extend(_current_items(items, content_date))
+    for channel in youtube_channels:
+        channel_value = channel.model_dump()
+        videos, meta = fetcher.fetch_youtube_channel_raw(
+            channel_value,
+            max_videos=config.max_videos_per_channel,
+            return_meta=True,
+        )
+        if meta.get("status") != "error":
+            healthy_sources += 1
+        items_by_source[channel.name].extend(_current_items(videos, content_date))
+    coverage_bps = healthy_sources * 10_000 // configured_sources
+    coverage = (
+        CoverageLevel.A
+        if coverage_bps >= 8_500
+        else CoverageLevel.B
+        if coverage_bps >= 7_000
+        else CoverageLevel.INSUFFICIENT
+    )
+    used_urls = daily_curation.load_used_urls(_existing_state_path(root, "used_articles.json"))
+    rotation = daily_curation.load_rotation_state(
+        _existing_state_path(root, "source_rotation.json")
+    )
+    plan = None
+    for top_picks in (3, 2, 1):
+        try:
+            plan = daily_curation.plan_daily_digest(
+                dict(items_by_source),
+                today=content_date.isoformat(),
+                top_picks=top_picks,
+                action_items=config.daily_digest_action_items,
+                max_deferred_items=config.daily_digest_max_deferred_items,
+                min_top_nonpaper=min(config.daily_digest_min_top_nonpaper, top_picks),
+                min_top_content_types=min(
+                    config.daily_digest_min_top_content_types, top_picks
+                ),
+                max_paper_in_top=min(config.daily_digest_max_paper_in_top, top_picks),
+                stats={
+                    "configured_sources": configured_sources,
+                    "healthy_sources": healthy_sources,
+                    "coverage_bps": coverage_bps,
+                },
+                used_urls=used_urls,
+                rotation_state=rotation,
+            )
+            break
+        except daily_curation.CurationPolicyError:
+            continue
+    if plan is None:
+        return CollectionResult(coverage, configured_sources, healthy_sources, ())
+    candidates = tuple(
+        _candidate(source, item, content_date) for source, item in plan.top_stories[:3]
+    )
+    return CollectionResult(coverage, configured_sources, healthy_sources, candidates)
+
+
+def _default_ports() -> ShadowPorts:
+    return ShadowPorts(
+        collect=_collect_existing_sources,
+        provider=DeepSeekShadowProvider(),
+        runtime_root=Path(r"D:\personal\obsidian_workflow-runtime"),
+        load_user_context=_load_approved_user_context,
+    )
+
+
+def _canonical(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _digest(value: object) -> str:
+    return "sha256:" + hashlib.sha256(_canonical(value)).hexdigest()
+
+
+def _provider_exit(result: ProviderResult) -> int:
+    if result.terminal_classification is TerminalClassification.AUTH_REQUIRED:
+        return 8
+    if result.terminal_classification in {
+        TerminalClassification.INSUFFICIENT_BALANCE,
+        TerminalClassification.RATE_LIMITED,
+        TerminalClassification.EXTERNAL_SERVICE_UNAVAILABLE,
+    }:
+        return 5
+    if result.terminal_classification is TerminalClassification.INTERNAL_ERROR:
+        return 10
+    return 4
+
+
+def _model_metrics(*results: ProviderResult) -> dict[str, int]:
+    return {
+        "prompt_tokens": sum(result.token_usage.prompt_tokens for result in results),
+        "completion_tokens": sum(result.token_usage.completion_tokens for result in results),
+        "total_tokens": sum(result.token_usage.total_tokens for result in results),
+        "latency_ms": sum(result.latency_ms for result in results),
+    }
+
+
+def _validate_user_context(value: object) -> dict[str, object]:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"fields", "user_context_hash"}
+        or not isinstance(value.get("fields"), dict)
+        or not isinstance(value.get("user_context_hash"), str)
+    ):
+        raise ValueError("UserContext payload is invalid")
+    return value
+
+
+def _validate_generator_draft(
+    draft: object,
+    evidence: Mapping[str, Candidate],
+) -> tuple[dict[str, Any], ...]:
+    if not isinstance(draft, dict) or set(draft) != {"stories"}:
+        raise ValueError("Generator draft is invalid")
+    stories = draft.get("stories")
+    if not isinstance(stories, list) or len(stories) > 3:
+        raise ValueError("Generator stories are invalid")
+    story_ids: set[str] = set()
+    claim_ids: set[str] = set()
+    ranks: set[int] = set()
+    validated: list[dict[str, Any]] = []
+    role_fields = (
+        "event_claim_ids",
+        "mechanism_claim_ids",
+        "importance_claim_ids",
+        "impact_claim_ids",
+        "uncertainty_claim_ids",
+        "watch_claim_ids",
+        "action_claim_ids",
+    )
+    for story in stories:
+        if not isinstance(story, dict):
+            raise ValueError("Generator story is invalid")
+        story_id = story.get("story_id")
+        rank = story.get("rank")
+        claims = story.get("claims")
+        if (
+            not isinstance(story_id, str)
+            or story_id in story_ids
+            or type(rank) is not int
+            or not 1 <= rank <= 3
+            or rank in ranks
+            or not isinstance(claims, list)
+        ):
+            raise ValueError("Generator story identity or rank is invalid")
+        story_ids.add(story_id)
+        ranks.add(rank)
+        local_claims: dict[str, dict[str, Any]] = {}
+        for claim in claims:
+            if not isinstance(claim, dict):
+                raise ValueError("Generator claim is invalid")
+            claim_id = claim.get("claim_id")
+            evidence_ids = claim.get("evidence_ids")
+            if (
+                not isinstance(claim_id, str)
+                or claim_id in claim_ids
+                or not isinstance(claim.get("statement"), str)
+                or not isinstance(evidence_ids, list)
+                or not evidence_ids
+                or any(not isinstance(item, str) or item not in evidence for item in evidence_ids)
+            ):
+                raise ValueError("Generator claim binding is invalid")
+            claim_ids.add(claim_id)
+            local_claims[claim_id] = claim
+        title_claim_id = story.get("title_claim_id")
+        if title_claim_id not in local_claims:
+            raise ValueError("Generator title claim is invalid")
+        for field in role_fields:
+            ids = story.get(field)
+            if not isinstance(ids, list) or any(item not in local_claims for item in ids):
+                raise ValueError(f"Generator {field} binding is invalid")
+        if not story["event_claim_ids"] or not story["importance_claim_ids"]:
+            raise ValueError("Generator story lacks required event or importance claims")
+        validated.append(story)
+    return tuple(validated)
+
+
+def _review_requirements(stories: tuple[dict[str, Any], ...]) -> tuple[list[dict[str, object]], str]:
+    draft = {"stories": list(stories)}
+    draft_hash = _digest(draft)
+    requirements: list[dict[str, object]] = []
+    for story in stories:
+        for claim in story["claims"]:
+            requirement = {
+                "claim_id": claim["claim_id"],
+                "statement": claim["statement"],
+                "evidence_ids": claim["evidence_ids"],
+                "required": True,
+                "generator_draft_hash": draft_hash,
+            }
+            requirements.append(
+                requirement | {"review_requirement_hash": _digest(requirement)}
+            )
+    return requirements, draft_hash
+
+
+def _accepted_stories(
+    stories: tuple[dict[str, Any], ...],
+    decisions: object,
+) -> tuple[dict[str, Any], ...]:
+    if not isinstance(decisions, dict) or set(decisions) != {"decisions"}:
+        raise ValueError("Reviewer decision set is invalid")
+    rows = decisions.get("decisions")
+    if not isinstance(rows, list):
+        raise ValueError("Reviewer decisions are invalid")
+    verdicts = {
+        row["claim_id"]: row["decision"]
+        for row in rows
+        if isinstance(row, dict)
+        and isinstance(row.get("claim_id"), str)
+        and isinstance(row.get("decision"), str)
+    }
+    accepted: list[dict[str, Any]] = []
+    for story in stories:
+        core_ids = {
+            story["title_claim_id"],
+            *story["event_claim_ids"],
+            *story["importance_claim_ids"],
+        }
+        if any(verdicts.get(claim_id) != "ACCEPT" for claim_id in core_ids):
+            continue
+        kept_claims = [
+            claim for claim in story["claims"] if verdicts.get(claim["claim_id"]) == "ACCEPT"
+        ]
+        kept_ids = {claim["claim_id"] for claim in kept_claims}
+        projected = dict(story)
+        projected["claims"] = kept_claims
+        for field in (
+            "event_claim_ids",
+            "mechanism_claim_ids",
+            "importance_claim_ids",
+            "impact_claim_ids",
+            "uncertainty_claim_ids",
+            "watch_claim_ids",
+            "action_claim_ids",
+        ):
+            projected[field] = [claim_id for claim_id in story[field] if claim_id in kept_ids]
+        accepted.append(projected)
+    accepted.sort(key=lambda story: story["rank"])
+    for index, story in enumerate(accepted, start=1):
+        story["rank"] = index
+    return tuple(accepted)
+
+
+def _claim_texts(story: Mapping[str, Any], field: str) -> list[str]:
+    claims = {claim["claim_id"]: claim["statement"] for claim in story["claims"]}
+    return [claims[claim_id] for claim_id in story[field] if claim_id in claims]
+
+
+def _render_markdown(
+    content_date: date,
+    coverage: CoverageLevel,
+    stories: tuple[dict[str, Any], ...],
+    evidence: Mapping[str, Candidate],
+) -> str:
+    first_importance = _claim_texts(stories[0], "importance_claim_ids")[0]
+    lines = [
+        "---",
+        f"date: {content_date.isoformat()}",
+        "type: ai-daily-shadow",
+        f"coverage: {coverage.value}",
+        "production: false",
+        "---",
+        "",
+        f"# AI Daily · {content_date.isoformat()}",
+        "",
+        f"> 今日判断：{first_importance}",
+    ]
+    labels = (
+        ("event_claim_ids", "发生了什么"),
+        ("mechanism_claim_ids", "机制"),
+        ("importance_claim_ids", "为什么重要"),
+        ("impact_claim_ids", "对你的影响"),
+        ("uncertainty_claim_ids", "不确定性"),
+        ("watch_claim_ids", "观察信号"),
+    )
+    for story in stories:
+        claims = {claim["claim_id"]: claim for claim in story["claims"]}
+        title = claims[story["title_claim_id"]]["statement"]
+        lines.extend(("", f"## Top {story['rank']}｜{title}"))
+        for field, label in labels:
+            texts = _claim_texts(story, field)
+            if texts:
+                lines.append(f"- **{label}**：{'；'.join(texts)}")
+        actions = _claim_texts(story, "action_claim_ids")
+        lines.append(f"- **行动**：{'；'.join(actions) if actions else '无需行动'}")
+        evidence_ids = []
+        for claim in story["claims"]:
+            for evidence_id in claim["evidence_ids"]:
+                if evidence_id not in evidence_ids:
+                    evidence_ids.append(evidence_id)
+        links = []
+        for evidence_id in evidence_ids:
+            item = evidence[evidence_id]
+            label = "原文" if item.fulltext_enriched else "来源链接"
+            links.append(f"[{label} · {item.source}]({item.link})")
+        lines.append(f"- **证据**：{'；'.join(links)}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _finish(
+    *,
+    ports: ShadowPorts,
+    run_dir: Path,
+    content_date: date,
+    coverage: CoverageLevel,
+    candidate_count: int,
+    story_count: int,
+    request_count: int,
+    status: str,
+    exit_code: int,
+    markdown: str | None = None,
+    error_code: str | None = None,
+    model_metrics: Mapping[str, int] | None = None,
+) -> ShadowResult:
+    run_dir.mkdir(parents=True, exist_ok=False)
+    markdown_path: Path | None = None
+    if markdown is not None:
+        markdown_path = run_dir / f"AI-Daily-{content_date.isoformat()}-shadow.md"
+        with markdown_path.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(markdown)
+    report_path = run_dir / "run-report.json"
+    report = {
+        "schema": "pkm.ai-daily-shadow.run.v1",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+        "content_date": content_date.isoformat(),
+        "coverage": coverage.value,
+        "candidate_count": candidate_count,
+        "story_count": story_count,
+        "request_count": request_count,
+        "model_metrics": dict(model_metrics or {}),
+        "error_code": error_code,
+        "markdown_created": markdown_path is not None,
+        "vault_write": False,
+        "production_activation": False,
+    }
+    with report_path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(_canonical(report).decode("utf-8") + "\n")
+    return ShadowResult(
+        exit_code=exit_code,
+        status=status,
+        content_date=content_date,
+        coverage=coverage,
+        candidate_count=candidate_count,
+        story_count=story_count,
+        request_count=request_count,
+        markdown_path=markdown_path,
+        report_path=report_path,
+        error_code=error_code,
+    )
+
+
+def run_ai_daily_shadow(
+    content_date: date | None = None,
+    *,
+    ports: ShadowPorts | None = None,
+) -> ShadowResult:
+    """Generate one reviewed AI Daily shadow without touching the Vault."""
+
+    ports = ports or _default_ports()
+    selected_date = content_date or date.today()
+    collected = ports.collect(selected_date)
+    run_dir = ports.runtime_root / "scratch" / "runs" / uuid4().hex
+    if collected.coverage is CoverageLevel.INSUFFICIENT:
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=0,
+            status="COVERAGE_INSUFFICIENT",
+            exit_code=4,
+            error_code="COVERAGE_INSUFFICIENT",
+        )
+    if not collected.candidates:
+        credible_no_news = collected.coverage is CoverageLevel.A
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=0,
+            story_count=0,
+            request_count=0,
+            status="NO_SIGNIFICANT_NEWS" if credible_no_news else "COVERAGE_LIMITED",
+            exit_code=0 if credible_no_news else 4,
+            error_code=None if credible_no_news else "COVERAGE_LIMITED_NO_NEWS",
+        )
+    if len(collected.candidates) > 8:
+        raise ValueError("curation must provide no more than eight candidates")
+    evidence = {item.evidence_id: item for item in collected.candidates}
+    if len(evidence) != len(collected.candidates):
+        raise ValueError("candidate evidence IDs must be unique")
+    context = _validate_user_context(ports.load_user_context())
+    generator_request = _canonical(
+        {
+            "approved_user_context": context,
+            "rubric": {
+                "contract_version": MVP_CONTRACT_VERSION,
+                "max_stories": 3,
+                "top_cap": 3,
+            },
+            "sealed_evidence": {
+                "coverage_level": collected.coverage.value,
+                "evidence_hash": _digest(
+                    [item.model_payload() for item in collected.candidates]
+                ),
+                "candidates": [item.model_payload() for item in collected.candidates],
+            },
+        }
+    )
+    budget = RequestBudget(limit=4)
+    generator = ports.provider.invoke(
+        ProviderRole.GENERATOR,
+        generator_request,
+        mvp_generator_output_schema(),
+        budget,
+        contract_version=MVP_CONTRACT_VERSION,
+    )
+    if generator.terminal_classification is not TerminalClassification.VALIDATED:
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=generator.request_count,
+            status=generator.terminal_classification.value,
+            exit_code=_provider_exit(generator),
+            error_code=generator.error_code,
+            model_metrics=_model_metrics(generator),
+        )
+    try:
+        stories = _validate_generator_draft(generator.validated_structured_result, evidence)
+    except ValueError:
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=generator.request_count,
+            status="SCHEMA_INVALID",
+            exit_code=4,
+            error_code="GENERATOR_BINDING_INVALID",
+            model_metrics=_model_metrics(generator),
+        )
+    if not stories:
+        credible_no_news = collected.coverage is CoverageLevel.A
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=generator.request_count,
+            status="NO_SIGNIFICANT_NEWS" if credible_no_news else "COVERAGE_LIMITED",
+            exit_code=0 if credible_no_news else 4,
+            error_code=None if credible_no_news else "COVERAGE_LIMITED_NO_NEWS",
+            model_metrics=_model_metrics(generator),
+        )
+    requirements, draft_hash = _review_requirements(stories)
+    referenced_ids = {
+        evidence_id
+        for story in stories
+        for claim in story["claims"]
+        for evidence_id in claim["evidence_ids"]
+    }
+    reviewer_items = [
+        item.model_payload() for item in collected.candidates if item.evidence_id in referenced_ids
+    ]
+    reviewer_request = _canonical(
+        {
+            "generator_result": {
+                "draft": {"stories": list(stories)},
+                "structured_result_hash": draft_hash,
+            },
+            "rubric": {
+                "allowed_decisions": ["ACCEPT", "REJECT", "ABSTAIN"],
+                "contract_version": MVP_CONTRACT_VERSION,
+                "requirements": requirements,
+            },
+            "sealed_evidence": {
+                "evidence_hash": _digest(reviewer_items),
+                "items": reviewer_items,
+            },
+        }
+    )
+    reviewer = ports.provider.invoke(
+        ProviderRole.REVIEWER,
+        reviewer_request,
+        mvp_reviewer_output_schema(),
+        budget,
+        contract_version=MVP_CONTRACT_VERSION,
+    )
+    total_requests = generator.request_count + reviewer.request_count
+    if reviewer.terminal_classification is not TerminalClassification.VALIDATED:
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=total_requests,
+            status=reviewer.terminal_classification.value,
+            exit_code=_provider_exit(reviewer),
+            error_code=reviewer.error_code,
+            model_metrics=_model_metrics(generator, reviewer),
+        )
+    accepted = _accepted_stories(stories, reviewer.validated_structured_result)
+    if not accepted:
+        credible_no_news = collected.coverage is CoverageLevel.A
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=total_requests,
+            status="NO_SIGNIFICANT_NEWS" if credible_no_news else "COVERAGE_LIMITED",
+            exit_code=0 if credible_no_news else 4,
+            error_code=None if credible_no_news else "COVERAGE_LIMITED_NO_NEWS",
+            model_metrics=_model_metrics(generator, reviewer),
+        )
+    markdown = _render_markdown(selected_date, collected.coverage, accepted, evidence)
+    return _finish(
+        ports=ports,
+        run_dir=run_dir,
+        content_date=selected_date,
+        coverage=collected.coverage,
+        candidate_count=len(collected.candidates),
+        story_count=len(accepted),
+        request_count=total_requests,
+        status="PUBLISHED",
+        exit_code=0,
+        markdown=markdown,
+        model_metrics=_model_metrics(generator, reviewer),
+    )

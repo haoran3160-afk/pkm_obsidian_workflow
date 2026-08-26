@@ -21,6 +21,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .ai_daily_shadow import run_ai_daily_shadow
+
 HASH_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 ACTIVATION_NAME_PATTERN = re.compile(
     r"^(?P<generation>[0-9]{20})-(?P<activation_id>[0-9a-f-]{36})\.json$"
@@ -781,6 +783,9 @@ def execute_workflow(
                 ],
             },
         )
+    if request.mode is Mode.SHADOW and request.workflow is Workflow.AI:
+        shadow = run_ai_daily_shadow()
+        return ExecutionResult(shadow.exit_code, common | shadow.payload())
     if request.mode in {Mode.DRY_RUN, Mode.SHADOW}:
         return ExecutionResult(3, common | {"reason": "SHADOW_ENGINE_NOT_IMPLEMENTED"})
     try:

@@ -7,10 +7,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-REPOSITORY_SRC = Path(__file__).resolve().parents[1] / "src"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_SRC = REPOSITORY_ROOT / "src"
 if not (REPOSITORY_SRC / "pkm_workflow" / "cli.py").is_file():
     raise SystemExit("v7.3 source engine is missing from this checkout")
 sys.path.insert(0, str(REPOSITORY_SRC))
+sys.path.insert(1, str(REPOSITORY_ROOT))
 
 # The checkout-local engine must be selected before importing the compatibility
 # seam; this intentionally follows the deterministic sys.path bootstrap above.
