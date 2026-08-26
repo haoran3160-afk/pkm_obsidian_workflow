@@ -140,7 +140,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
         ),
         content_type="engineering",
         fulltext_enriched=True,
-        profile_refs=("priorities[0].topics[0]",),
+        profile_refs=(),
     )
     transport = _GenerateReviewTransport()
     ports = ShadowPorts(
@@ -157,7 +157,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
         runtime_root=tmp_path,
         load_user_context=lambda: {
             "user_context_hash": "sha256:" + "1" * 64,
-            "fields": {"priorities": [{"topics": ["Agent Engineering"]}]},
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
         },
     )
 
@@ -171,9 +171,11 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert result.report_path.is_file()
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert report["model_metrics"]["total_tokens"] == 280
+    assert report["personalization_refs"] == ["priorities[0].topics[0]"]
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "Example AI 发布了新的 Agent 工具" in markdown
     assert "该工具新增了可复用的浏览器操作能力" in markdown
+    assert "与你关注主题的关系" in markdown
     assert "所有网站都已完全兼容" not in markdown
     assert "原文" in markdown
     assert "https://example.com/agent-release" in markdown

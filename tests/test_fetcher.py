@@ -230,6 +230,45 @@ def test_fetch_rss_feed_enriches_summary_with_fulltext(monkeypatch):
     assert items[0]["fulltext_enriched"] is True
 
 
+def test_fulltext_enrichment_cannot_remove_an_already_relevant_item(monkeypatch):
+    feed_config = {
+        "name": "Engineering Feed",
+        "url": "https://example.com/rss.xml",
+        "note_folder": "30-Daily/AI-News",
+        "domain": "AI-News",
+        "content_type": "engineering",
+    }
+    entries = [
+        {
+            "title": "Agent release",
+            "link": "https://example.com/post",
+            "id": "g-relevant-before-enrichment",
+            "summary": "Agent workflow release.",
+            "published_parsed": time.strptime("2026-08-25", "%Y-%m-%d"),
+        }
+    ]
+    scores = iter(((8, ["initial-match"]), (0, ["fulltext-noise"])))
+    monkeypatch.setattr(fetcher, "_parse_feed", lambda _url: _feed(entries))
+    monkeypatch.setattr(fetcher, "_fetch_article_fulltext", lambda _url: "Long article body")
+    monkeypatch.setattr(fetcher, "_score_ai_interest", lambda *_args, **_kwargs: next(scores))
+
+    items = fetcher.fetch_rss_feed(
+        feed_config,
+        {},
+        "2026-08-26",
+        raw_only=False,
+        quality_config={
+            "min_ai_interest_score": 6,
+            "enable_fulltext_enrichment": True,
+            "fulltext_enrichment_per_feed": 2,
+        },
+    )
+
+    assert len(items) == 1
+    assert items[0]["score"] >= 8
+    assert items[0]["fulltext_enriched"] is True
+
+
 def test_fetch_rss_feed_return_meta_detail_contains_filter_count(monkeypatch):
     feed_config = {
         "name": "HN",

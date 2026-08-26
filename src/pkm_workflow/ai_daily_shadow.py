@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
@@ -152,14 +153,17 @@ def _candidate(source: str, item: Mapping[str, object], content_date: date) -> C
         title=title,
         link=link,
         published=str(item.get("published") or content_date.isoformat()).strip(),
-        summary=str(item.get("summary") or title).strip(),
+        summary=str(item.get("summary") or title).strip()[:8_000],
         content_type=str(item.get("content_type") or "news").strip(),
         fulltext_enriched=bool(item.get("fulltext_enriched", False)),
     )
 
 
 def _current_items(items: list[dict[str, Any]], content_date: date) -> list[dict[str, Any]]:
-    window_start = content_date - timedelta(days=1)
+    # Feeds publish at different cadences and expose date-only timestamps.  A
+    # three-calendar-day catch-up window preserves freshness without rewarding
+    # stale source-rotation entries.
+    window_start = content_date - timedelta(days=2)
     current: list[dict[str, Any]] = []
     for item in items:
         published = str(item.get("published") or "")[:10]
@@ -316,15 +320,45 @@ def _validate_user_context(value: object) -> dict[str, object]:
     return value
 
 
+def _attach_profile_refs(
+    candidates: tuple[Candidate, ...],
+    context: Mapping[str, object],
+) -> tuple[Candidate, ...]:
+    fields = context.get("fields")
+    priorities = fields.get("priorities") if isinstance(fields, dict) else None
+    if not isinstance(priorities, list):
+        return candidates
+    topic_refs: list[tuple[str, str]] = []
+    for priority_index, priority in enumerate(priorities):
+        topics = priority.get("topics") if isinstance(priority, dict) else None
+        if not isinstance(topics, list):
+            continue
+        for topic_index, topic in enumerate(topics):
+            if isinstance(topic, str) and topic.strip():
+                topic_refs.append(
+                    (topic.strip(), f"priorities[{priority_index}].topics[{topic_index}]")
+                )
+    enriched: list[Candidate] = []
+    for candidate in candidates:
+        searchable = f"{candidate.title}\n{candidate.summary}"
+        refs = tuple(
+            path
+            for topic, path in topic_refs
+            if re.search(rf"(?<!\w){re.escape(topic)}(?!\w)", searchable, re.IGNORECASE)
+        )
+        enriched.append(replace(candidate, profile_refs=refs))
+    return tuple(enriched)
+
+
 def _validate_generator_draft(
     draft: object,
     evidence: Mapping[str, Candidate],
 ) -> tuple[dict[str, Any], ...]:
     if not isinstance(draft, dict) or set(draft) != {"stories"}:
-        raise ValueError("Generator draft is invalid")
+        raise ValueError("GENERATOR_DRAFT_INVALID")
     stories = draft.get("stories")
     if not isinstance(stories, list) or len(stories) > 3:
-        raise ValueError("Generator stories are invalid")
+        raise ValueError("GENERATOR_STORIES_INVALID")
     story_ids: set[str] = set()
     claim_ids: set[str] = set()
     ranks: set[int] = set()
@@ -340,7 +374,7 @@ def _validate_generator_draft(
     )
     for story in stories:
         if not isinstance(story, dict):
-            raise ValueError("Generator story is invalid")
+            raise ValueError("GENERATOR_STORY_INVALID")
         story_id = story.get("story_id")
         rank = story.get("rank")
         claims = story.get("claims")
@@ -352,13 +386,13 @@ def _validate_generator_draft(
             or rank in ranks
             or not isinstance(claims, list)
         ):
-            raise ValueError("Generator story identity or rank is invalid")
+            raise ValueError("GENERATOR_STORY_ID_OR_RANK_INVALID")
         story_ids.add(story_id)
         ranks.add(rank)
         local_claims: dict[str, dict[str, Any]] = {}
         for claim in claims:
             if not isinstance(claim, dict):
-                raise ValueError("Generator claim is invalid")
+                raise ValueError("GENERATOR_CLAIM_INVALID")
             claim_id = claim.get("claim_id")
             evidence_ids = claim.get("evidence_ids")
             if (
@@ -369,18 +403,18 @@ def _validate_generator_draft(
                 or not evidence_ids
                 or any(not isinstance(item, str) or item not in evidence for item in evidence_ids)
             ):
-                raise ValueError("Generator claim binding is invalid")
+                raise ValueError("GENERATOR_CLAIM_BINDING_INVALID")
             claim_ids.add(claim_id)
             local_claims[claim_id] = claim
         title_claim_id = story.get("title_claim_id")
         if title_claim_id not in local_claims:
-            raise ValueError("Generator title claim is invalid")
+            raise ValueError("GENERATOR_TITLE_CLAIM_INVALID")
         for field in role_fields:
             ids = story.get(field)
             if not isinstance(ids, list) or any(item not in local_claims for item in ids):
-                raise ValueError(f"Generator {field} binding is invalid")
+                raise ValueError(f"GENERATOR_{field.upper()}_BINDING_INVALID")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
-            raise ValueError("Generator story lacks required event or importance claims")
+            raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         validated.append(story)
     return tuple(validated)
 
@@ -488,10 +522,22 @@ def _render_markdown(
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
         title = claims[story["title_claim_id"]]["statement"]
         lines.extend(("", f"## Top {story['rank']}｜{title}"))
+        has_profile_ref = any(
+            evidence[evidence_id].profile_refs
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        )
         for field, label in labels:
             texts = _claim_texts(story, field)
             if texts:
-                lines.append(f"- **{label}**：{'；'.join(texts)}")
+                display_label = (
+                    "与你关注主题的关系"
+                    if field == "impact_claim_ids" and has_profile_ref
+                    else "可能影响"
+                    if field == "impact_claim_ids"
+                    else label
+                )
+                lines.append(f"- **{display_label}**：{'；'.join(texts)}")
         actions = _claim_texts(story, "action_claim_ids")
         lines.append(f"- **行动**：{'；'.join(actions) if actions else '无需行动'}")
         evidence_ids = []
@@ -522,6 +568,7 @@ def _finish(
     markdown: str | None = None,
     error_code: str | None = None,
     model_metrics: Mapping[str, int] | None = None,
+    personalization_refs: tuple[str, ...] = (),
 ) -> ShadowResult:
     run_dir.mkdir(parents=True, exist_ok=False)
     markdown_path: Path | None = None
@@ -540,6 +587,7 @@ def _finish(
         "story_count": story_count,
         "request_count": request_count,
         "model_metrics": dict(model_metrics or {}),
+        "personalization_refs": list(personalization_refs),
         "error_code": error_code,
         "markdown_created": markdown_path is not None,
         "vault_write": False,
@@ -601,10 +649,14 @@ def run_ai_daily_shadow(
         )
     if len(collected.candidates) > 8:
         raise ValueError("curation must provide no more than eight candidates")
+    context = _validate_user_context(ports.load_user_context())
+    collected = replace(
+        collected,
+        candidates=_attach_profile_refs(collected.candidates, context),
+    )
     evidence = {item.evidence_id: item for item in collected.candidates}
     if len(evidence) != len(collected.candidates):
         raise ValueError("candidate evidence IDs must be unique")
-    context = _validate_user_context(ports.load_user_context())
     generator_request = _canonical(
         {
             "approved_user_context": context,
@@ -646,7 +698,7 @@ def run_ai_daily_shadow(
         )
     try:
         stories = _validate_generator_draft(generator.validated_structured_result, evidence)
-    except ValueError:
+    except ValueError as error:
         return _finish(
             ports=ports,
             run_dir=run_dir,
@@ -657,7 +709,7 @@ def run_ai_daily_shadow(
             request_count=generator.request_count,
             status="SCHEMA_INVALID",
             exit_code=4,
-            error_code="GENERATOR_BINDING_INVALID",
+            error_code=str(error),
             model_metrics=_model_metrics(generator),
         )
     if not stories:
@@ -741,6 +793,17 @@ def run_ai_daily_shadow(
             model_metrics=_model_metrics(generator, reviewer),
         )
     markdown = _render_markdown(selected_date, collected.coverage, accepted, evidence)
+    personalized = tuple(
+        sorted(
+            {
+                ref
+                for story in accepted
+                for claim in story["claims"]
+                for evidence_id in claim["evidence_ids"]
+                for ref in evidence[evidence_id].profile_refs
+            }
+        )
+    )
     return _finish(
         ports=ports,
         run_dir=run_dir,
@@ -753,4 +816,5 @@ def run_ai_daily_shadow(
         exit_code=0,
         markdown=markdown,
         model_metrics=_model_metrics(generator, reviewer),
+        personalization_refs=personalized,
     )

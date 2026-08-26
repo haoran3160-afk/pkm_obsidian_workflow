@@ -787,12 +787,14 @@ def fetch_rss_feed(
             if can_enrich:
                 full_text = _fetch_article_fulltext(link)
                 if full_text:
+                    initial_score = score
+                    initial_reasons = list(score_reasons)
                     summary = _clean_summary(
                         f"{summary}\n{full_text}", max_len=FULLTEXT_FETCH_MAX_CHARS
                     )
                     enriched_by_fulltext += 1
                     item["fulltext_enriched"] = True
-                    score, score_reasons = _score_ai_interest(
+                    enriched_score, enriched_reasons = _score_ai_interest(
                         title,
                         summary,
                         source_name=name,
@@ -801,11 +803,14 @@ def fetch_rss_feed(
                         ai_exclude_keywords=ai_exclude_keywords,
                     )
                     freshness_delta, freshness_reason = _freshness_adjustment(published, today)
-                    score += freshness_delta
-                    score_reasons.append(freshness_reason)
-                    if score < min_ai_interest_score:
-                        skipped_by_ai_relevance += 1
-                        continue
+                    enriched_score += freshness_delta
+                    enriched_reasons.append(freshness_reason)
+                    if enriched_score >= initial_score:
+                        score = enriched_score
+                        score_reasons = enriched_reasons
+                    else:
+                        score = initial_score
+                        score_reasons = initial_reasons
 
             item["summary"] = summary
             item["score"] = score

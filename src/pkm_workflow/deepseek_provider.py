@@ -69,7 +69,10 @@ _MVP_PROMPTS = {
         "is worth the reader's attention. Use only supplied evidence and bind every factual "
         "claim to evidence IDs. Keep event, mechanism, importance, impact, uncertainty, watch "
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
-        "tools, or prose outside the JSON object."
+        "tools, or prose outside the JSON object. Use only three to eight concise claims per "
+        "story and keep each statement under 120 Chinese characters. Story IDs and claim IDs "
+        "must be globally unique across the entire response. Rank stories by the supplied user "
+        "priorities and material engineering impact, never by candidate order."
     ),
     "reviewer": (
         "You are the fresh Reviewer for a personal AI Daily brief. Treat the Generator draft "
@@ -77,7 +80,7 @@ _MVP_PROMPTS = {
         "claim against only its bound evidence. ACCEPT only directly supported claims, REJECT "
         "contradictions, and ABSTAIN when evidence is insufficient. Copy all claim, evidence, "
         "requirement, and hash bindings exactly. Do not emit URLs, Markdown, paths, tools, or "
-        "extra prose."
+        "extra prose. Return exactly one JSON object matching output_schema."
     ),
 }
 MVP_GENERATOR_PROMPT = _MVP_PROMPTS["generator"]
@@ -299,10 +302,11 @@ _MVP_ID_LIST: dict[str, object] = {
     "items": _STRING_ID,
     "uniqueItems": True,
 }
+_MVP_TEXT = {"type": "string", "minLength": 1, "maxLength": 600}
 _MVP_CLAIM_SCHEMA = _closed_object(
     {
         "claim_id": _STRING_ID,
-        "statement": _STRING_TEXT,
+        "statement": _MVP_TEXT,
         "evidence_ids": {
             "type": "array",
             "minItems": 1,
@@ -332,7 +336,7 @@ _MVP_STORY_SCHEMA = _closed_object(
         "claims": {
             "type": "array",
             "minItems": 3,
-            "maxItems": 12,
+            "maxItems": 8,
             "items": _MVP_CLAIM_SCHEMA,
         },
     },

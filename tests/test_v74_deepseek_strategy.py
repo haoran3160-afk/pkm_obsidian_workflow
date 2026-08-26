@@ -78,7 +78,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:9dabc93f796b14ade646a95311c03d04d5c5345b66b15305309b2daa0bb6f720"
+        "sha256:460e1a8fa3fce556257588459835edd2a420e59c9b65b7d01bc8b66755c84492"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -135,6 +135,11 @@ def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories
         "claims",
     }
     assert story["additionalProperties"] is False
+    assert story["properties"]["claims"]["maxItems"] == 8
+    assert (
+        story["properties"]["claims"]["items"]["properties"]["statement"]["maxLength"]
+        == 600
+    )
 
 
 def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> None:
@@ -298,3 +303,14 @@ def test_request_body_disables_thinking_tools_and_streaming() -> None:
     assert "tools" not in body
     assert "tool_choice" not in body
     assert generator_output_schema()
+
+    reviewer_body = json.loads(
+        provider._build_request_body(  # noqa: SLF001 - fixed D-018 transport contract
+            role=ProviderRole.REVIEWER,
+            sealed_request=b"{}",
+            output_schema=mvp_reviewer_output_schema(),
+            is_repair=False,
+            contract_version=MVP_CONTRACT_VERSION,
+        )
+    )
+    assert "JSON" in reviewer_body["messages"][0]["content"]
