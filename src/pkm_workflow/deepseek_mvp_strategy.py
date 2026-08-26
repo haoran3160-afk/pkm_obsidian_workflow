@@ -15,10 +15,14 @@ from dataclasses import dataclass
 from .deepseek_provider import (
     API_URL,
     MODEL_NAME,
+    MVP_CONTRACT_VERSION,
     DeepSeekShadowProvider,
+    ProviderRole,
     deepseek_provider_contract_descriptor,
     deepseek_shadow_qualification_binding,
-    generator_output_schema,
+    mvp_generator_output_schema,
+    mvp_prompt_schedule_hash,
+    mvp_reviewer_output_schema,
     reviewer_output_schema,
 )
 
@@ -52,7 +56,11 @@ _D018_BASE: dict[str, object] = {
     "request_budget": 4,
     "production_eligible": False,
     "fallback_eligible": False,
-    "model_contract_adapter": "NOT_IMPLEMENTED",
+    "model_contract_adapter": MVP_CONTRACT_VERSION,
+    "generator_prompt_hash": mvp_prompt_schedule_hash(ProviderRole.GENERATOR),
+    "reviewer_prompt_hash": mvp_prompt_schedule_hash(ProviderRole.REVIEWER),
+    "generator_schema_hash": _hash(json.loads(mvp_generator_output_schema())),
+    "reviewer_schema_hash": _hash(json.loads(reviewer_output_schema())),
 }
 _D018_BINDING = {**_D018_BASE, "strategy_hash": _hash(_D018_BASE)}
 
@@ -65,18 +73,18 @@ def deepseek_mvp_strategy_binding() -> dict[str, object]:
 
 @dataclass(frozen=True)
 class DeepSeekMvpStrategy:
-    """Factory surface for the qualified provider; no pipeline adapter yet."""
+    """Factory surface for the shadow-only AI Daily model contract."""
 
     production_eligible: bool = False
-    model_contract_adapter: str = "NOT_IMPLEMENTED"
+    model_contract_adapter: str = MVP_CONTRACT_VERSION
 
     def new_provider(self) -> DeepSeekShadowProvider:
         return DeepSeekShadowProvider()
 
     @staticmethod
     def generator_schema() -> bytes:
-        return generator_output_schema()
+        return mvp_generator_output_schema()
 
     @staticmethod
     def reviewer_schema() -> bytes:
-        return reviewer_output_schema()
+        return mvp_reviewer_output_schema()
