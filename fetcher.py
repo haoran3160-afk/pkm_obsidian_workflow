@@ -270,6 +270,12 @@ def _fetch_article_fulltext(url: str, max_chars: int = FULLTEXT_FETCH_MAX_CHARS)
         ):
             return False
         try:
+            literal = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            literal = None
+        if literal is not None:
+            return literal.is_global
+        try:
             addresses = socket.getaddrinfo(
                 parsed.hostname,
                 parsed.port or 443,
@@ -277,8 +283,11 @@ def _fetch_article_fulltext(url: str, max_chars: int = FULLTEXT_FETCH_MAX_CHARS)
             )
         except OSError:
             return False
+        transparent_proxy_range = ipaddress.ip_network("198.18.0.0/15")
         return bool(addresses) and all(
-            ipaddress.ip_address(address[4][0]).is_global for address in addresses
+            ipaddress.ip_address(address[4][0]).is_global
+            or ipaddress.ip_address(address[4][0]) in transparent_proxy_range
+            for address in addresses
         )
 
     try:

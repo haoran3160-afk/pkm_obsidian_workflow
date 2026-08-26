@@ -581,8 +581,10 @@ def _render_markdown(
                     else label
                 )
                 lines.append(f"- **{display_label}**：{'；'.join(texts)}")
-        actions = _claim_texts(story, "action_claim_ids")
-        lines.append(f"- **行动**：{'；'.join(actions) if actions else '无需行动'}")
+        # Interest-topic matches establish relevance, not proof that the user
+        # runs the affected dependency.  Shadow therefore never turns them
+        # into migration/adoption instructions.
+        lines.append("- **行动**：无需行动")
         evidence_ids = []
         for claim in story["claims"]:
             for evidence_id in claim["evidence_ids"]:
