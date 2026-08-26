@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .deepseek_mvp_strategy import deepseek_mvp_strategy_binding
 from .deepseek_provider import (
     MVP_CONTRACT_VERSION,
     DeepSeekShadowProvider,
@@ -23,6 +25,10 @@ from .deepseek_provider import (
     TerminalClassification,
     mvp_generator_output_schema,
     mvp_reviewer_output_schema,
+)
+
+APPROVED_USER_CONTEXT_HASH = (
+    "sha256:ce307d029565fe20659ec9e43561d949ac1ec7d7ec67720bad25c7ad73460e3f"
 )
 
 
@@ -105,6 +111,29 @@ def _repository_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _git_head() -> str | None:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=_repository_root(),
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", value) else None
+
+
+def _new_run_dir(runtime_root: Path) -> Path:
+    root = runtime_root.resolve(strict=True)
+    scratch = root / "scratch"
+    runs = scratch / "runs"
+    for existing in (scratch, runs):
+        if existing.exists() and not existing.resolve(strict=True).is_relative_to(root):
+            raise ValueError("RUNTIME_PATH_ESCAPE")
+    return runs / uuid4().hex
+
+
 def _existing_state_path(root: Path, name: str) -> Path:
     local = root / name
     if local.is_file():
@@ -125,7 +154,10 @@ def _read_json_object(path: Path) -> dict[str, object]:
 def _load_approved_user_context() -> dict[str, object]:
     path = Path(r"D:\personal\obsidian_workflow\UserContextContract-v7.3.json")
     raw = _read_json_object(path)
-    return {"user_context_hash": _digest(raw), "fields": raw}
+    actual_hash = _digest(raw)
+    if actual_hash != APPROVED_USER_CONTEXT_HASH:
+        raise ValueError("USER_CONTEXT_HASH_MISMATCH")
+    return {"user_context_hash": actual_hash, "fields": raw}
 
 
 def _quality_config(config: object) -> dict[str, object]:
@@ -461,7 +493,14 @@ def _accepted_stories(
             *story["event_claim_ids"],
             *story["importance_claim_ids"],
         }
-        if any(verdicts.get(claim_id) != "ACCEPT" for claim_id in core_ids):
+        high_risk_ids = {
+            claim["claim_id"]
+            for claim in story["claims"]
+            if claim.get("claimed_risk") in {"critical", "high"}
+        }
+        if any(
+            verdicts.get(claim_id) != "ACCEPT" for claim_id in core_ids | high_risk_ids
+        ):
             continue
         kept_claims = [
             claim for claim in story["claims"] if verdicts.get(claim["claim_id"]) == "ACCEPT"
@@ -497,18 +536,22 @@ def _render_markdown(
     stories: tuple[dict[str, Any], ...],
     evidence: Mapping[str, Candidate],
 ) -> str:
-    first_importance = _claim_texts(stories[0], "importance_claim_ids")[0]
+    window_start = content_date - timedelta(days=2)
     lines = [
         "---",
         f"date: {content_date.isoformat()}",
         "type: ai-daily-shadow",
         f"coverage: {coverage.value}",
+        f"window_start: {window_start.isoformat()}",
+        f"window_end: {content_date.isoformat()}",
+        "catch_up_window: 3-calendar-days",
         "production: false",
         "---",
         "",
         f"# AI Daily · {content_date.isoformat()}",
         "",
-        f"> 今日判断：{first_importance}",
+        f"> 今日入选 {len(stories)} 条经证据与 Reviewer 双审的变化。",
+        "> 信息窗口：近 72 小时补漏；条目发布日期见各证据。",
     ]
     labels = (
         ("event_claim_ids", "发生了什么"),
@@ -549,7 +592,9 @@ def _render_markdown(
         for evidence_id in evidence_ids:
             item = evidence[evidence_id]
             label = "原文" if item.fulltext_enriched else "来源链接"
-            links.append(f"[{label} · {item.source}]({item.link})")
+            links.append(
+                f"[{label} · {item.source}]({item.link})（发布 {item.published}）"
+            )
         lines.append(f"- **证据**：{'；'.join(links)}")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -569,6 +614,7 @@ def _finish(
     error_code: str | None = None,
     model_metrics: Mapping[str, int] | None = None,
     personalization_refs: tuple[str, ...] = (),
+    audit: Mapping[str, object] | None = None,
 ) -> ShadowResult:
     run_dir.mkdir(parents=True, exist_ok=False)
     markdown_path: Path | None = None
@@ -579,6 +625,8 @@ def _finish(
     report_path = run_dir / "run-report.json"
     report = {
         "schema": "pkm.ai-daily-shadow.run.v1",
+        "git_head": _git_head(),
+        "strategy_hash": deepseek_mvp_strategy_binding()["strategy_hash"],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": status,
         "content_date": content_date.isoformat(),
@@ -588,6 +636,7 @@ def _finish(
         "request_count": request_count,
         "model_metrics": dict(model_metrics or {}),
         "personalization_refs": list(personalization_refs),
+        "audit": dict(audit or {}),
         "error_code": error_code,
         "markdown_created": markdown_path is not None,
         "vault_write": False,
@@ -619,7 +668,7 @@ def run_ai_daily_shadow(
     ports = ports or _default_ports()
     selected_date = content_date or date.today()
     collected = ports.collect(selected_date)
-    run_dir = ports.runtime_root / "scratch" / "runs" / uuid4().hex
+    run_dir = _new_run_dir(ports.runtime_root)
     if collected.coverage is CoverageLevel.INSUFFICIENT:
         return _finish(
             ports=ports,
@@ -804,6 +853,17 @@ def run_ai_daily_shadow(
             }
         )
     )
+    accepted_claim_ids = sorted(
+        claim["claim_id"] for story in accepted for claim in story["claims"]
+    )
+    selected_urls = sorted(
+        {
+            evidence[evidence_id].link
+            for story in accepted
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        }
+    )
     return _finish(
         ports=ports,
         run_dir=run_dir,
@@ -817,4 +877,13 @@ def run_ai_daily_shadow(
         markdown=markdown,
         model_metrics=_model_metrics(generator, reviewer),
         personalization_refs=personalized,
+        audit={
+            "evidence_hash": _digest(
+                [item.model_payload() for item in collected.candidates]
+            ),
+            "generator_result_hash": generator.structured_result_hash,
+            "review_decisions_hash": reviewer.structured_result_hash,
+            "accepted_claim_ids": accepted_claim_ids,
+            "selected_urls": selected_urls,
+        },
     )

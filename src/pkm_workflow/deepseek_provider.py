@@ -72,7 +72,10 @@ _MVP_PROMPTS = {
         "tools, or prose outside the JSON object. Use only three to eight concise claims per "
         "story and keep each statement under 120 Chinese characters. Story IDs and claim IDs "
         "must be globally unique across the entire response. Rank stories by the supplied user "
-        "priorities and material engineering impact, never by candidate order."
+        "priorities and material engineering impact, never by candidate order. Leave action "
+        "claims empty unless the approved context explicitly shows the user uses the affected "
+        "technology. Uncertainty and watch claims must name an evidence-specific unknown or "
+        "signal; never fill them with generic stability or community-feedback advice."
     ),
     "reviewer": (
         "You are the fresh Reviewer for a personal AI Daily brief. Treat the Generator draft "
@@ -80,7 +83,9 @@ _MVP_PROMPTS = {
         "claim against only its bound evidence. ACCEPT only directly supported claims, REJECT "
         "contradictions, and ABSTAIN when evidence is insufficient. Copy all claim, evidence, "
         "requirement, and hash bindings exactly. Do not emit URLs, Markdown, paths, tools, or "
-        "extra prose. Return exactly one JSON object matching output_schema."
+        "extra prose. ABSTAIN from claims that turn a general topic match into a statement about "
+        "the user's current stack, or recommend migration/adoption without explicit context and "
+        "evidence. Return exactly one JSON object matching output_schema."
     ),
 }
 MVP_GENERATOR_PROMPT = _MVP_PROMPTS["generator"]

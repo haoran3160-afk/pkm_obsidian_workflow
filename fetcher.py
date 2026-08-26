@@ -7,15 +7,17 @@ Includes retry with exponential backoff via tenacity.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
+import socket
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from html import unescape
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import feedparser
 import requests
@@ -257,15 +259,48 @@ def _extract_primary_text_from_html(raw_html: str, max_chars: int) -> str:
 
 def _fetch_article_fulltext(url: str, max_chars: int = FULLTEXT_FETCH_MAX_CHARS) -> str:
     """Fetch article HTML and extract readable text for higher-fidelity summarization."""
-    if not url.startswith(("http://", "https://")):
-        return ""
-    try:
-        response = HTTP_SESSION.get(
-            url,
-            timeout=FULLTEXT_FETCH_TIMEOUT_SECONDS,
-            headers=FULLTEXT_HEADERS,
-            allow_redirects=True,
+
+    def public_https(candidate: str) -> bool:
+        parsed = urlsplit(candidate)
+        if (
+            parsed.scheme.lower() != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            return False
+        try:
+            addresses = socket.getaddrinfo(
+                parsed.hostname,
+                parsed.port or 443,
+                type=socket.SOCK_STREAM,
+            )
+        except OSError:
+            return False
+        return bool(addresses) and all(
+            ipaddress.ip_address(address[4][0]).is_global for address in addresses
         )
+
+    try:
+        current_url = url
+        response = None
+        for _redirect in range(4):
+            if not public_https(current_url):
+                return ""
+            response = HTTP_SESSION.get(
+                current_url,
+                timeout=FULLTEXT_FETCH_TIMEOUT_SECONDS,
+                headers=FULLTEXT_HEADERS,
+                allow_redirects=False,
+            )
+            if response.status_code not in {301, 302, 303, 307, 308}:
+                break
+            location = response.headers.get("location", "").strip()
+            if not location:
+                return ""
+            current_url = urljoin(current_url, location)
+        if response is None or response.status_code in {301, 302, 303, 307, 308}:
+            return ""
         response.raise_for_status()
         content_type = response.headers.get("content-type", "").lower()
         if "html" not in content_type and "xml" not in content_type:

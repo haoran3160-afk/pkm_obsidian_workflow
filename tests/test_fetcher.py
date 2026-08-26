@@ -269,6 +269,24 @@ def test_fulltext_enrichment_cannot_remove_an_already_relevant_item(monkeypatch)
     assert items[0]["fulltext_enriched"] is True
 
 
+def test_fulltext_fetch_rejects_private_targets_and_redirects(monkeypatch):
+    calls: list[str] = []
+
+    class RedirectResponse:
+        status_code = 302
+        headers = {"location": "http://127.0.0.1/private"}
+
+    def fake_get(url: str, **_kwargs: object) -> RedirectResponse:
+        calls.append(url)
+        return RedirectResponse()
+
+    monkeypatch.setattr(fetcher.HTTP_SESSION, "get", fake_get)
+
+    assert fetcher._fetch_article_fulltext("http://127.0.0.1/private") == ""
+    assert fetcher._fetch_article_fulltext("https://93.184.216.34/article") == ""
+    assert calls == ["https://93.184.216.34/article"]
+
+
 def test_fetch_rss_feed_return_meta_detail_contains_filter_count(monkeypatch):
     feed_config = {
         "name": "HN",

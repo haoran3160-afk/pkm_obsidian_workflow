@@ -21,11 +21,13 @@ class _GenerateReviewTransport:
         empty: bool = False,
         reject_claim: str = "uncertainty-claim",
         unknown_evidence: bool = False,
+        uncertainty_risk: str = "low",
     ) -> None:
         self.calls = 0
         self.empty = empty
         self.reject_claim = reject_claim
         self.unknown_evidence = unknown_evidence
+        self.uncertainty_risk = uncertainty_risk
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
@@ -78,7 +80,7 @@ class _GenerateReviewTransport:
                                 "claim_id": "uncertainty-claim",
                                 "statement": "所有网站都已完全兼容。",
                                 "evidence_ids": ["evidence-1"],
-                                "claimed_risk": "high",
+                                "claimed_risk": self.uncertainty_risk,
                             },
                         ],
                     }
@@ -172,12 +174,17 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert report["model_metrics"]["total_tokens"] == 280
     assert report["personalization_refs"] == ["priorities[0].topics[0]"]
+    assert len(report["git_head"]) == 40
+    assert report["audit"]["selected_urls"] == ["https://example.com/agent-release"]
+    assert report["audit"]["generator_result_hash"].startswith("sha256:")
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "Example AI 发布了新的 Agent 工具" in markdown
     assert "该工具新增了可复用的浏览器操作能力" in markdown
     assert "与你关注主题的关系" in markdown
     assert "所有网站都已完全兼容" not in markdown
     assert "原文" in markdown
+    assert "近 72 小时补漏" in markdown
+    assert "发布 2026-08-25" in markdown
     assert "https://example.com/agent-release" in markdown
     assert "无需行动" in markdown
     assert "## Top 2" not in markdown
@@ -213,6 +220,42 @@ def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
     assert result.markdown_path is None
     assert result.report_path.is_file()
     assert transport.calls == 0
+
+
+def test_rejected_high_risk_optional_claim_removes_the_story(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI Agent tool release",
+        link="https://example.com/agent-release",
+        published="2026-08-25",
+        summary="Example AI released a reusable browser operation tool for agents.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=24,
+            healthy_sources=24,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(uncertainty_risk="high"),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
+
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.markdown_path is None
+    assert result.story_count == 0
 
 
 def test_auth_failure_returns_exit_8_and_never_creates_markdown(tmp_path: Path) -> None:
