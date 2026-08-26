@@ -173,6 +173,10 @@ def _quality_config(config: object) -> dict[str, object]:
     return {field: getattr(config, field) for field in fields}
 
 
+def _healthy_fetch(meta: Mapping[str, object]) -> bool:
+    return meta.get("reason_code") in {"OK", "ZERO_YIELD"}
+
+
 def _candidate(source: str, item: Mapping[str, object], content_date: date) -> Candidate:
     title = str(item.get("title") or "Untitled").strip()
     link = str(item.get("link") or "").strip()
@@ -238,7 +242,7 @@ def _collect_existing_sources(content_date: date) -> CollectionResult:
             quality_config=quality,
             return_meta=True,
         )
-        if meta.get("status") != "error":
+        if _healthy_fetch(meta):
             healthy_sources += 1
         items_by_source[feed.name].extend(_current_items(items, content_date))
     for channel in youtube_channels:
@@ -248,7 +252,7 @@ def _collect_existing_sources(content_date: date) -> CollectionResult:
             max_videos=config.max_videos_per_channel,
             return_meta=True,
         )
-        if meta.get("status") != "error":
+        if _healthy_fetch(meta):
             healthy_sources += 1
         items_by_source[channel.name].extend(_current_items(videos, content_date))
     coverage_bps = healthy_sources * 10_000 // configured_sources
@@ -488,18 +492,8 @@ def _accepted_stories(
     }
     accepted: list[dict[str, Any]] = []
     for story in stories:
-        core_ids = {
-            story["title_claim_id"],
-            *story["event_claim_ids"],
-            *story["importance_claim_ids"],
-        }
-        high_risk_ids = {
-            claim["claim_id"]
-            for claim in story["claims"]
-            if claim.get("claimed_risk") in {"critical", "high"}
-        }
         if any(
-            verdicts.get(claim_id) != "ACCEPT" for claim_id in core_ids | high_risk_ids
+            verdicts.get(claim["claim_id"]) != "ACCEPT" for claim in story["claims"]
         ):
             continue
         kept_claims = [
@@ -552,39 +546,21 @@ def _render_markdown(
         "",
         f"> 今日入选 {len(stories)} 条经证据与 Reviewer 双审的变化。",
         "> 信息窗口：近 72 小时补漏；条目发布日期见各证据。",
+        "> 行动结论：无需行动（没有经 Reviewer 接受且与明确使用场景绑定的行动项）。",
     ]
     labels = (
         ("event_claim_ids", "发生了什么"),
         ("mechanism_claim_ids", "机制"),
         ("importance_claim_ids", "为什么重要"),
-        ("impact_claim_ids", "对你的影响"),
-        ("uncertainty_claim_ids", "不确定性"),
-        ("watch_claim_ids", "观察信号"),
     )
     for story in stories:
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
         title = claims[story["title_claim_id"]]["statement"]
         lines.extend(("", f"## Top {story['rank']}｜{title}"))
-        has_profile_ref = any(
-            evidence[evidence_id].profile_refs
-            for claim in story["claims"]
-            for evidence_id in claim["evidence_ids"]
-        )
         for field, label in labels:
             texts = _claim_texts(story, field)
             if texts:
-                display_label = (
-                    "与你关注主题的关系"
-                    if field == "impact_claim_ids" and has_profile_ref
-                    else "可能影响"
-                    if field == "impact_claim_ids"
-                    else label
-                )
-                lines.append(f"- **{display_label}**：{'；'.join(texts)}")
-        # Interest-topic matches establish relevance, not proof that the user
-        # runs the affected dependency.  Shadow therefore never turns them
-        # into migration/adoption instructions.
-        lines.append("- **行动**：无需行动")
+                lines.append(f"- **{label}**：{'；'.join(texts)}")
         evidence_ids = []
         for claim in story["claims"]:
             for evidence_id in claim["evidence_ids"]:
@@ -620,10 +596,11 @@ def _finish(
 ) -> ShadowResult:
     run_dir.mkdir(parents=True, exist_ok=False)
     markdown_path: Path | None = None
-    if markdown is not None:
-        markdown_path = run_dir / f"AI-Daily-{content_date.isoformat()}-shadow.md"
-        with markdown_path.open("x", encoding="utf-8", newline="\n") as handle:
-            handle.write(markdown)
+    planned_markdown_path = (
+        run_dir / f"AI-Daily-{content_date.isoformat()}-shadow.md"
+        if markdown is not None
+        else None
+    )
     report_path = run_dir / "run-report.json"
     report = {
         "schema": "pkm.ai-daily-shadow.run.v1",
@@ -640,12 +617,18 @@ def _finish(
         "personalization_refs": list(personalization_refs),
         "audit": dict(audit or {}),
         "error_code": error_code,
-        "markdown_created": markdown_path is not None,
+        "markdown_expected": planned_markdown_path is not None,
         "vault_write": False,
         "production_activation": False,
     }
     with report_path.open("x", encoding="utf-8", newline="\n") as handle:
         handle.write(_canonical(report).decode("utf-8") + "\n")
+    if markdown is not None and planned_markdown_path is not None:
+        backing_path = run_dir / "rendered-content.txt"
+        with backing_path.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(markdown)
+        planned_markdown_path.hardlink_to(backing_path)
+        markdown_path = planned_markdown_path
     return ShadowResult(
         exit_code=exit_code,
         status=status,

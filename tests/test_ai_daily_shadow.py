@@ -4,11 +4,14 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from pkm_workflow.ai_daily_shadow import (
     Candidate,
     CollectionResult,
     CoverageLevel,
     ShadowPorts,
+    _healthy_fetch,
     run_ai_daily_shadow,
 )
 from pkm_workflow.deepseek_provider import DeepSeekShadowProvider, TransportResponse
@@ -144,7 +147,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
         fulltext_enriched=True,
         profile_refs=(),
     )
-    transport = _GenerateReviewTransport()
+    transport = _GenerateReviewTransport(reject_claim="")
     ports = ShadowPorts(
         collect=lambda _content_date: CollectionResult(
             coverage=CoverageLevel.A,
@@ -180,7 +183,6 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "Example AI 发布了新的 Agent 工具" in markdown
     assert "该工具新增了可复用的浏览器操作能力" in markdown
-    assert "与你关注主题的关系" in markdown
     assert "所有网站都已完全兼容" not in markdown
     assert "原文" in markdown
     assert "近 72 小时补漏" in markdown
@@ -222,7 +224,7 @@ def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
     assert transport.calls == 0
 
 
-def test_rejected_high_risk_optional_claim_removes_the_story(tmp_path: Path) -> None:
+def test_rejected_low_risk_optional_claim_still_removes_the_story(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Example AI",
@@ -242,7 +244,7 @@ def test_rejected_high_risk_optional_claim_removes_the_story(tmp_path: Path) -> 
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
-            transport=_GenerateReviewTransport(uncertainty_risk="high"),
+            transport=_GenerateReviewTransport(uncertainty_risk="low"),
         ),
         runtime_root=tmp_path,
         load_user_context=lambda: {
@@ -256,6 +258,58 @@ def test_rejected_high_risk_optional_claim_removes_the_story(tmp_path: Path) -> 
     assert result.status == "NO_SIGNIFICANT_NEWS"
     assert result.markdown_path is None
     assert result.story_count == 0
+
+
+def test_only_success_or_zero_yield_counts_as_healthy_coverage() -> None:
+    assert _healthy_fetch({"status": "ok", "reason_code": "OK"}) is True
+    assert _healthy_fetch({"status": "warn", "reason_code": "ZERO_YIELD"}) is True
+    assert _healthy_fetch({"status": "warn", "reason_code": "NETWORK_ERROR"}) is False
+
+
+def test_report_failure_cannot_leave_a_markdown_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI Agent tool release",
+        link="https://example.com/agent-release",
+        published="2026-08-25",
+        summary="Example AI released a reusable browser operation tool for agents.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=24,
+            healthy_sources=24,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {},
+        },
+    )
+    original_open = Path.open
+
+    def fail_report(path: Path, *args: object, **kwargs: object):
+        if path.name == "run-report.json":
+            raise OSError("injected report failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_report)
+
+    with pytest.raises(OSError, match="injected report failure"):
+        run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
+
+    assert list(tmp_path.rglob("*.md")) == []
 
 
 def test_auth_failure_returns_exit_8_and_never_creates_markdown(tmp_path: Path) -> None:
