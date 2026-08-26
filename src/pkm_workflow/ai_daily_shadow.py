@@ -549,7 +549,6 @@ def _render_markdown(
         "> 行动结论：无需行动（没有经 Reviewer 接受且与明确使用场景绑定的行动项）。",
     ]
     labels = (
-        ("event_claim_ids", "发生了什么"),
         ("mechanism_claim_ids", "机制"),
         ("importance_claim_ids", "为什么重要"),
     )
@@ -607,7 +606,7 @@ def _finish(
         "git_head": _git_head(),
         "strategy_hash": deepseek_mvp_strategy_binding()["strategy_hash"],
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": status,
+        "status": "READY_FOR_SHADOW_LINK" if markdown is not None else status,
         "content_date": content_date.isoformat(),
         "coverage": coverage.value,
         "candidate_count": candidate_count,

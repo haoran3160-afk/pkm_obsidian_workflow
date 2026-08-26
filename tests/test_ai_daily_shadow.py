@@ -44,7 +44,7 @@ class _GenerateReviewTransport:
                         "rank": 1,
                         "title_claim_id": "title-claim",
                         "event_claim_ids": ["event-claim"],
-                        "mechanism_claim_ids": [],
+                        "mechanism_claim_ids": ["event-claim"],
                         "importance_claim_ids": ["importance-claim"],
                         "impact_claim_ids": ["impact-claim"],
                         "uncertainty_claim_ids": ["uncertainty-claim"],
@@ -310,6 +310,54 @@ def test_report_failure_cannot_leave_a_markdown_artifact(
         run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
 
     assert list(tmp_path.rglob("*.md")) == []
+
+
+def test_link_failure_leaves_only_a_nonterminal_ready_report(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI Agent tool release",
+        link="https://example.com/agent-release",
+        published="2026-08-25",
+        summary="Example AI released a reusable browser operation tool for agents.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=24,
+            healthy_sources=24,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {},
+        },
+    )
+
+    monkeypatch.setattr(
+        Path,
+        "hardlink_to",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("injected link failure")),
+    )
+
+    with pytest.raises(OSError, match="injected link failure"):
+        run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
+
+    assert list(tmp_path.rglob("*.md")) == []
+    report_paths = list(tmp_path.rglob("run-report.json"))
+    assert len(report_paths) == 1
+    report = json.loads(report_paths[0].read_text(encoding="utf-8"))
+    assert report["status"] == "READY_FOR_SHADOW_LINK"
 
 
 def test_auth_failure_returns_exit_8_and_never_creates_markdown(tmp_path: Path) -> None:
