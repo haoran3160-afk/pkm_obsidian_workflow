@@ -237,6 +237,48 @@ def test_short_feed_preview_does_not_count_as_assessment_or_claim_evidence() -> 
     assert result.candidates == ()
 
 
+def test_short_cognitive_metadata_can_qualify_after_verified_fulltext() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_stratechery":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            healthy=True,
+            zero_yield=False,
+            reason_code="OK",
+            items=(
+                MetadataItem(
+                    item_native_id="stratechery-autonomy",
+                    title="Autonomy and Innovation",
+                    canonical_url="https://example.com/autonomy-and-innovation",
+                    published_at="2026-08-24",
+                    summary=(
+                        "A framework challenging assumptions about institutional incentives "
+                        "and innovation."
+                    ),
+                    content_type="essay",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Verified public essay body and evidence. " * 40,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    candidate = result.candidates[0]
+    assert candidate.story_type == "cognition"
+    assert candidate.metadata_score >= 5000
+
+
 def test_verified_fulltext_upgrades_evidence_availability(tmp_path: Path) -> None:
     catalog = load_source_catalog(MANIFEST)
     core_ids = {source.source_id for source in catalog.operational_coverage_sources}

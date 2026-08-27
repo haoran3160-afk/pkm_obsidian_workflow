@@ -179,6 +179,9 @@ _PILLAR_TERMS = {
         "startup",
         "saas",
         "product",
+        "build",
+        "built",
+        "made",
         "revenue",
         "mrr",
         "customer",
@@ -187,6 +190,8 @@ _PILLAR_TERMS = {
         "launch",
         "bootstrap",
         "solo",
+        "user",
+        "review",
     ),
     "VC": (
         "investment",
@@ -403,9 +408,7 @@ def _metadata_score(
     quality_value = source_quality_scores[source.evidence_role]
     if type(quality_value) is not int:
         raise ValueError("SOURCE_QUALITY_SCORE_INVALID")
-    evidence_precheck = 1500 if item.content_type == "paper" else 1000
-    if len(item.summary.strip()) < 200:
-        evidence_precheck = 0
+    evidence_precheck = _evidence_precheck_score(item)
     if any(term.casefold() in text for term in source.exclude_terms):
         return -1
     hype_penalty = -1000 if any(term in text for term in _HYPE_TERMS) else 0
@@ -419,6 +422,12 @@ def _metadata_score(
         + hype_penalty
         + relevance_penalty
     )
+
+
+def _evidence_precheck_score(item: MetadataItem) -> int:
+    if len(item.summary.strip()) < 200:
+        return 0
+    return 1500 if item.content_type == "paper" else 1000
 
 
 def _ranked_metadata(
@@ -453,7 +462,13 @@ def _ranked_metadata(
                 user_context=user_context,
                 source_quality_scores=source_quality_scores,
             )
-            if score < quality_threshold:
+            discovery_threshold = max(0, quality_threshold - 1200)
+            required_score = (
+                discovery_threshold
+                if _evidence_precheck_score(item) == 0
+                else quality_threshold
+            )
+            if score < required_score:
                 continue
             ranked.append(_RankedItem(source=source, item=item, metadata_score=score))
     ranked.sort(
@@ -521,7 +536,13 @@ def _is_public_fulltext(value: str) -> bool:
     return not (access_signal and reading_signal)
 
 
-def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Candidate:
+def _candidate(
+    row: _RankedItem,
+    evidence_text: str,
+    evidence_kind: str,
+    *,
+    metadata_score: int | None = None,
+) -> Candidate:
     source = row.source
     item = row.item
     evidence_id = "evidence-" + hashlib.sha256(
@@ -547,7 +568,7 @@ def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Cand
         canonical_origin_id=source.canonical_origin_id,
         evidence_role=source.evidence_role,
         pillars=source.pillars,
-        metadata_score=row.metadata_score,
+        metadata_score=row.metadata_score if metadata_score is None else metadata_score,
         access_state=AccessState.FULL_FREE,
         evidence_kind=evidence_kind,
         story_type=story_type,
@@ -636,6 +657,18 @@ def collect_v75_candidates(
                 }
             )
             continue
+        final_metadata_score = (
+            row.metadata_score + 1500 - _evidence_precheck_score(row.item)
+        )
+        if final_metadata_score < _policy_int(policies, "metadata_quality_threshold"):
+            exclusions.append(
+                {
+                    "source_id": row.source.source_id,
+                    "item_native_id": row.item.item_native_id,
+                    "reason": "FULLTEXT_QUALITY_BELOW_THRESHOLD",
+                }
+            )
+            continue
         if _is_paid_learning_promotion(
             f"{row.item.title}\n{row.item.summary}\n{fulltext}"
         ):
@@ -647,7 +680,14 @@ def collect_v75_candidates(
                 }
             )
             continue
-        candidates.append(_candidate(row, fulltext, "CANONICAL_EXCERPT"))
+        candidates.append(
+            _candidate(
+                row,
+                fulltext,
+                "CANONICAL_EXCERPT",
+                metadata_score=final_metadata_score,
+            )
+        )
         source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
     assessment_source_ids.update(
         candidate.source_id
