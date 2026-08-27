@@ -516,6 +516,8 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_PER_STORY_ACTION_LIMIT_EXCEEDED")
         fields = context.get("fields")
         is_v75 = isinstance(fields, dict) and fields.get("schema_version") == "7.5"
+        if is_v75 and len(story["mechanism_claim_ids"]) < 2:
+            raise ValueError("GENERATOR_DETAIL_DEPTH_REQUIRED")
         if is_v75 and not story["impact_claim_ids"]:
             raise ValueError("GENERATOR_PERSONAL_IMPACT_REQUIRED")
         if any(
@@ -748,23 +750,73 @@ def _render_markdown(
     ]
     if evidence_level is CoverageLevel.B:
         lines.append("> Evidence B：部分 CORE 来源只有有限 assessment evidence。")
-    labels = (
-        ("event_claim_ids", "发生了什么"),
-        ("mechanism_claim_ids", "关键细节"),
-        ("importance_claim_ids", "为什么值得注意"),
-        ("impact_claim_ids", "与你的连接"),
-        ("uncertainty_claim_ids", "证据边界"),
-        ("watch_claim_ids", "继续观察"),
-        ("action_claim_ids", "可以做什么"),
-    )
+    label_sets = {
+        "research": (
+            ("event_claim_ids", "研究发现"),
+            ("mechanism_claim_ids", "方法与证据"),
+            ("importance_claim_ids", "相对已有工作的增量"),
+            ("impact_claim_ids", "对你研究的启发"),
+            ("uncertainty_claim_ids", "证据边界"),
+            ("watch_claim_ids", "可验证问题与观察信号"),
+            ("action_claim_ids", "可做的复现或实验"),
+        ),
+        "ai_practice": (
+            ("event_claim_ids", "真实变化"),
+            ("mechanism_claim_ids", "方法与失败机制"),
+            ("importance_claim_ids", "为什么值得采用或警惕"),
+            ("impact_claim_ids", "如何迁移到你的工作流"),
+            ("uncertainty_claim_ids", "适用边界"),
+            ("watch_claim_ids", "验证信号"),
+            ("action_claim_ids", "建议实验"),
+        ),
+        "builder": (
+            ("event_claim_ids", "产品与用户"),
+            ("mechanism_claim_ids", "MVP、验证与分发"),
+            ("importance_claim_ids", "结果与可复制性"),
+            ("impact_claim_ids", "对你的产品启示"),
+            ("uncertainty_claim_ids", "商业边界"),
+            ("watch_claim_ids", "下一步商业信号"),
+            ("action_claim_ids", "可复用动作"),
+        ),
+        "vc": (
+            ("event_claim_ids", "资本在押注什么"),
+            ("mechanism_claim_ids", "为什么现在"),
+            ("importance_claim_ids", "Moat、经济性与风险"),
+            ("impact_claim_ids", "对 Builder 的启示"),
+            ("uncertainty_claim_ids", "反方证据"),
+            ("watch_claim_ids", "观察信号"),
+            ("action_claim_ids", "下一步判断"),
+        ),
+        "cognition": (
+            ("event_claim_ids", "被挑战的默认假设"),
+            ("mechanism_claim_ids", "新的解释框架"),
+            ("importance_claim_ids", "为什么这会改变判断"),
+            ("impact_claim_ids", "如何改变你的决策"),
+            ("uncertainty_claim_ids", "框架边界"),
+            ("watch_claim_ids", "需要继续检验什么"),
+            ("action_claim_ids", "思考实验"),
+        ),
+    }
     for story in stories:
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
         title = claims[story["title_claim_id"]]["statement"]
         lines.extend(("", f"## Top {story['rank']}｜{title}"))
+        story_evidence_ids = {
+            evidence_id
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        }
+        story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
+        story_type = next(iter(story_types)) if len(story_types) == 1 else "ai_practice"
+        labels = label_sets[story_type]
         for field, label in labels:
             texts = _claim_texts(story, field)
             if texts:
-                lines.append(f"- **{label}**：{'；'.join(texts)}")
+                if field == "mechanism_claim_ids" and len(texts) > 1:
+                    lines.append(f"- **{label}**：")
+                    lines.extend(f"  - {text}" for text in texts)
+                else:
+                    lines.append(f"- **{label}**：{'；'.join(texts)}")
         evidence_ids = []
         for claim in story["claims"]:
             for evidence_id in claim["evidence_ids"]:

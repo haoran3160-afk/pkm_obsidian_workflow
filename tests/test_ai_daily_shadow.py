@@ -34,6 +34,7 @@ class _GenerateReviewTransport:
         reviewer_http_status: int = 200,
         duplicate_story_evidence: bool = False,
         importance_statement: str = "这会减少 Agent 工作流中的重复浏览器脚本。",
+        single_mechanism: bool = False,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -48,6 +49,7 @@ class _GenerateReviewTransport:
         self.reviewer_http_status = reviewer_http_status
         self.duplicate_story_evidence = duplicate_story_evidence
         self.importance_statement = importance_statement
+        self.single_mechanism = single_mechanism
         self.generator_profile_refs: list[str] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
@@ -110,15 +112,32 @@ class _GenerateReviewTransport:
                     "浏览器操作被封装为可复用工具接口。",
                     "medium",
                 ),
+                *(
+                    []
+                    if self.single_mechanism
+                    else [
+                        claim(
+                            "mechanism-claim-two",
+                            "工具接口保留了可验证的操作结果与失败状态。",
+                            "medium",
+                        )
+                    ]
+                ),
                 claim(
                     "importance-claim",
                     self.importance_statement,
                     "medium",
                 ),
-                claim(
-                    "uncertainty-claim",
-                    self.uncertainty_statement,
-                    self.uncertainty_risk,
+                *(
+                    []
+                    if self.include_watch_and_action
+                    else [
+                        claim(
+                            "uncertainty-claim",
+                            self.uncertainty_statement,
+                            self.uncertainty_risk,
+                        )
+                    ]
                 ),
             ]
             if context_ref and not self.omit_impact:
@@ -158,12 +177,18 @@ class _GenerateReviewTransport:
                         "rank": 1,
                         "title_claim_id": "title-claim",
                         "event_claim_ids": ["event-claim"],
-                        "mechanism_claim_ids": ["mechanism-claim"],
+                        "mechanism_claim_ids": (
+                            ["mechanism-claim"]
+                            if self.single_mechanism
+                            else ["mechanism-claim", "mechanism-claim-two"]
+                        ),
                         "importance_claim_ids": ["importance-claim"],
                         "impact_claim_ids": (
                             ["impact-claim"] if context_ref and not self.omit_impact else []
                         ),
-                        "uncertainty_claim_ids": ["uncertainty-claim"],
+                        "uncertainty_claim_ids": (
+                            [] if self.include_watch_and_action else ["uncertainty-claim"]
+                        ),
                         "watch_claim_ids": (
                             ["watch-claim"] if self.include_watch_and_action else []
                         ),
@@ -177,7 +202,7 @@ class _GenerateReviewTransport:
             if self.duplicate_story_evidence and structured["stories"]:
                 duplicate = json.loads(json.dumps(structured["stories"][0]))
                 id_map = {
-                    claim["claim_id"]: f"{claim['claim_id']}-two"
+                    claim["claim_id"]: f"{claim['claim_id']}-duplicate"
                     for claim in duplicate["claims"]
                 }
                 duplicate["story_id"] = "story-2"
@@ -372,6 +397,82 @@ def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_PERSONAL_IMPACT_REQUIRED"
     assert result.markdown_path is None
+
+
+def test_v75_story_requires_two_distinct_evidence_details(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="SWE-bench harness evaluation study",
+        link="https://example.com/harness-study",
+        published="2026-08-26",
+        summary="A full harness evaluation study with methods and benchmark evidence.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", single_mechanism=True
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_DETAIL_DEPTH_REQUIRED"
+    assert result.markdown_path is None
+
+
+def test_research_story_renders_type_specific_takeaway_and_detail_list(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="SWE-bench harness evaluation study",
+        link="https://example.com/harness-study",
+        published="2026-08-26",
+        summary="A full harness evaluation study with methods and benchmark evidence.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "**方法与证据**" in markdown
+    assert "**相对已有工作的增量**" in markdown
+    assert "**对你研究的启发**" in markdown
+    assert "  - 浏览器操作被封装为可复用工具接口。" in markdown
+    assert "  - 工具接口保留了可验证的操作结果与失败状态。" in markdown
 
 
 def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(

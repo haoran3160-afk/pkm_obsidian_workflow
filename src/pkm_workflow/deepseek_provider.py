@@ -72,8 +72,8 @@ _MVP_PROMPTS = {
         "claim to evidence IDs. Each evidence_id may support at most one story; do not split a roundup or candidate into multiple stories. "
         "For editorial or action claims, copy context_refs only from candidate profile_refs or exact approved context paths; never prefix a copied path with fields and never invent a path. Every story must include an impact claim using a semantic purpose, selection question, prior knowledge, project, or approved anchor reference; pillar_id alone is not a semantic personalization reference. Keep event, mechanism, importance, impact, uncertainty, watch "
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
-        "tools, or prose outside the JSON object. Use only three to eight concise claims per "
-        "story and keep each statement under 120 Chinese characters. Story IDs and claim IDs "
+        "tools, or prose outside the JSON object. Use five to eight substantive claims per "
+        "story, emit two or three distinct mechanism/detail claims, and keep each statement under 220 Chinese characters. Story IDs and claim IDs "
         "must be globally unique across the entire response. Rank stories by the supplied user "
         "priorities and material engineering impact, never by candidate order. Leave action "
         "claims empty unless the approved context explicitly shows the user uses the affected "
@@ -85,6 +85,11 @@ _MVP_PROMPTS = {
         "Across the whole response emit at most two action claims; omit actions from lower-ranked stories rather than exceeding this limit. "
         "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
         "Use only source-scoped superlatives: first results never means the world's first product, and an organization's first product must remain explicitly scoped to that organization. existing revenue or valuation cannot validate a newly announced direction; never say existing scale reflects or supports the new trend. without adoption or result evidence, say only that company scale makes the direction worth observing. "
+        "Research candidates: identify the research problem, method or evaluation evidence, limits, the increment relative to known work such as ReAct or SWE-bench when applicable, and one testable research question with a variable, baseline, or metric. "
+        "AI-practice candidates: identify the real failure mode, why the method works, its operating boundary, and a small verification experiment. "
+        "Builder candidates: explain the user problem, MVP cut, validation or distribution evidence, observed result, and one transferable move without turning promotion into advice. "
+        "VC candidates: identify the layer being funded, why now, delivery economics or moat, contrary evidence, and the implication for a builder. "
+        "Cognition candidates: name the default assumption being challenged, the new explanatory frame, its boundary, and the decision it would change. "
         "Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),
@@ -98,6 +103,7 @@ _MVP_PROMPTS = {
         "the user's current stack, or recommend migration/adoption without explicit context and "
         "evidence. Verify editorial and action claims against the supplied approved context, and "
         "an editorial_inference need not appear verbatim in the source: ACCEPT it when evidence supports its factual premise, an exact approved context_ref supports personal relevance, and the wording is cautious and non-causal. Continue to require direct evidence for every fact claim. "
+        "ABSTAIN when mechanism/detail claims merely repeat the event, or when personal impact only says a topic is relevant without naming a concrete research, workflow, product, investment, or decision consequence. "
         "REJECT unscoped first/only/world-leading claims unless the source explicitly supports that exact scope. REJECT claims that use pre-existing revenue, valuation, or scale to prove a newly announced product direction without adoption or outcome evidence. "
         "ABSTAIN when a context reference does not support the inference or action. Return exactly "
         "one JSON object matching output_schema."
@@ -1722,6 +1728,7 @@ class DeepSeekShadowProvider:
             "source",
             "source_complete",
             "source_id",
+            "story_type",
             "summary",
             "title",
         }
@@ -1733,6 +1740,8 @@ class DeepSeekShadowProvider:
             or type(item.get("source_complete")) is not bool
             or item.get("access_state") != "FULL_FREE"
             or item.get("evidence_kind") not in {"CANONICAL_EXCERPT", "PUBLIC_ABSTRACT"}
+            or item.get("story_type")
+            not in {"research", "ai_practice", "builder", "vc", "cognition"}
             or not isinstance(item.get("pillars"), list)
             or not item["pillars"]
             or any(not isinstance(pillar, str) or not pillar for pillar in item["pillars"])

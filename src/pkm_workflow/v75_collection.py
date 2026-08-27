@@ -71,6 +71,7 @@ class Candidate:
     access_state: AccessState = AccessState.FULL_FREE
     evidence_kind: str = "CANONICAL_EXCERPT"
     source_complete: bool = False
+    story_type: str = "ai_practice"
 
     def model_payload(self) -> dict[str, object]:
         return {
@@ -88,6 +89,7 @@ class Candidate:
             "source": self.source,
             "source_complete": self.source_complete,
             "source_id": self.source_id,
+            "story_type": self.story_type,
             "summary": self.summary,
             "title": self.title,
         }
@@ -525,6 +527,13 @@ def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Cand
     evidence_id = "evidence-" + hashlib.sha256(
         f"{source.source_id}\n{item.item_native_id}\n{_normalize_url(item.canonical_url)}".encode()
     ).hexdigest()[:24]
+    story_type = {
+        "AGENTIC_RESEARCH": "research",
+        "AI_MASTERY": "ai_practice",
+        "BUILDERS": "builder",
+        "VC": "vc",
+        "COGNITION": "cognition",
+    }[source.pillars[0]]
     return Candidate(
         evidence_id=evidence_id,
         source=source.name,
@@ -541,6 +550,7 @@ def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Cand
         metadata_score=row.metadata_score,
         access_state=AccessState.FULL_FREE,
         evidence_kind=evidence_kind,
+        story_type=story_type,
     )
 
 
@@ -685,6 +695,7 @@ def collect_v75_candidates(
                     "metadata_score": candidate.metadata_score,
                     "access_state": candidate.access_state.value,
                     "evidence_kind": candidate.evidence_kind,
+                    "story_type": candidate.story_type,
                     "published": candidate.published,
                 }
                 for candidate in candidates

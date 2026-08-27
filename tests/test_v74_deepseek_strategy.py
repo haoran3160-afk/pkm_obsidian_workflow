@@ -80,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:7325a02416334a14bed4980fb323180102113f175d7f183bd9a92aea0dd9dd20"
+        "sha256:35aa8f8e69ac3539be61ccc9410c1f5fcacccf0b606d8d1b9b8165e9e39aacb2"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -128,6 +128,11 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Across the whole response emit at most two action claims" in MVP_GENERATOR_PROMPT
     assert "an editorial_inference need not appear verbatim in the source" in MVP_REVIEWER_PROMPT
     assert "evidence supports its factual premise" in MVP_REVIEWER_PROMPT
+    assert "emit two or three distinct mechanism/detail claims" in MVP_GENERATOR_PROMPT
+    assert "Research candidates: identify the research problem" in MVP_GENERATOR_PROMPT
+    assert "Builder candidates: explain the user problem" in MVP_GENERATOR_PROMPT
+    assert "VC candidates: identify the layer being funded" in MVP_GENERATOR_PROMPT
+    assert "Cognition candidates: name the default assumption" in MVP_GENERATOR_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
@@ -195,6 +200,7 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
                         "published": "2026-08-25",
                         "source": "Example AI",
                         "source_complete": False,
+                        "story_type": "ai_practice",
                         "source_id": "rss-example-ai",
                         "summary": "A minor update with no material change.",
                         "title": "Minor update",
@@ -300,6 +306,7 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
         "published": "2026-08-25",
         "source": "Example AI",
         "source_complete": False,
+        "story_type": "ai_practice",
         "source_id": "rss-example-ai",
         "summary": "Example AI released a new model that is available today.",
         "title": "Example AI model release",
