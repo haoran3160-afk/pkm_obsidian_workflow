@@ -355,7 +355,7 @@ def test_success_uses_only_frozen_request_configuration() -> None:
     assert body["thinking"] == {"type": "disabled"}
     assert body["stream"] is False
     assert body["response_format"] == {"type": "json_object"}
-    assert body["max_tokens"] == 4096
+    assert body["max_tokens"] == 8192
     assert "tools" not in body
     assert "tool_choice" not in body
     generator_prompt = body["messages"][0]["content"]
