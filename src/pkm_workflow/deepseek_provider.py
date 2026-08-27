@@ -83,6 +83,7 @@ _MVP_PROMPTS = {
         "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
         "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
         "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
+        "Use only source-scoped superlatives: first results never means the world's first product, and an organization's first product must remain explicitly scoped to that organization. existing revenue or valuation cannot validate a newly announced direction; without adoption or result evidence, describe the direction only as worth observing. "
         "Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),
@@ -95,6 +96,7 @@ _MVP_PROMPTS = {
         "extra prose. ABSTAIN from claims that turn a general topic match into a statement about "
         "the user's current stack, or recommend migration/adoption without explicit context and "
         "evidence. Verify editorial and action claims against the supplied approved context, and "
+        "REJECT unscoped first/only/world-leading claims unless the source explicitly supports that exact scope. REJECT claims that use pre-existing revenue, valuation, or scale to prove a newly announced product direction without adoption or outcome evidence. "
         "ABSTAIN when a context reference does not support the inference or action. Return exactly "
         "one JSON object matching output_schema."
     ),

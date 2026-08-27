@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-import fetcher
 from pkm_workflow.source_catalog import load_source_catalog
 from pkm_workflow.user_context_v75 import load_approved_user_context_v75
 from pkm_workflow.v75_collection import (
@@ -378,7 +377,7 @@ def test_default_access_probe_scans_beyond_model_excerpt_limit(
         observed.append(max_chars)
         return ("Public preview body. " * 700) + " This post is for paid subscribers."
 
-    monkeypatch.setattr(fetcher, "_fetch_article_fulltext", fake_fulltext)
+    monkeypatch.setattr("fetcher._fetch_article_fulltext", fake_fulltext)
     ports = default_collection_ports(catalog)
 
     body = ports.fetch_fulltext("https://example.com/paid-preview")
@@ -578,3 +577,42 @@ def test_generic_official_expansion_gets_no_agentic_source_bonus() -> None:
     )
 
     assert [candidate.source_id for candidate in result.candidates] == ["rss_hamel_husain"]
+
+
+def test_paid_course_cohort_promotion_is_not_a_daily_candidate() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_hamel_husain":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="hamel-paid-cohort",
+                    title="AI Evals Course for Engineers and Product Managers",
+                    canonical_url="https://example.com/paid-evals-course",
+                    published_at="2026-08-27",
+                    summary=(
+                        "Enroll in the live cohort with office hours, community access, "
+                        "a Maven course, and an early discount. " * 6
+                    ),
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Paid course cohort enrollment page. " * 40,
+        ),
+    )
+
+    assert result.candidates == ()

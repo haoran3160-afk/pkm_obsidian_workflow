@@ -370,8 +370,14 @@ def _metadata_score(
         r"^\s*\[?ainews\]?", item.title, re.IGNORECASE
     ):
         return -1
+    promotional_text = f"{item.title}\n{item.summary}".casefold()
+    if any(term in promotional_text for term in ("course", "cohort", "workshop")) and any(
+        term in promotional_text
+        for term in ("enroll", "discount", "office hours", "community access", "maven")
+    ):
+        return -1
     weights = {pillar.pillar_id: pillar.weight_bps for pillar in user_context.pillars}
-    text = f"{item.title}\n{item.summary}".casefold()
+    text = promotional_text
     matched_pillars = [
         pillar
         for pillar in source.pillars
