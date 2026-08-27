@@ -287,6 +287,66 @@ def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
     assert transport.calls == 0
 
 
+@pytest.mark.parametrize(
+    ("coverage", "evidence_level", "expected_status", "expected_error"),
+    [
+        (
+            CoverageLevel.B,
+            CoverageLevel.A,
+            "COVERAGE_LIMITED",
+            "COVERAGE_LIMITED_NO_NEWS",
+        ),
+        (
+            CoverageLevel.A,
+            CoverageLevel.B,
+            "EVIDENCE_LIMITED",
+            "EVIDENCE_LIMITED_NO_NEWS",
+        ),
+        (
+            CoverageLevel.A,
+            CoverageLevel.INSUFFICIENT,
+            "EVIDENCE_INSUFFICIENT",
+            "EVIDENCE_INSUFFICIENT",
+        ),
+    ],
+)
+def test_no_news_requires_both_operational_and_evidence_coverage_a(
+    tmp_path: Path,
+    coverage: CoverageLevel,
+    evidence_level: CoverageLevel,
+    expected_status: str,
+    expected_error: str,
+) -> None:
+    transport = _GenerateReviewTransport()
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=coverage,
+            configured_sources=9,
+            healthy_sources=8,
+            candidates=(),
+            evidence_level=evidence_level,
+            evidence_healthy_sources=6,
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.exit_code == 4
+    assert result.status == expected_status
+    assert result.error_code == expected_error
+    assert result.markdown_path is None
+    assert transport.calls == 0
+
+
 def test_rejected_optional_claim_is_not_published_but_keeps_accepted_story(
     tmp_path: Path,
 ) -> None:

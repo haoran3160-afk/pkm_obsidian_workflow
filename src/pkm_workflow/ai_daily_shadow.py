@@ -6,11 +6,9 @@ import hashlib
 import json
 import re
 import subprocess
-from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
-from enum import Enum
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -26,45 +24,15 @@ from .deepseek_provider import (
     mvp_generator_output_schema,
     mvp_reviewer_output_schema,
 )
+from .source_catalog import load_approved_source_catalog
 from .user_context_v75 import load_approved_user_context_v75
-
-
-class CoverageLevel(str, Enum):
-    A = "A"
-    B = "B"
-    INSUFFICIENT = "INSUFFICIENT"
-
-
-@dataclass(frozen=True)
-class Candidate:
-    evidence_id: str
-    source: str
-    title: str
-    link: str
-    published: str
-    summary: str
-    content_type: str
-    fulltext_enriched: bool
-    profile_refs: tuple[str, ...] = ()
-
-    def model_payload(self) -> dict[str, object]:
-        return {
-            "content_type": self.content_type,
-            "evidence_id": self.evidence_id,
-            "fulltext_enriched": self.fulltext_enriched,
-            "published": self.published,
-            "source": self.source,
-            "summary": self.summary,
-            "title": self.title,
-        }
-
-
-@dataclass(frozen=True)
-class CollectionResult:
-    coverage: CoverageLevel
-    configured_sources: int
-    healthy_sources: int
-    candidates: tuple[Candidate, ...]
+from .v75_collection import (
+    Candidate,
+    CollectionResult,
+    CoverageLevel,
+    collect_v75_candidates,
+    default_collection_ports,
+)
 
 
 @dataclass(frozen=True)
@@ -86,6 +54,7 @@ class ShadowResult:
     request_count: int
     markdown_path: Path | None
     report_path: Path
+    evidence_level: CoverageLevel = CoverageLevel.A
     error_code: str | None = None
 
     def payload(self) -> dict[str, object]:
@@ -93,6 +62,7 @@ class ShadowResult:
             "status": self.status,
             "content_date": self.content_date.isoformat(),
             "coverage": self.coverage.value,
+            "evidence_level": self.evidence_level.value,
             "candidate_count": self.candidate_count,
             "story_count": self.story_count,
             "request_count": self.request_count,
@@ -148,149 +118,30 @@ def _read_json_object(path: Path) -> dict[str, object]:
     return value
 
 
-def _quality_config(config: object) -> dict[str, object]:
-    fields = (
-        "max_ai_items_per_feed",
-        "min_ai_interest_score",
-        "enable_fulltext_enrichment",
-        "fulltext_enrichment_per_feed",
-        "ai_interest_topics",
-        "ai_priority_topics",
-        "ai_exclude_keywords",
-    )
-    return {field: getattr(config, field) for field in fields}
-
-
 def _healthy_fetch(meta: Mapping[str, object]) -> bool:
     return meta.get("reason_code") in {"OK", "ZERO_YIELD"}
 
 
-def _candidate(source: str, item: Mapping[str, object], content_date: date) -> Candidate:
-    title = str(item.get("title") or "Untitled").strip()
-    link = str(item.get("link") or "").strip()
-    evidence_id = "evidence-" + hashlib.sha256(
-        f"{source}\n{link}\n{title}".encode()
-    ).hexdigest()[:24]
-    return Candidate(
-        evidence_id=evidence_id,
-        source=source,
-        title=title,
-        link=link,
-        published=str(item.get("published") or content_date.isoformat()).strip(),
-        summary=str(item.get("summary") or title).strip()[:8_000],
-        content_type=str(item.get("content_type") or "news").strip(),
-        fulltext_enriched=bool(item.get("fulltext_enriched", False)),
-    )
+def _collect_v75_sources(content_date: date) -> CollectionResult:
+    """Run the v7.5 catalog and metadata-first curation without persisting state."""
 
-
-def _current_items(items: list[dict[str, Any]], content_date: date) -> list[dict[str, Any]]:
-    # Feeds publish at different cadences and expose date-only timestamps.  A
-    # three-calendar-day catch-up window preserves freshness without rewarding
-    # stale source-rotation entries.
-    window_start = content_date - timedelta(days=2)
-    current: list[dict[str, Any]] = []
-    for item in items:
-        published = str(item.get("published") or "")[:10]
-        try:
-            published_date = date.fromisoformat(published)
-        except ValueError:
-            continue
-        if window_start <= published_date <= content_date:
-            current.append(item)
-    return current
-
-
-def _collect_existing_sources(content_date: date) -> CollectionResult:
-    """Run the proven local fetch/curation path without persisting its state."""
-
-    import config_schema
     import daily_curation
-    import fetcher
 
     root = _repository_root()
-    config = config_schema.load_and_validate(root / "pkm_config.json")
-    rss_feeds = [feed for feed in config.rss_feeds if feed.enabled]
-    youtube_channels = [channel for channel in config.youtube_channels if channel.enabled]
-    configured_sources = len(rss_feeds) + len(youtube_channels)
-    if configured_sources == 0:
-        return CollectionResult(CoverageLevel.INSUFFICIENT, 0, 0, ())
-    feed_cache_raw = _read_json_object(_existing_state_path(root, "feed_cache.json"))
-    feed_cache = dict(feed_cache_raw)
-    items_by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    healthy_sources = 0
-    quality = _quality_config(config)
-    for feed in rss_feeds:
-        feed_value = feed.model_dump()
-        items, meta = fetcher.fetch_rss_feed(
-            feed_value,
-            feed_cache,
-            content_date.isoformat(),
-            max_papers=config.max_papers_per_day,
-            raw_only=False,
-            quality_config=quality,
-            return_meta=True,
-        )
-        if _healthy_fetch(meta):
-            healthy_sources += 1
-        items_by_source[feed.name].extend(_current_items(items, content_date))
-    for channel in youtube_channels:
-        channel_value = channel.model_dump()
-        videos, meta = fetcher.fetch_youtube_channel_raw(
-            channel_value,
-            max_videos=config.max_videos_per_channel,
-            return_meta=True,
-        )
-        if _healthy_fetch(meta):
-            healthy_sources += 1
-        items_by_source[channel.name].extend(_current_items(videos, content_date))
-    coverage_bps = healthy_sources * 10_000 // configured_sources
-    coverage = (
-        CoverageLevel.A
-        if coverage_bps >= 8_500
-        else CoverageLevel.B
-        if coverage_bps >= 7_000
-        else CoverageLevel.INSUFFICIENT
-    )
     used_urls = daily_curation.load_used_urls(_existing_state_path(root, "used_articles.json"))
-    rotation = daily_curation.load_rotation_state(
-        _existing_state_path(root, "source_rotation.json")
+    catalog = load_approved_source_catalog()
+    return collect_v75_candidates(
+        content_date,
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=used_urls,
+        ports=default_collection_ports(catalog),
     )
-    plan = None
-    for top_picks in (3, 2, 1):
-        try:
-            plan = daily_curation.plan_daily_digest(
-                dict(items_by_source),
-                today=content_date.isoformat(),
-                top_picks=top_picks,
-                action_items=config.daily_digest_action_items,
-                max_deferred_items=config.daily_digest_max_deferred_items,
-                min_top_nonpaper=min(config.daily_digest_min_top_nonpaper, top_picks),
-                min_top_content_types=min(
-                    config.daily_digest_min_top_content_types, top_picks
-                ),
-                max_paper_in_top=min(config.daily_digest_max_paper_in_top, top_picks),
-                stats={
-                    "configured_sources": configured_sources,
-                    "healthy_sources": healthy_sources,
-                    "coverage_bps": coverage_bps,
-                },
-                used_urls=used_urls,
-                rotation_state=rotation,
-            )
-            break
-        except daily_curation.CurationPolicyError:
-            continue
-    if plan is None:
-        return CollectionResult(coverage, configured_sources, healthy_sources, ())
-    candidates = tuple(
-        _candidate(source, item, content_date) for source, item in plan.top_stories[:3]
-    )
-    return CollectionResult(coverage, configured_sources, healthy_sources, candidates)
 
 
 def _default_ports() -> ShadowPorts:
     return ShadowPorts(
-        collect=_collect_existing_sources,
+        collect=_collect_v75_sources,
         provider=DeepSeekShadowProvider(),
         runtime_root=Path(r"D:\personal\obsidian_workflow-runtime"),
         load_user_context=lambda: load_approved_user_context_v75().model_payload(),
@@ -331,6 +182,19 @@ def _model_metrics(*results: ProviderResult) -> dict[str, int]:
         "total_tokens": sum(result.token_usage.total_tokens for result in results),
         "latency_ms": sum(result.latency_ms for result in results),
     }
+
+
+def _no_story_disposition(
+    coverage: CoverageLevel,
+    evidence_level: CoverageLevel,
+) -> tuple[str, int, str | None]:
+    if coverage is CoverageLevel.A and evidence_level is CoverageLevel.A:
+        return "NO_SIGNIFICANT_NEWS", 0, None
+    if evidence_level is CoverageLevel.INSUFFICIENT:
+        return "EVIDENCE_INSUFFICIENT", 4, "EVIDENCE_INSUFFICIENT"
+    if evidence_level is CoverageLevel.B:
+        return "EVIDENCE_LIMITED", 4, "EVIDENCE_LIMITED_NO_NEWS"
+    return "COVERAGE_LIMITED", 4, "COVERAGE_LIMITED_NO_NEWS"
 
 
 def _validate_user_context(value: object) -> dict[str, object]:
@@ -611,6 +475,8 @@ def _finish(
     run_dir: Path,
     content_date: date,
     coverage: CoverageLevel,
+    evidence_level: CoverageLevel = CoverageLevel.A,
+    evidence_healthy_sources: int = 0,
     candidate_count: int,
     story_count: int,
     request_count: int,
@@ -638,6 +504,8 @@ def _finish(
         "status": "READY_FOR_SHADOW_LINK" if markdown is not None else status,
         "content_date": content_date.isoformat(),
         "coverage": coverage.value,
+        "evidence_level": evidence_level.value,
+        "evidence_healthy_sources": evidence_healthy_sources,
         "candidate_count": candidate_count,
         "story_count": story_count,
         "request_count": request_count,
@@ -662,6 +530,7 @@ def _finish(
         status=status,
         content_date=content_date,
         coverage=coverage,
+        evidence_level=evidence_level,
         candidate_count=candidate_count,
         story_count=story_count,
         request_count=request_count,
@@ -688,26 +557,50 @@ def run_ai_daily_shadow(
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=0,
             status="COVERAGE_INSUFFICIENT",
             exit_code=4,
             error_code="COVERAGE_INSUFFICIENT",
+            audit=collected.audit,
         )
-    if not collected.candidates:
-        credible_no_news = collected.coverage is CoverageLevel.A
+    if collected.evidence_level is CoverageLevel.INSUFFICIENT:
         return _finish(
             ports=ports,
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
+            candidate_count=len(collected.candidates),
+            story_count=0,
+            request_count=0,
+            status="EVIDENCE_INSUFFICIENT",
+            exit_code=4,
+            error_code="EVIDENCE_INSUFFICIENT",
+            audit=collected.audit,
+        )
+    if not collected.candidates:
+        status, exit_code, error_code = _no_story_disposition(
+            collected.coverage, collected.evidence_level
+        )
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=0,
             story_count=0,
             request_count=0,
-            status="NO_SIGNIFICANT_NEWS" if credible_no_news else "COVERAGE_LIMITED",
-            exit_code=0 if credible_no_news else 4,
-            error_code=None if credible_no_news else "COVERAGE_LIMITED_NO_NEWS",
+            status=status,
+            exit_code=exit_code,
+            error_code=error_code,
+            audit=collected.audit,
         )
     if len(collected.candidates) > 8:
         raise ValueError("curation must provide no more than eight candidates")
@@ -750,6 +643,8 @@ def run_ai_daily_shadow(
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=generator.request_count,
@@ -757,6 +652,7 @@ def run_ai_daily_shadow(
             exit_code=_provider_exit(generator),
             error_code=generator.error_code,
             model_metrics=_model_metrics(generator),
+            audit=collected.audit,
         )
     try:
         stories = _validate_generator_draft(generator.validated_structured_result, evidence)
@@ -766,6 +662,8 @@ def run_ai_daily_shadow(
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=generator.request_count,
@@ -773,21 +671,27 @@ def run_ai_daily_shadow(
             exit_code=4,
             error_code=str(error),
             model_metrics=_model_metrics(generator),
+            audit=collected.audit,
         )
     if not stories:
-        credible_no_news = collected.coverage is CoverageLevel.A
+        status, exit_code, error_code = _no_story_disposition(
+            collected.coverage, collected.evidence_level
+        )
         return _finish(
             ports=ports,
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=generator.request_count,
-            status="NO_SIGNIFICANT_NEWS" if credible_no_news else "COVERAGE_LIMITED",
-            exit_code=0 if credible_no_news else 4,
-            error_code=None if credible_no_news else "COVERAGE_LIMITED_NO_NEWS",
+            status=status,
+            exit_code=exit_code,
+            error_code=error_code,
             model_metrics=_model_metrics(generator),
+            audit=collected.audit,
         )
     requirements, draft_hash = _review_requirements(stories)
     referenced_ids = {
@@ -830,6 +734,8 @@ def run_ai_daily_shadow(
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=total_requests,
@@ -837,22 +743,28 @@ def run_ai_daily_shadow(
             exit_code=_provider_exit(reviewer),
             error_code=reviewer.error_code,
             model_metrics=_model_metrics(generator, reviewer),
+            audit=collected.audit,
         )
     accepted = _accepted_stories(stories, reviewer.validated_structured_result)
     if not accepted:
-        credible_no_news = collected.coverage is CoverageLevel.A
+        status, exit_code, error_code = _no_story_disposition(
+            collected.coverage, collected.evidence_level
+        )
         return _finish(
             ports=ports,
             run_dir=run_dir,
             content_date=selected_date,
             coverage=collected.coverage,
+            evidence_level=collected.evidence_level,
+            evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=total_requests,
-            status="NO_SIGNIFICANT_NEWS" if credible_no_news else "COVERAGE_LIMITED",
-            exit_code=0 if credible_no_news else 4,
-            error_code=None if credible_no_news else "COVERAGE_LIMITED_NO_NEWS",
+            status=status,
+            exit_code=exit_code,
+            error_code=error_code,
             model_metrics=_model_metrics(generator, reviewer),
+            audit=collected.audit,
         )
     markdown = _render_markdown(selected_date, collected.coverage, accepted, evidence)
     personalized = tuple(
@@ -882,6 +794,8 @@ def run_ai_daily_shadow(
         run_dir=run_dir,
         content_date=selected_date,
         coverage=collected.coverage,
+        evidence_level=collected.evidence_level,
+        evidence_healthy_sources=collected.evidence_healthy_sources,
         candidate_count=len(collected.candidates),
         story_count=len(accepted),
         request_count=total_requests,
@@ -891,6 +805,7 @@ def run_ai_daily_shadow(
         model_metrics=_model_metrics(generator, reviewer),
         personalization_refs=personalized,
         audit={
+            **collected.audit,
             "evidence_hash": _digest(
                 [item.model_payload() for item in collected.candidates]
             ),

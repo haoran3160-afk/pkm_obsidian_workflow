@@ -78,7 +78,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:2ea37f722d2e876162bf5c580d589098bdca240dbfb1ea189f711aa27abf5c20"
+        "sha256:629b0859271c9b9c0ba4b9acea97415514e7560ff9915dedda2ef720946f2b9b"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -107,7 +107,7 @@ def test_d018_hash_binds_provider_prompts_schemas_request_and_credentials() -> N
     assert mutated_hash != descriptor["descriptor_hash"]
 
 
-def test_strategy_preserves_d009_and_exposes_the_ai_daily_v2_contract() -> None:
+def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None:
     strategy = DeepSeekMvpStrategy()
     assert isinstance(strategy.new_provider(), DeepSeekShadowProvider)
     assert strategy.generator_schema() == mvp_generator_output_schema()
@@ -159,11 +159,18 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
                 "evidence_hash": _digest("evidence"),
                 "candidates": [
                     {
+                        "access_state": "FULL_FREE",
+                        "canonical_origin_id": "example-ai",
                         "content_type": "news",
                         "evidence_id": "evidence-1",
+                        "evidence_kind": "CANONICAL_FULLTEXT",
+                        "evidence_role": "PRIMARY_OFFICIAL",
                         "fulltext_enriched": False,
+                        "metadata_score": 7000,
+                        "pillars": ["AI_MASTERY"],
                         "published": "2026-08-25",
                         "source": "Example AI",
+                        "source_id": "rss-example-ai",
                         "summary": "A minor update with no material change.",
                         "title": "Minor update",
                     }
@@ -245,11 +252,18 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
             }
         )
     evidence = {
+        "access_state": "FULL_FREE",
+        "canonical_origin_id": "example-ai",
         "content_type": "news",
         "evidence_id": "evidence-1",
+        "evidence_kind": "CANONICAL_FULLTEXT",
+        "evidence_role": "PRIMARY_OFFICIAL",
         "fulltext_enriched": True,
+        "metadata_score": 7000,
+        "pillars": ["AI_MASTERY"],
         "published": "2026-08-25",
         "source": "Example AI",
+        "source_id": "rss-example-ai",
         "summary": "Example AI released a new model that is available today.",
         "title": "Example AI model release",
     }

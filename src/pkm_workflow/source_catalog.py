@@ -30,6 +30,9 @@ _REQUIRED_SOURCE_FIELDS = {
 }
 _PILLARS = {"AGENTIC_RESEARCH", "AI_MASTERY", "BUILDERS", "VC", "COGNITION"}
 _EMPTY_PILLAR_ROLES = {"MARKET_SENTINEL", "OUT_OF_SCOPE"}
+APPROVED_SOURCE_MANIFEST_PATH = Path(
+    r"D:\personal\obsidian_workflow\Source-Manifest-v7.5.json"
+)
 
 
 @dataclass(frozen=True)
@@ -186,3 +189,7 @@ def load_source_catalog(path: Path) -> SourceCatalog:
         policies=MappingProxyType(dict(policies)),
         _by_id=by_id,
     )
+
+
+def load_approved_source_catalog() -> SourceCatalog:
+    return load_source_catalog(APPROVED_SOURCE_MANIFEST_PATH)
