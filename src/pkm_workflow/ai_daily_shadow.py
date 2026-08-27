@@ -402,6 +402,7 @@ def _validate_generator_draft(
     )
     allowed_context_refs = _approved_context_paths(context)
     action_count = 0
+    used_story_evidence_ids: set[str] = set()
     for story in stories:
         if not isinstance(story, dict):
             raise ValueError("GENERATOR_STORY_INVALID")
@@ -574,6 +575,14 @@ def _validate_generator_draft(
                     if claim_id not in unsafe_absence_ids
                 ]
             story = projected
+        story_evidence_ids = {
+            evidence_id
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        }
+        if story_evidence_ids & used_story_evidence_ids:
+            raise ValueError("GENERATOR_EVIDENCE_REUSED_ACROSS_STORIES")
+        used_story_evidence_ids.update(story_evidence_ids)
         validated.append(story)
     if action_count > 2:
         raise ValueError("GENERATOR_DAILY_ACTION_LIMIT_EXCEEDED")

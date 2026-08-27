@@ -32,6 +32,7 @@ class _GenerateReviewTransport:
         uncertainty_statement: str = "所有网站都已完全兼容。",
         context_ref_override: str | None = None,
         reviewer_http_status: int = 200,
+        duplicate_story_evidence: bool = False,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -44,6 +45,7 @@ class _GenerateReviewTransport:
         self.uncertainty_statement = uncertainty_statement
         self.context_ref_override = context_ref_override
         self.reviewer_http_status = reviewer_http_status
+        self.duplicate_story_evidence = duplicate_story_evidence
         self.generator_profile_refs: list[str] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
@@ -170,6 +172,28 @@ class _GenerateReviewTransport:
                     }
                 ]
             }
+            if self.duplicate_story_evidence and structured["stories"]:
+                duplicate = json.loads(json.dumps(structured["stories"][0]))
+                id_map = {
+                    claim["claim_id"]: f"{claim['claim_id']}-two"
+                    for claim in duplicate["claims"]
+                }
+                duplicate["story_id"] = "story-2"
+                duplicate["rank"] = 2
+                duplicate["title_claim_id"] = id_map[duplicate["title_claim_id"]]
+                for field in (
+                    "event_claim_ids",
+                    "mechanism_claim_ids",
+                    "importance_claim_ids",
+                    "impact_claim_ids",
+                    "uncertainty_claim_ids",
+                    "watch_claim_ids",
+                    "action_claim_ids",
+                ):
+                    duplicate[field] = [id_map[claim_id] for claim_id in duplicate[field]]
+                for claim in duplicate["claims"]:
+                    claim["claim_id"] = id_map[claim["claim_id"]]
+                structured["stories"].append(duplicate)
         else:
             if self.reviewer_http_status != 200:
                 return TransportResponse(
@@ -760,6 +784,46 @@ def test_valid_approved_context_path_need_not_appear_in_source_text(tmp_path: Pa
 
     assert result.status == "PUBLISHED"
     assert result.markdown_path is not None
+
+
+def test_one_evidence_candidate_cannot_be_split_into_multiple_stories(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="One source roundup",
+        link="https://example.com/roundup",
+        published="2026-08-26",
+        summary="One bounded evidence candidate containing a source roundup.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", duplicate_story_evidence=True
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_EVIDENCE_REUSED_ACROSS_STORIES"
+    assert result.markdown_path is None
 
 
 def test_only_success_or_zero_yield_counts_as_healthy_coverage() -> None:

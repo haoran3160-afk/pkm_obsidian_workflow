@@ -253,6 +253,10 @@ def _metadata_score(
     user_context: UserContextBundle,
     source_quality_scores: Mapping[str, object],
 ) -> int:
+    if source.source_id == "rss_latent_space" and re.match(
+        r"^\s*\[?ainews\]?", item.title, re.IGNORECASE
+    ):
+        return -1
     weights = {pillar.pillar_id: pillar.weight_bps for pillar in user_context.pillars}
     primary_weight = weights[source.pillars[0]]
     pillar_relevance = min(4000, primary_weight * 4000 // 3500)

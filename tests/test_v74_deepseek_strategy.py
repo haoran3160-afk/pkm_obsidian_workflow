@@ -79,7 +79,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:664742307117bd72e6731668a12214a25d323d67097b497434f5e2f527586dd5"
+        "sha256:2ae17ad29915171c250a1e05b72d0cd0ef466e4d8a9a04c2ee06a71c07ed3db6"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -120,6 +120,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "never prefix a copied path with fields" in MVP_GENERATOR_PROMPT
     assert "Every story must include an impact claim" in MVP_GENERATOR_PROMPT
     assert "pillar_id alone is not a semantic personalization reference" in MVP_GENERATOR_PROMPT
+    assert "Each evidence_id may support at most one story" in MVP_GENERATOR_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:

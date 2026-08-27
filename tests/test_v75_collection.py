@@ -439,3 +439,39 @@ def test_natural_title_phrase_without_matching_url_slug_does_not_merge() -> None
     )
 
     assert len(result.candidates) == 2
+
+
+def test_latent_space_ainews_roundup_is_discovery_only_without_direct_children() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_latent_space":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="latent-roundup",
+                    title="[AINews] Hot Chips: Jalapeño, AutoSaddler, and more",
+                    canonical_url="https://www.latent.space/p/ainews-hot-chips-roundup",
+                    published_at="2026-08-27",
+                    summary="A roundup containing several unrelated primary events. " * 8,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Roundup body with multiple unrelated items. " * 30,
+        ),
+    )
+
+    assert result.candidates == ()
