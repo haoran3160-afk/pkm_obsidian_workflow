@@ -131,6 +131,18 @@ def test_rolling_candidate_observation_can_expose_all_five_pillars() -> None:
         "VC",
         "COGNITION",
     }
+    exposed = [candidate for candidate in result.candidates if candidate.pillar_exposure]
+    assert {candidate.pillars[0] for candidate in exposed} >= {
+        "AGENTIC_RESEARCH",
+        "AI_MASTERY",
+        "BUILDERS",
+        "VC",
+        "COGNITION",
+    }
+    assert all(
+        candidate.editorial_score == candidate.metadata_score + 2500
+        for candidate in exposed
+    )
 
 
 def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:

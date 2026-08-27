@@ -215,9 +215,12 @@ def _candidate_disposition_audit(
                 "canonical_url": candidate.link,
                 "pillars": list(candidate.pillars),
                 "metadata_score": candidate.metadata_score,
+                "editorial_score": candidate.editorial_score,
+                "pillar_exposure": candidate.pillar_exposure,
                 "access_state": candidate.access_state.value,
                 "evidence_kind": candidate.evidence_kind,
                 "published": candidate.published,
+                "story_type": candidate.story_type,
             }
             for candidate in collected.candidates
         ]

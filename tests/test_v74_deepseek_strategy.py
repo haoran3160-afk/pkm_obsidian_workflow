@@ -80,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:f5448800552a10f44abc73f475e68550736c2d52c368c5f538e9ea976109b6b1"
+        "sha256:41928da61296cf5315373faeb01a3e4cbc7f153c4d328f670fb802ea4fd02089"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -137,6 +137,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "prefer at least two story types" in MVP_GENERATOR_PROMPT
     assert "Across all stories emit at most 24 claims" in MVP_GENERATOR_PROMPT
     assert "candidate order encodes deterministic pillar exposure" in MVP_GENERATOR_PROMPT
+    assert "pillar_exposure and editorial_score are deterministic tie-break signals" in MVP_GENERATOR_PROMPT
     assert "never by candidate order" not in MVP_GENERATOR_PROMPT
 
 
@@ -200,7 +201,9 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
                         "evidence_role": "PRIMARY_OFFICIAL",
                         "fulltext_enriched": False,
                         "metadata_score": 7000,
+                        "editorial_score": 7000,
                         "pillars": ["AI_MASTERY"],
+                        "pillar_exposure": False,
                         "profile_refs": [],
                         "published": "2026-08-25",
                         "source": "Example AI",
@@ -306,7 +309,9 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
         "evidence_role": "PRIMARY_OFFICIAL",
         "fulltext_enriched": True,
         "metadata_score": 7000,
+        "editorial_score": 7000,
         "pillars": ["AI_MASTERY"],
+        "pillar_exposure": False,
         "profile_refs": [],
         "published": "2026-08-25",
         "source": "Example AI",

@@ -6,7 +6,7 @@ import hashlib
 import re
 import unicodedata
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from enum import Enum
 from urllib.parse import urlsplit, urlunsplit
@@ -72,6 +72,8 @@ class Candidate:
     evidence_kind: str = "CANONICAL_EXCERPT"
     source_complete: bool = False
     story_type: str = "ai_practice"
+    pillar_exposure: bool = False
+    editorial_score: int = 5000
 
     def model_payload(self) -> dict[str, object]:
         return {
@@ -84,12 +86,14 @@ class Candidate:
             "fulltext_enriched": self.fulltext_enriched,
             "metadata_score": self.metadata_score,
             "pillars": list(self.pillars),
+            "pillar_exposure": self.pillar_exposure,
             "profile_refs": list(self.profile_refs),
             "published": self.published,
             "source": self.source,
             "source_complete": self.source_complete,
             "source_id": self.source_id,
             "story_type": self.story_type,
+            "editorial_score": self.editorial_score,
             "summary": self.summary,
             "title": self.title,
         }
@@ -111,6 +115,7 @@ class _RankedItem:
     source: SourceDefinition
     item: MetadataItem
     metadata_score: int
+    pillar_exposure: bool = False
 
 
 _HYPE_TERMS = ("sponsored", "webinar", "conference tickets", "coupon")
@@ -508,7 +513,7 @@ def _ranked_metadata(
     for pillar in ("AGENTIC_RESEARCH", "AI_MASTERY", "BUILDERS", "VC", "COGNITION"):
         match = next((row for row in deduped_ranked if row.source.pillars[0] == pillar), None)
         if match is not None:
-            exposed.append(match)
+            exposed.append(replace(match, pillar_exposure=True))
             selected_ids.add((match.source.source_id, match.item.item_native_id))
     exposed.extend(
         row
@@ -579,6 +584,11 @@ def _candidate(
         access_state=AccessState.FULL_FREE,
         evidence_kind=evidence_kind,
         story_type=story_type,
+        pillar_exposure=row.pillar_exposure,
+        editorial_score=(
+            row.metadata_score if metadata_score is None else metadata_score
+        )
+        + (2500 if row.pillar_exposure else 0),
     )
 
 
@@ -740,6 +750,8 @@ def collect_v75_candidates(
                     "canonical_url": candidate.link,
                     "pillars": list(candidate.pillars),
                     "metadata_score": candidate.metadata_score,
+                    "editorial_score": candidate.editorial_score,
+                    "pillar_exposure": candidate.pillar_exposure,
                     "access_state": candidate.access_state.value,
                     "evidence_kind": candidate.evidence_kind,
                     "story_type": candidate.story_type,

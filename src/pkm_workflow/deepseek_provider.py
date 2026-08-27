@@ -74,7 +74,7 @@ _MVP_PROMPTS = {
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
         "tools, or prose outside the JSON object. Use six to ten substantive claims per "
         "story, emit exactly two distinct mechanism/detail claims, and keep each statement under 220 Chinese characters. Story IDs and claim IDs "
-        "must be globally unique across the entire response. Rank stories by approved user priorities and material impact. candidate order encodes deterministic pillar exposure after the quality gate: select the strongest story first, then prefer an exposed different story_type before another same-type story unless its evidence is materially weaker. Leave action "
+        "must be globally unique across the entire response. Rank stories by approved user priorities and material impact. candidate order encodes deterministic pillar exposure after the quality gate; pillar_exposure and editorial_score are deterministic tie-break signals. Select the strongest story first, then prefer an exposed different story_type before another same-type story unless its evidence is materially weaker. Leave action "
         "claims empty unless the approved context explicitly shows the user uses the affected "
         "technology. Every claim must declare claim_kind and context_refs. An editorial inference "
         "requires at least one exact approved context field path. An action additionally requires "
@@ -1721,9 +1721,11 @@ class DeepSeekShadowProvider:
             "evidence_id",
             "evidence_kind",
             "evidence_role",
+            "editorial_score",
             "fulltext_enriched",
             "metadata_score",
             "pillars",
+            "pillar_exposure",
             "profile_refs",
             "published",
             "source",
@@ -1738,6 +1740,9 @@ class DeepSeekShadowProvider:
             or set(item) != fields
             or type(item.get("fulltext_enriched")) is not bool
             or type(item.get("metadata_score")) is not int
+            or type(item.get("editorial_score")) is not int
+            or type(item.get("pillar_exposure")) is not bool
+            or item["editorial_score"] < item["metadata_score"]
             or type(item.get("source_complete")) is not bool
             or item.get("access_state") != "FULL_FREE"
             or item.get("evidence_kind") not in {"CANONICAL_EXCERPT", "PUBLIC_ABSTRACT"}
@@ -1757,7 +1762,9 @@ class DeepSeekShadowProvider:
                 - {
                     "fulltext_enriched",
                     "metadata_score",
+                    "editorial_score",
                     "pillars",
+                    "pillar_exposure",
                     "profile_refs",
                     "source_complete",
                 }
