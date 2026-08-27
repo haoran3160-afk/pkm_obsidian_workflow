@@ -31,6 +31,7 @@ class _GenerateReviewTransport:
         omit_impact: bool = False,
         uncertainty_statement: str = "所有网站都已完全兼容。",
         context_ref_override: str | None = None,
+        reviewer_http_status: int = 200,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -42,6 +43,7 @@ class _GenerateReviewTransport:
         self.omit_impact = omit_impact
         self.uncertainty_statement = uncertainty_statement
         self.context_ref_override = context_ref_override
+        self.reviewer_http_status = reviewer_http_status
         self.generator_profile_refs: list[str] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
@@ -169,6 +171,13 @@ class _GenerateReviewTransport:
                 ]
             }
         else:
+            if self.reviewer_http_status != 200:
+                return TransportResponse(
+                    status=self.reviewer_http_status,
+                    content_type="application/json",
+                    content_encoding="identity",
+                    body=b"{}",
+                )
             structured = {
                 "decisions": [
                     {
@@ -888,6 +897,8 @@ def test_auth_failure_returns_exit_8_and_never_creates_markdown(tmp_path: Path) 
     assert result.status == "AUTH_REQUIRED"
     assert result.markdown_path is None
     assert result.report_path.is_file()
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["audit"]["candidate_audit"][0]["disposition"] == "GENERATOR_FAILED"
 
 
 def test_unknown_generator_evidence_fails_closed_without_markdown(tmp_path: Path) -> None:
@@ -925,3 +936,48 @@ def test_unknown_generator_evidence_fails_closed_without_markdown(tmp_path: Path
     assert result.status == "SCHEMA_INVALID"
     assert result.markdown_path is None
     assert result.report_path.is_file()
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert (
+        report["audit"]["candidate_audit"][0]["disposition"]
+        == "GENERATOR_SCHEMA_REJECTED"
+    )
+
+
+def test_reviewer_service_failure_records_candidate_disposition(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example Agent release",
+        link="https://example.com/release",
+        published="2026-08-26",
+        summary="A verified canonical excerpt about an Agent release.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", reviewer_http_status=503
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.exit_code == 5
+    assert result.markdown_path is None
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["audit"]["candidate_audit"][0]["disposition"] == "REVIEW_FAILED"
+    assert report["audit"]["review_decisions"] == []

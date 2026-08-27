@@ -202,6 +202,7 @@ def _candidate_disposition_audit(
     *,
     generator_evidence_ids: set[str],
     final_evidence_ids: set[str],
+    failure_disposition: str | None = None,
 ) -> list[dict[str, object]]:
     raw_rows = collected.audit.get("candidate_audit", [])
     rows = raw_rows if isinstance(raw_rows, list) else []
@@ -226,7 +227,10 @@ def _candidate_disposition_audit(
             "generator_selected": row["evidence_id"] in generator_evidence_ids,
             "final_selected": row["evidence_id"] in final_evidence_ids,
             "disposition": (
-                "FINAL_SELECTED"
+                failure_disposition
+                if failure_disposition is not None
+                and (not generator_evidence_ids or row["evidence_id"] in generator_evidence_ids)
+                else "FINAL_SELECTED"
                 if row["evidence_id"] in final_evidence_ids
                 else "REVIEW_REJECTED_OR_STORY_DROPPED"
                 if row["evidence_id"] in generator_evidence_ids
@@ -943,7 +947,15 @@ def run_ai_daily_shadow(
             exit_code=_provider_exit(generator),
             error_code=generator.error_code,
             model_metrics=_model_metrics(generator),
-            audit=collected.audit,
+            audit={
+                **collected.audit,
+                "candidate_audit": _candidate_disposition_audit(
+                    collected,
+                    generator_evidence_ids=set(),
+                    final_evidence_ids=set(),
+                    failure_disposition="GENERATOR_FAILED",
+                ),
+            },
         )
     try:
         stories = _validate_generator_draft(
@@ -964,7 +976,15 @@ def run_ai_daily_shadow(
             exit_code=4,
             error_code=str(error),
             model_metrics=_model_metrics(generator),
-            audit=collected.audit,
+            audit={
+                **collected.audit,
+                "candidate_audit": _candidate_disposition_audit(
+                    collected,
+                    generator_evidence_ids=set(),
+                    final_evidence_ids=set(),
+                    failure_disposition="GENERATOR_SCHEMA_REJECTED",
+                ),
+            },
         )
     if not stories:
         no_story_status, no_story_exit, no_story_error = _no_story_disposition(
@@ -1044,7 +1064,16 @@ def run_ai_daily_shadow(
             exit_code=_provider_exit(reviewer),
             error_code=reviewer.error_code,
             model_metrics=_model_metrics(generator, reviewer),
-            audit=collected.audit,
+            audit={
+                **collected.audit,
+                "candidate_audit": _candidate_disposition_audit(
+                    collected,
+                    generator_evidence_ids=referenced_ids,
+                    final_evidence_ids=set(),
+                    failure_disposition="REVIEW_FAILED",
+                ),
+                "review_decisions": [],
+            },
         )
     accepted = _accepted_stories(stories, reviewer.validated_structured_result)
     if not accepted:
