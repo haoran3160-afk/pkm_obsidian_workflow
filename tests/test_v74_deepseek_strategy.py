@@ -80,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:55c78c6cc5541197ea1b6845d1520592637b841510d723454ccadd623e6f9f66"
+        "sha256:69dc014484976fc6ba3bf86eebf57b26d6116c1e689f9f1d853d87d2233cb78f"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -128,7 +128,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Across the whole response emit at most two action claims" in MVP_GENERATOR_PROMPT
     assert "an editorial_inference need not appear verbatim in the source" in MVP_REVIEWER_PROMPT
     assert "evidence supports its factual premise" in MVP_REVIEWER_PROMPT
-    assert "emit two or three distinct mechanism/detail claims" in MVP_GENERATOR_PROMPT
+    assert "emit exactly two distinct mechanism/detail claims" in MVP_GENERATOR_PROMPT
     assert "Research candidates: identify the research problem" in MVP_GENERATOR_PROMPT
     assert "Builder candidates: explain the user problem" in MVP_GENERATOR_PROMPT
     assert "VC candidates: identify the layer being funded" in MVP_GENERATOR_PROMPT
