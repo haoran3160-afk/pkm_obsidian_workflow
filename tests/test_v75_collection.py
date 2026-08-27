@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+import fetcher
 from pkm_workflow.source_catalog import load_source_catalog
 from pkm_workflow.user_context_v75 import load_approved_user_context_v75
 from pkm_workflow.v75_collection import (
@@ -12,6 +13,7 @@ from pkm_workflow.v75_collection import (
     MetadataItem,
     MetadataObservation,
     collect_v75_candidates,
+    default_collection_ports,
 )
 
 MANIFEST = Path(r"D:\personal\obsidian_workflow\Source-Manifest-v7.5.json")
@@ -358,6 +360,59 @@ def test_paywall_signal_at_end_of_bounded_text_is_not_full_free() -> None:
         ),
     )
 
+    assert result.candidates == ()
+
+
+def test_default_access_probe_scans_beyond_model_excerpt_limit(
+    monkeypatch,
+) -> None:
+    catalog = load_source_catalog(MANIFEST)
+    observed: list[int] = []
+
+    def fake_fulltext(_url: str, max_chars: int) -> str:
+        observed.append(max_chars)
+        return ("Public preview body. " * 700) + " This post is for paid subscribers."
+
+    monkeypatch.setattr(fetcher, "_fetch_article_fulltext", fake_fulltext)
+    ports = default_collection_ports(catalog)
+
+    body = ports.fetch_fulltext("https://example.com/paid-preview")
+
+    assert observed == [100000]
+    assert len(body) > 12000
+
+
+def test_mixed_freemium_preview_is_not_assessment_evidence() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id == "rss_pragmatic_engineer":
+            return MetadataObservation(
+                True,
+                False,
+                "OK",
+                (_item(source.source_id, 1),),
+            )
+        if source.coverage_member and source.selection_role == "CORE_DAILY":
+            return MetadataObservation(False, False, "FETCH_FAILED", ())
+        return MetadataObservation(True, True, "ZERO_YIELD", ())
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                ("Public preview body. " * 700) + " This post is for paid subscribers."
+            ),
+        ),
+    )
+
+    assert result.healthy_sources == 1
+    assert result.evidence_healthy_sources == 0
+    assert result.evidence_level is CoverageLevel.INSUFFICIENT
     assert result.candidates == ()
 
 

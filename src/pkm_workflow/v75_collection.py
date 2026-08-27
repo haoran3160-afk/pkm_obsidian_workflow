@@ -126,6 +126,12 @@ _PAYWALL_TERMS = (
     "sign in to read",
     "already a subscriber",
 )
+_MIXED_FREEMIUM_SOURCE_IDS = {
+    "rss_pragmatic_engineer",
+    "rss_interconnects",
+    "rss_stratechery",
+    "rss_not_boring",
+}
 
 
 def _policy_int(policies: Mapping[str, object], name: str) -> int:
@@ -430,9 +436,12 @@ def collect_v75_candidates(
         if observations[source.source_id].healthy
         and (
             observations[source.source_id].zero_yield
-            or any(
-                len(item.summary.strip()) >= 200
-                for item in observations[source.source_id].items
+            or (
+                source.source_id not in _MIXED_FREEMIUM_SOURCE_IDS
+                and any(
+                    len(item.summary.strip()) >= 200
+                    for item in observations[source.source_id].items
+                )
             )
         )
     }
@@ -544,6 +553,9 @@ def default_collection_ports(catalog: SourceCatalog) -> CollectionPorts:
     limits = _policy_mapping(catalog.policies, "limits")
     summary_limit = _policy_int(limits, "metadata_summary_chars")
     fulltext_limit = _policy_int(limits, "fulltext_chars")
+    access_probe_limit = _policy_int(limits, "access_probe_chars")
+    if access_probe_limit < fulltext_limit:
+        raise ValueError("ACCESS_PROBE_LIMIT_TOO_SMALL")
 
     def fetch_metadata(source: SourceDefinition, content_date: date) -> MetadataObservation:
         if source.adapter_kind != "RSS_ATOM":
@@ -602,6 +614,6 @@ def default_collection_ports(catalog: SourceCatalog) -> CollectionPorts:
     return CollectionPorts(
         fetch_metadata=fetch_metadata,
         fetch_fulltext=lambda url: fetcher._fetch_article_fulltext(
-            url, max_chars=fulltext_limit
+            url, max_chars=access_probe_limit
         ),
     )
