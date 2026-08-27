@@ -97,6 +97,7 @@ _MVP_PROMPTS = {
         "extra prose. ABSTAIN from claims that turn a general topic match into a statement about "
         "the user's current stack, or recommend migration/adoption without explicit context and "
         "evidence. Verify editorial and action claims against the supplied approved context, and "
+        "an editorial_inference need not appear verbatim in the source: ACCEPT it when evidence supports its factual premise, an exact approved context_ref supports personal relevance, and the wording is cautious and non-causal. Continue to require direct evidence for every fact claim. "
         "REJECT unscoped first/only/world-leading claims unless the source explicitly supports that exact scope. REJECT claims that use pre-existing revenue, valuation, or scale to prove a newly announced product direction without adoption or outcome evidence. "
         "ABSTAIN when a context reference does not support the inference or action. Return exactly "
         "one JSON object matching output_schema."

@@ -14,6 +14,7 @@ from pkm_workflow.deepseek_provider import (
     API_URL,
     MODEL_NAME,
     MVP_GENERATOR_PROMPT,
+    MVP_REVIEWER_PROMPT,
     DeepSeekShadowProvider,
     ProviderRole,
     RequestBudget,
@@ -79,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:4c4df6c49ce52df841a04c5ed66b16a1d1296568265bfd6f91eee123445a9242"
+        "sha256:7325a02416334a14bed4980fb323180102113f175d7f183bd9a92aea0dd9dd20"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -125,6 +126,8 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "existing revenue or valuation cannot validate a newly announced direction" in MVP_GENERATOR_PROMPT
     assert "never say existing scale reflects or supports the new trend" in MVP_GENERATOR_PROMPT
     assert "Across the whole response emit at most two action claims" in MVP_GENERATOR_PROMPT
+    assert "an editorial_inference need not appear verbatim in the source" in MVP_REVIEWER_PROMPT
+    assert "evidence supports its factual premise" in MVP_REVIEWER_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
