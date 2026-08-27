@@ -304,6 +304,36 @@ def _explicit_event_phrases(item: MetadataItem) -> set[str]:
     return phrase_sets[0] & phrase_sets[1]
 
 
+def _security_event_identities(item: MetadataItem) -> set[str]:
+    def tokens(value: str) -> list[str]:
+        normalized = unicodedata.normalize("NFKC", value).casefold()
+        return re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE).split()
+
+    title_tokens = tokens(item.title)
+    path_tokens = tokens(urlsplit(item.canonical_url).path)
+    security_terms = {
+        "attack",
+        "breach",
+        "hack",
+        "hacking",
+        "incident",
+        "investigation",
+        "security",
+    }
+    if not (security_terms & set(title_tokens)) or not (security_terms & set(path_tokens)):
+        return set()
+
+    def entity_bigrams(values: list[str]) -> set[str]:
+        return {
+            " ".join(values[index : index + 2])
+            for index in range(max(0, len(values) - 1))
+            if all(token not in security_terms for token in values[index : index + 2])
+        }
+
+    shared_entities = entity_bigrams(title_tokens) & entity_bigrams(path_tokens)
+    return {f"security-event:{entity}" for entity in shared_entities}
+
+
 def _published_date(value: str) -> date | None:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
@@ -426,20 +456,24 @@ def _ranked_metadata(
     seen_urls: set[str] = set()
     seen_event_titles: set[str] = set()
     seen_event_phrases: set[str] = set()
+    seen_event_identities: set[str] = set()
     for row in ranked:
         url = _normalize_url(row.item.canonical_url)
         event_title = _exact_title_event_key(row.item.title)
         event_phrases = _explicit_event_phrases(row.item)
+        event_identities = _security_event_identities(row.item)
         if (
             url in seen_urls
             or (event_title is not None and event_title in seen_event_titles)
             or bool(event_phrases & seen_event_phrases)
+            or bool(event_identities & seen_event_identities)
         ):
             continue
         seen_urls.add(url)
         if event_title is not None:
             seen_event_titles.add(event_title)
         seen_event_phrases.update(event_phrases)
+        seen_event_identities.update(event_identities)
         deduped_ranked.append(row)
     exposed: list[_RankedItem] = []
     selected_ids: set[tuple[str, str]] = set()

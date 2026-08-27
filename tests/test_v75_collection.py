@@ -280,9 +280,14 @@ def test_shared_explicit_event_phrase_clusters_different_titles_and_urls() -> No
         if source.source_id not in target_ids:
             return MetadataObservation(True, True, "ZERO_YIELD", ())
         title = (
-            "OpenAI publishes Hugging Face incident technical report"
+            "The Hugging Face incident and the road ahead"
             if source.source_id == "rss_openai_news"
-            else "Independent review of Hugging Face incident response"
+            else "Brief independent investigation of agents in the OpenAI / Hugging Face hacking event"
+        )
+        slug = (
+            "hugging-face-incident-and-the-road-ahead"
+            if source.source_id == "rss_openai_news"
+            else "openai-hugging-face-incident-investigation"
         )
         return MetadataObservation(
             True,
@@ -292,7 +297,7 @@ def test_shared_explicit_event_phrase_clusters_different_titles_and_urls() -> No
                 MetadataItem(
                     item_native_id=f"{source.source_id}-hf-incident",
                     title=title,
-                    canonical_url=f"https://example.com/{source.source_id}/hugging-face-incident",
+                    canonical_url=f"https://example.com/{slug}",
                     published_at="2026-08-27",
                     summary="Agent behavior in the Hugging Face incident investigation. " * 8,
                     content_type="engineering",
