@@ -624,6 +624,14 @@ def _validate_generator_draft(
         keep_action_ids = story["action_claim_ids"][:remaining_actions]
         remaining_actions -= len(keep_action_ids)
         removed_action_ids = set(story["action_claim_ids"]) - set(keep_action_ids)
+        story_evidence_ids = {
+            evidence_id
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        }
+        story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
+        if removed_action_ids and story_types == {"research"}:
+            continue
         projected = dict(story)
         projected["action_claim_ids"] = keep_action_ids
         projected["claims"] = [
