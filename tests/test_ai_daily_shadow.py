@@ -502,6 +502,13 @@ def test_rejected_event_claim_drops_the_entire_story(tmp_path: Path) -> None:
 
     assert result.story_count == 0
     assert result.markdown_path is None
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["audit"]["candidate_audit"][0]["generator_selected"] is True
+    assert (
+        report["audit"]["candidate_audit"][0]["disposition"]
+        == "REVIEW_REJECTED_OR_STORY_DROPPED"
+    )
+    assert report["audit"]["review_decisions"]
 
 
 def test_renderer_keeps_supported_visible_roles_and_omits_excerpt_uncertainty(

@@ -197,6 +197,66 @@ def _no_story_disposition(
     return "COVERAGE_LIMITED", 4, "COVERAGE_LIMITED_NO_NEWS"
 
 
+def _candidate_disposition_audit(
+    collected: CollectionResult,
+    *,
+    generator_evidence_ids: set[str],
+    final_evidence_ids: set[str],
+) -> list[dict[str, object]]:
+    raw_rows = collected.audit.get("candidate_audit", [])
+    rows = raw_rows if isinstance(raw_rows, list) else []
+    if not rows:
+        rows = [
+            {
+                "evidence_id": candidate.evidence_id,
+                "source_id": candidate.source_id,
+                "title": candidate.title,
+                "canonical_url": candidate.link,
+                "pillars": list(candidate.pillars),
+                "metadata_score": candidate.metadata_score,
+                "access_state": candidate.access_state.value,
+                "evidence_kind": candidate.evidence_kind,
+                "published": candidate.published,
+            }
+            for candidate in collected.candidates
+        ]
+    return [
+        {
+            **row,
+            "generator_selected": row["evidence_id"] in generator_evidence_ids,
+            "final_selected": row["evidence_id"] in final_evidence_ids,
+            "disposition": (
+                "FINAL_SELECTED"
+                if row["evidence_id"] in final_evidence_ids
+                else "REVIEW_REJECTED_OR_STORY_DROPPED"
+                if row["evidence_id"] in generator_evidence_ids
+                else "GENERATOR_NOT_SELECTED"
+            ),
+        }
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("evidence_id"), str)
+    ]
+
+
+def _review_decision_audit(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, dict) or not isinstance(value.get("decisions"), list):
+        return []
+    return [
+        {
+            "claim_id": row["claim_id"],
+            "evidence_ids": list(row["evidence_ids"]),
+            "decision": row["decision"],
+            "reason_code": row["reason_code"],
+        }
+        for row in value["decisions"]
+        if isinstance(row, dict)
+        and isinstance(row.get("claim_id"), str)
+        and isinstance(row.get("evidence_ids"), list)
+        and isinstance(row.get("decision"), str)
+        and isinstance(row.get("reason_code"), str)
+    ]
+
+
 def _validate_user_context(value: object) -> dict[str, object]:
     if (
         not isinstance(value, dict)
@@ -924,7 +984,14 @@ def run_ai_daily_shadow(
             exit_code=no_story_exit,
             error_code=no_story_error,
             model_metrics=_model_metrics(generator),
-            audit=collected.audit,
+            audit={
+                **collected.audit,
+                "candidate_audit": _candidate_disposition_audit(
+                    collected,
+                    generator_evidence_ids=set(),
+                    final_evidence_ids=set(),
+                ),
+            },
         )
     requirements, draft_hash = _review_requirements(stories)
     referenced_ids = {
@@ -981,6 +1048,12 @@ def run_ai_daily_shadow(
         )
     accepted = _accepted_stories(stories, reviewer.validated_structured_result)
     if not accepted:
+        generator_evidence_ids = {
+            evidence_id
+            for story in stories
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        }
         no_story_status, no_story_exit, no_story_error = _no_story_disposition(
             collected.coverage, collected.evidence_level
         )
@@ -998,7 +1071,17 @@ def run_ai_daily_shadow(
             exit_code=no_story_exit,
             error_code=no_story_error,
             model_metrics=_model_metrics(generator, reviewer),
-            audit=collected.audit,
+            audit={
+                **collected.audit,
+                "candidate_audit": _candidate_disposition_audit(
+                    collected,
+                    generator_evidence_ids=generator_evidence_ids,
+                    final_evidence_ids=set(),
+                ),
+                "review_decisions": _review_decision_audit(
+                    reviewer.validated_structured_result
+                ),
+            },
         )
     markdown = _render_markdown(
         selected_date,
@@ -1040,25 +1123,11 @@ def run_ai_daily_shadow(
         for claim in story["claims"]
         for evidence_id in claim["evidence_ids"]
     }
-    candidate_audit_rows = collected.audit.get("candidate_audit", [])
-    if not isinstance(candidate_audit_rows, list):
-        candidate_audit_rows = []
-    final_candidate_audit = [
-        {
-            **row,
-            "generator_selected": row["evidence_id"] in generator_evidence_ids,
-            "final_selected": row["evidence_id"] in final_evidence_ids,
-            "disposition": (
-                "FINAL_SELECTED"
-                if row["evidence_id"] in final_evidence_ids
-                else "REVIEW_REJECTED_OR_STORY_DROPPED"
-                if row["evidence_id"] in generator_evidence_ids
-                else "GENERATOR_NOT_SELECTED"
-            ),
-        }
-        for row in candidate_audit_rows
-        if isinstance(row, dict) and isinstance(row.get("evidence_id"), str)
-    ]
+    final_candidate_audit = _candidate_disposition_audit(
+        collected,
+        generator_evidence_ids=generator_evidence_ids,
+        final_evidence_ids=final_evidence_ids,
+    )
     return _finish(
         ports=ports,
         run_dir=run_dir,
@@ -1077,6 +1146,9 @@ def run_ai_daily_shadow(
         audit={
             **collected.audit,
             "candidate_audit": final_candidate_audit,
+            "review_decisions": _review_decision_audit(
+                reviewer.validated_structured_result
+            ),
             "evidence_hash": _digest(
                 [item.model_payload() for item in collected.candidates]
             ),
