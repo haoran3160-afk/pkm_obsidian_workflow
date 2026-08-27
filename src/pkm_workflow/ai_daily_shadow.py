@@ -599,9 +599,23 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_EVIDENCE_REUSED_ACROSS_STORIES")
         used_story_evidence_ids.update(story_evidence_ids)
         validated.append(story)
-    if action_count > 2:
-        raise ValueError("GENERATOR_DAILY_ACTION_LIMIT_EXCEEDED")
-    return tuple(validated)
+    if action_count <= 2:
+        return tuple(validated)
+    bounded: list[dict[str, Any]] = []
+    remaining_actions = 2
+    for story in sorted(validated, key=lambda item: item["rank"]):
+        keep_action_ids = story["action_claim_ids"][:remaining_actions]
+        remaining_actions -= len(keep_action_ids)
+        removed_action_ids = set(story["action_claim_ids"]) - set(keep_action_ids)
+        projected = dict(story)
+        projected["action_claim_ids"] = keep_action_ids
+        projected["claims"] = [
+            claim
+            for claim in story["claims"]
+            if claim["claim_id"] not in removed_action_ids
+        ]
+        bounded.append(projected)
+    return tuple(bounded)
 
 
 def _review_requirements(stories: tuple[dict[str, Any], ...]) -> tuple[list[dict[str, object]], str]:

@@ -82,6 +82,7 @@ _MVP_PROMPTS = {
         "a non-NONE action_type, a concrete action_object, and a measurable success_criterion. "
         "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
         "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
+        "Across the whole response emit at most two action claims; omit actions from lower-ranked stories rather than exceeding this limit. "
         "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
         "Use only source-scoped superlatives: first results never means the world's first product, and an organization's first product must remain explicitly scoped to that organization. existing revenue or valuation cannot validate a newly announced direction; never say existing scale reflects or supports the new trend. without adoption or result evidence, say only that company scale makes the direction worth observing. "
         "Uncertainty and watch claims must name an evidence-specific unknown or "

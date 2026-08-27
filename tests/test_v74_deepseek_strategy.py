@@ -79,7 +79,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:3bfc9dda552ad7bf95b85c9582cd1cc3a16bf2e8655861b17b9be1de11f9c444"
+        "sha256:4c4df6c49ce52df841a04c5ed66b16a1d1296568265bfd6f91eee123445a9242"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -124,6 +124,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "first results never means the world's first product" in MVP_GENERATOR_PROMPT
     assert "existing revenue or valuation cannot validate a newly announced direction" in MVP_GENERATOR_PROMPT
     assert "never say existing scale reflects or supports the new trend" in MVP_GENERATOR_PROMPT
+    assert "Across the whole response emit at most two action claims" in MVP_GENERATOR_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
