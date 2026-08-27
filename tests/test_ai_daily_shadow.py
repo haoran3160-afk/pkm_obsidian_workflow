@@ -645,9 +645,11 @@ def test_bounded_excerpt_cannot_support_absence_claim(tmp_path: Path) -> None:
 
     result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE"
-    assert result.markdown_path is None
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    assert "技术报告未明确漏洞利用细节" not in result.markdown_path.read_text(
+        encoding="utf-8"
+    )
 
 
 @pytest.mark.parametrize(
@@ -655,7 +657,11 @@ def test_bounded_excerpt_cannot_support_absence_claim(tmp_path: Path) -> None:
     [
         "报告没有披露漏洞利用细节。",
         "报告未提及生产 worker 数量。",
+        "报告省略了漏洞利用细节。",
+        "报告缺少漏洞利用细节。",
         "The report does not mention exploit details.",
+        "Exploit details remain undisclosed.",
+        "The report omits exploit details.",
     ],
 )
 def test_bounded_excerpt_rejects_structural_absence_phrasing(
@@ -694,8 +700,9 @@ def test_bounded_excerpt_rejects_structural_absence_phrasing(
 
     result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
 
-    assert result.error_code == "GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE"
-    assert result.markdown_path is None
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    assert statement not in result.markdown_path.read_text(encoding="utf-8")
 
 
 def test_valid_approved_context_path_need_not_appear_in_source_text(tmp_path: Path) -> None:

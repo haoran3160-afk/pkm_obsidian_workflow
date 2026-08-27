@@ -214,7 +214,7 @@ def _explicit_event_phrases(item: MetadataItem) -> set[str]:
     for tokens in (title_tokens, path_tokens):
         for index in range(max(0, len(tokens) - 2)):
             phrase_tokens = tokens[index : index + 3]
-            if sum(token not in generic for token in phrase_tokens) >= 2:
+            if all(token not in generic for token in phrase_tokens):
                 phrases.add(" ".join(phrase_tokens))
     return phrases
 
@@ -285,9 +285,6 @@ def _ranked_metadata(
     used_urls: set[str],
 ) -> tuple[_RankedItem, ...]:
     ranked: list[_RankedItem] = []
-    seen_urls: set[str] = set()
-    seen_event_titles: set[str] = set()
-    seen_event_phrases: set[str] = set()
     for source_id, observation in observations.items():
         source = sources[source_id]
         if source.evidence_role == "DISCOVERY_PROVENANCE" or source.selection_role in {
@@ -297,15 +294,7 @@ def _ranked_metadata(
             continue
         for item in observation.items:
             url = _normalize_url(item.canonical_url)
-            event_title = _exact_title_event_key(item.title)
-            event_phrases = _explicit_event_phrases(item)
-            if (
-                not url
-                or url in seen_urls
-                or url in used_urls
-                or (event_title is not None and event_title in seen_event_titles)
-                or bool(event_phrases & seen_event_phrases)
-            ):
+            if not url or url in used_urls:
                 continue
             published = _published_date(item.published_at)
             if published is None or not content_date - timedelta(days=7) <= published <= content_date:
@@ -319,10 +308,6 @@ def _ranked_metadata(
             )
             if score < quality_threshold:
                 continue
-            seen_urls.add(url)
-            if event_title is not None:
-                seen_event_titles.add(event_title)
-            seen_event_phrases.update(event_phrases)
             ranked.append(_RankedItem(source=source, item=item, metadata_score=score))
     ranked.sort(
         key=lambda row: (
@@ -333,16 +318,35 @@ def _ranked_metadata(
             row.item.item_native_id,
         )
     )
+    deduped_ranked: list[_RankedItem] = []
+    seen_urls: set[str] = set()
+    seen_event_titles: set[str] = set()
+    seen_event_phrases: set[str] = set()
+    for row in ranked:
+        url = _normalize_url(row.item.canonical_url)
+        event_title = _exact_title_event_key(row.item.title)
+        event_phrases = _explicit_event_phrases(row.item)
+        if (
+            url in seen_urls
+            or (event_title is not None and event_title in seen_event_titles)
+            or bool(event_phrases & seen_event_phrases)
+        ):
+            continue
+        seen_urls.add(url)
+        if event_title is not None:
+            seen_event_titles.add(event_title)
+        seen_event_phrases.update(event_phrases)
+        deduped_ranked.append(row)
     exposed: list[_RankedItem] = []
     selected_ids: set[tuple[str, str]] = set()
     for pillar in ("AGENTIC_RESEARCH", "AI_MASTERY", "BUILDERS", "VC", "COGNITION"):
-        match = next((row for row in ranked if row.source.pillars[0] == pillar), None)
+        match = next((row for row in deduped_ranked if row.source.pillars[0] == pillar), None)
         if match is not None:
             exposed.append(match)
             selected_ids.add((match.source.source_id, match.item.item_native_id))
     exposed.extend(
         row
-        for row in ranked
+        for row in deduped_ranked
         if (row.source.source_id, row.item.item_native_id) not in selected_ids
     )
     return tuple(exposed)
@@ -363,7 +367,7 @@ def _is_public_fulltext(value: str) -> bool:
         r"\b(read|rest|full|unlock|access|article|post|plan|continue)\b",
         lowered,
     )
-    return not (len(normalized) < 4000 and access_signal and reading_signal)
+    return not (access_signal and reading_signal)
 
 
 def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Candidate:

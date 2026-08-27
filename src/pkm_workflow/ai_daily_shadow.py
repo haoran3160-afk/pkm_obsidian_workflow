@@ -356,6 +356,7 @@ def _validate_generator_draft(
         story_ids.add(story_id)
         ranks.add(rank)
         local_claims: dict[str, dict[str, Any]] = {}
+        unsafe_absence_ids: set[str] = set()
         for claim in claims:
             if not isinstance(claim, dict):
                 raise ValueError("GENERATOR_CLAIM_INVALID")
@@ -387,18 +388,33 @@ def _validate_generator_draft(
                 raise ValueError("GENERATOR_CONTEXT_REF_UNKNOWN")
             statement = str(claim["statement"]).casefold()
             chinese_absence = re.search(
-                r"(?:未|没有|无|尚未).{0,6}(?:披露|提及|说明|明确|提供|公布|公开|给出)",
+                r"(?:报告|文档|来源|证据).{0,10}"
+                r"(?:未|没有|无|尚未|省略(?:了)?|缺少|缺失|缺乏).{0,12}"
+                r"(?:披露|提及|说明|明确|提供|公布|公开|给出|细节|信息|数据|描述)",
                 statement,
-            ) or re.search(r"(?:缺乏|尚无|不详).{0,8}(?:细节|信息|数据|说明)", statement)
+            ) or re.search(
+                r"(?:省略(?:了)?|缺少|缺失|缺乏|尚无|不详).{0,8}"
+                r"(?:细节|信息|数据|说明|描述)",
+                statement,
+            ) or re.search(
+                r"(?:细节|信息|数据|说明|描述).{0,8}"
+                r"(?:未披露|未提及|未说明|不详|缺失)",
+                statement,
+            )
             english_absence = re.search(
-                r"(?:does not|did not|doesn't|didn't|not|no).{0,24}"
-                r"(?:disclose|mention|specify|provide|detail|state|report)",
+                r"(?:report|source|evidence|document).{0,24}"
+                r"(?:does not|did not|doesn't|didn't|omits?|lacks?|missing|"
+                r"undisclosed|unspecified|unreported)",
+                statement,
+            ) or re.search(
+                r"(?:details?|information|data).{0,16}"
+                r"(?:remain(?:s)? )?(?:undisclosed|unspecified|unreported|missing)",
                 statement,
             )
             if (chinese_absence or english_absence) and any(
                 not evidence[evidence_id].source_complete for evidence_id in evidence_ids
             ):
-                raise ValueError("GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE")
+                unsafe_absence_ids.add(claim_id)
             if claim_kind in {"editorial_inference", "action"} and not context_refs:
                 raise ValueError("GENERATOR_CONTEXT_BINDING_REQUIRED")
             action_type = claim.get("action_type")
@@ -464,6 +480,28 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_ACTION_ROLE_INVALID")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
+        core_claim_ids = {
+            story["title_claim_id"],
+            *story["event_claim_ids"],
+            *story["importance_claim_ids"],
+            *story["impact_claim_ids"],
+        }
+        if unsafe_absence_ids & core_claim_ids:
+            raise ValueError("GENERATOR_CORE_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE")
+        if unsafe_absence_ids:
+            projected = dict(story)
+            projected["claims"] = [
+                claim
+                for claim in story["claims"]
+                if claim["claim_id"] not in unsafe_absence_ids
+            ]
+            for field in role_fields:
+                projected[field] = [
+                    claim_id
+                    for claim_id in story[field]
+                    if claim_id not in unsafe_absence_ids
+                ]
+            story = projected
         validated.append(story)
     if action_count > 2:
         raise ValueError("GENERATOR_DAILY_ACTION_LIMIT_EXCEEDED")

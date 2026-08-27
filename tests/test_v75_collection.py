@@ -328,9 +328,51 @@ def test_membership_upgrade_preview_is_not_full_free() -> None:
         ports=CollectionPorts(
             fetch_metadata=fetch_metadata,
             fetch_fulltext=lambda _url: (
-                "Become a member to read the rest. Upgrade your plan for access. " * 10
+                "Become a member to read the rest. Upgrade your plan for access. " * 100
             ),
         ),
     )
 
     assert result.candidates == ()
+
+
+def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    target_ids = {"rss_openai_news", "rss_google_ai"}
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in target_ids:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        title = (
+            "OpenAI launches new GPT 6 model"
+            if source.source_id == "rss_openai_news"
+            else "OpenAI launches new Agents SDK"
+        )
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id=f"{source.source_id}-distinct",
+                    title=title,
+                    canonical_url=f"https://example.com/{source.source_id}/distinct-product",
+                    published_at="2026-08-27",
+                    summary="Distinct product evidence and implementation detail. " * 8,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Canonical public product article body. " * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 2
