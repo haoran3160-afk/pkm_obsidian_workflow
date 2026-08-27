@@ -30,6 +30,29 @@ _REQUIRED_SOURCE_FIELDS = {
 }
 _PILLARS = {"AGENTIC_RESEARCH", "AI_MASTERY", "BUILDERS", "VC", "COGNITION"}
 _EMPTY_PILLAR_ROLES = {"MARKET_SENTINEL", "OUT_OF_SCOPE"}
+_OPERATIONAL_STATUSES = {"ACTIVE", "CATALOGED", "DISABLED"}
+_SELECTION_ROLES = {
+    "CORE_DAILY",
+    "RESEARCH_WATCH",
+    "VC_WEEKLY",
+    "COGNITIVE_WEEKLY",
+    "BUILDER_DISCOVERY",
+    "MARKET_SENTINEL",
+    "OUT_OF_SCOPE",
+}
+_ADAPTER_KINDS = {
+    "AIHOT_PUBLIC_INTERFACE",
+    "ARXIV_QUERY",
+    "GITHUB_PUBLIC_SIGNAL",
+    "RSS_ATOM",
+    "WEB_SOURCE_SPECIFIC",
+    "YOUTUBE_CHANNEL",
+    "ZARA_BLOG_MEMBER",
+    "ZARA_CENTRAL_JSON",
+    "ZARA_PODCAST_MEMBER",
+    "ZARA_X_MEMBER",
+}
+_CADENCES = {"ANNUAL_WITH_UPDATE_CHECK", "DAILY", "NONE", "WEEKDAY", "WEEKLY"}
 APPROVED_SOURCE_MANIFEST_PATH = Path(
     r"D:\personal\obsidian_workflow\Source-Manifest-v7.5.json"
 )
@@ -101,6 +124,13 @@ def _text_tuple(value: object, *, field: str, allow_empty: bool = True) -> tuple
     return result
 
 
+def _policy_integer(policies: Mapping[str, object], name: str) -> int:
+    value = policies.get(name)
+    if type(value) is not int:
+        raise ValueError("INVALID_COVERAGE_THRESHOLDS")
+    return value
+
+
 def _source(effective: Mapping[str, object], quality_scores: Mapping[str, object]) -> SourceDefinition:
     missing = sorted(_REQUIRED_SOURCE_FIELDS - effective.keys())
     if missing:
@@ -112,6 +142,21 @@ def _source(effective: Mapping[str, object], quality_scores: Mapping[str, object
     if evidence_role not in quality_scores:
         raise ValueError("UNKNOWN_EVIDENCE_ROLE")
     selection_role = _text(effective["selection_role"], field="selection_role")
+    operational_status = _text(
+        effective["operational_status"], field="operational_status"
+    )
+    if operational_status not in _OPERATIONAL_STATUSES:
+        raise ValueError("UNKNOWN_OPERATIONAL_STATUS")
+    if selection_role not in _SELECTION_ROLES:
+        raise ValueError("UNKNOWN_SELECTION_ROLE")
+    adapter_kind = _text(effective["adapter_kind"], field="adapter_kind")
+    if adapter_kind not in _ADAPTER_KINDS:
+        raise ValueError("UNKNOWN_ADAPTER_KIND")
+    cadence = _text(effective["cadence"], field="cadence")
+    if cadence not in _CADENCES:
+        raise ValueError("UNKNOWN_CADENCE")
+    if effective["access_policy"] != "FREE_ENTRY_REQUIRED":
+        raise ValueError("UNKNOWN_ACCESS_POLICY")
     if evidence_role == "DISCOVERY_PROVENANCE" and coverage_member:
         raise ValueError("DISCOVERY_PROVENANCE_COVERAGE_FORBIDDEN")
     pillars = _text_tuple(effective["pillars"], field="pillars")
@@ -128,14 +173,12 @@ def _source(effective: Mapping[str, object], quality_scores: Mapping[str, object
         canonical_origin_id=_text(
             effective["canonical_origin_id"], field="canonical_origin_id"
         ),
-        adapter_kind=_text(effective["adapter_kind"], field="adapter_kind"),
+        adapter_kind=adapter_kind,
         endpoints=endpoints,
-        operational_status=_text(
-            effective["operational_status"], field="operational_status"
-        ),
+        operational_status=operational_status,
         selection_role=selection_role,
         coverage_member=coverage_member,
-        cadence=_text(effective["cadence"], field="cadence"),
+        cadence=cadence,
         pillars=pillars,
         evidence_role=evidence_role,
         access_policy=_text(effective["access_policy"], field="access_policy"),
@@ -160,6 +203,24 @@ def load_source_catalog(path: Path) -> SourceCatalog:
     quality_scores = _object(
         policies.get("source_quality_scores"), label="SOURCE_QUALITY_SCORES"
     )
+    operational_a = _policy_integer(policies, "operational_coverage_a_bps")
+    operational_b = _policy_integer(policies, "operational_coverage_b_bps")
+    evidence_a = _policy_integer(policies, "evidence_availability_a_bps")
+    evidence_b = _policy_integer(policies, "evidence_availability_b_bps")
+    if (
+        not 0 < operational_b < operational_a <= 10_000
+        or not 0 < evidence_b < evidence_a <= 10_000
+    ):
+        raise ValueError("INVALID_COVERAGE_THRESHOLDS")
+    if (
+        policies.get("max_admissible_candidates") != 8
+        or policies.get("max_fulltext_attempts") != 16
+        or policies.get("daily_final_top_max") != 3
+        or policies.get("daily_action_max") != 2
+        or policies.get("per_story_action_max") != 1
+        or policies.get("metadata_quality_threshold") != 5000
+    ):
+        raise ValueError("INVALID_CURATION_LIMITS")
     groups = payload.get("groups")
     if not isinstance(groups, list) or not groups:
         raise ValueError("GROUPS_MUST_BE_NONEMPTY_LIST")

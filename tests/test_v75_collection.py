@@ -52,8 +52,8 @@ def test_only_due_active_sources_are_fetched_and_only_core_sources_form_denomina
         ),
     )
 
-    assert result.configured_sources == 9
-    assert result.healthy_sources == 9
+    assert result.configured_sources == 14
+    assert result.healthy_sources == 14
     assert result.coverage is CoverageLevel.A
     assert result.evidence_level is CoverageLevel.A
     assert result.candidates == ()
@@ -189,5 +189,5 @@ def test_verified_fulltext_upgrades_evidence_availability(tmp_path: Path) -> Non
         ),
     )
 
-    assert result.evidence_level is CoverageLevel.A
+    assert result.evidence_level is CoverageLevel.B
     assert result.evidence_healthy_sources == 8
