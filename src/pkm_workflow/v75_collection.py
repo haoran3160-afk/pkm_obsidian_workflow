@@ -252,7 +252,7 @@ def _is_due(source: SourceDefinition, content_date: date) -> bool:
     if source.cadence == "WEEKDAY":
         return content_date.weekday() < 5
     if source.cadence == "WEEKLY":
-        return content_date.weekday() == 6
+        return source.selection_role != "CORE_DAILY" or content_date.weekday() == 6
     return False
 
 

@@ -59,6 +59,9 @@ def test_only_due_active_sources_are_fetched_and_only_core_sources_form_denomina
     assert result.evidence_level is CoverageLevel.A
     assert result.candidates == ()
     assert "rss_hackernews_best" in seen
+    assert "rss_air_street_press" in seen
+    assert "rss_stratechery" in seen
+    assert "rss_not_boring" in seen
     assert "rss_guardian_science" not in seen
     assert "youtube_3blue1brown" not in seen
     assert "youtube_statquest" not in seen
@@ -77,6 +80,57 @@ def test_only_due_active_sources_are_fetched_and_only_core_sources_form_denomina
         }
         for row in source_audit
     )
+
+
+def test_rolling_candidate_observation_can_expose_all_five_pillars() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    target_text = {
+        "rss_simon_willison": "agent harness evaluation benchmark trajectory",
+        "rss_pragmatic_engineer": "prompt context workflow API coding tool",
+        "rss_pieter_levels": "founder startup SaaS product revenue distribution",
+        "rss_air_street_press": "venture investment capital market moat economics",
+        "rss_stratechery": "mental model assumption incentive framework innovation",
+    }
+
+    def fetch_metadata(source, _content_date):
+        text = target_text.get(source.source_id)
+        if text is None:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id=f"{source.source_id}-pillar",
+                    title=text.title(),
+                    canonical_url=f"https://example.com/{source.source_id}/pillar",
+                    published_at="2026-08-27",
+                    summary=(text + " with direct evidence and implementation detail. ") * 8,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Canonical public article body. " * 40,
+        ),
+    )
+
+    assert result.configured_sources == 14
+    assert {candidate.pillars[0] for candidate in result.candidates} >= {
+        "AGENTIC_RESEARCH",
+        "AI_MASTERY",
+        "BUILDERS",
+        "VC",
+        "COGNITION",
+    }
 
 
 def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
