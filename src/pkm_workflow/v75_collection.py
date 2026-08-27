@@ -525,15 +525,22 @@ def _is_public_fulltext(value: str) -> bool:
     lowered = normalized.casefold()
     if any(term in lowered for term in _PAYWALL_TERMS):
         return False
-    access_signal = re.search(
-        r"\b(member(?:ship)?|subscrib(?:e|er|tion)|upgrade|premium|paywall|sign in|log in)\b",
+    access_pattern = (
+        r"\b(?:member(?:ship)?|subscrib(?:e|er|tion)|upgrade|premium|paywall|"
+        r"sign in|log in)\b"
+    )
+    reading_pattern = (
+        r"\b(?:read (?:the )?(?:full )?(?:rest|article|post|content)|"
+        r"continue reading|unlock(?: the)?(?: full)?(?: article| post| content)?|"
+        r"access (?:the )?(?:full )?(?:article|post|content)|"
+        r"full (?:article|post|content))\b"
+    )
+    restricted_access = re.search(
+        rf"(?:{access_pattern}.{{0,160}}{reading_pattern}|"
+        rf"{reading_pattern}.{{0,160}}{access_pattern})",
         lowered,
     )
-    reading_signal = re.search(
-        r"\b(read|rest|full|unlock|access|article|post|plan|continue)\b",
-        lowered,
-    )
-    return not (access_signal and reading_signal)
+    return restricted_access is None
 
 
 def _candidate(

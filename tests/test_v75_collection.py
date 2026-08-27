@@ -463,6 +463,47 @@ def test_paywall_signal_at_end_of_bounded_text_is_not_full_free() -> None:
     assert result.candidates == ()
 
 
+def test_public_article_with_distant_newsletter_footer_remains_full_free() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_pieter_levels":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="public-builder-article",
+                    title="I built a product to fix hotel review incentives",
+                    canonical_url="https://example.com/public-builder-article",
+                    published_at="2026-08-27",
+                    summary="Builder product users reviews distribution evidence. " * 6,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    public_body = (
+        "Read this full public case study about the product, users, validation, and distribution. "
+        * 100
+    ) + ("General analysis. " * 100) + " Subscribe to the free newsletter."
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: public_body,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].story_type == "builder"
+
+
 def test_default_access_probe_scans_beyond_model_excerpt_limit(
     monkeypatch,
 ) -> None:
