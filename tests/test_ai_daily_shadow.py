@@ -458,7 +458,9 @@ def test_research_story_renders_type_specific_takeaway_and_detail_list(
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
-            transport=_GenerateReviewTransport(reject_claim=""),
+            transport=_GenerateReviewTransport(
+                reject_claim="", include_watch_and_action=True
+            ),
         ),
         runtime_root=tmp_path,
         load_user_context=lambda: load_approved_user_context_v75().model_payload(),
@@ -473,6 +475,41 @@ def test_research_story_renders_type_specific_takeaway_and_detail_list(
     assert "**对你研究的启发**" in markdown
     assert "  - 浏览器操作被封装为可复用工具接口。" in markdown
     assert "  - 工具接口保留了可验证的操作结果与失败状态。" in markdown
+    assert "**可做的复现或实验**" in markdown
+
+
+def test_research_story_without_testable_question_fails_closed(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="SWE-bench harness evaluation study",
+        link="https://example.com/harness-study",
+        published="2026-08-26",
+        summary="A full harness evaluation study with methods and benchmark evidence.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_RESEARCH_QUESTION_REQUIRED"
+    assert result.markdown_path is None
 
 
 def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(

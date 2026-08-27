@@ -545,6 +545,21 @@ def _validate_generator_draft(
         }
         if action_ids != set(story["action_claim_ids"]):
             raise ValueError("GENERATOR_ACTION_ROLE_INVALID")
+        story_evidence_ids = {
+            evidence_id
+            for claim in local_claims.values()
+            for evidence_id in claim["evidence_ids"]
+        }
+        story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
+        if is_v75 and story_types == {"research"}:
+            research_actions = [
+                local_claims[claim_id]
+                for claim_id in story["action_claim_ids"]
+                if local_claims[claim_id]["action_type"]
+                in {"RESEARCH_QUESTION", "THIS_WEEK_EXPERIMENT"}
+            ]
+            if not research_actions:
+                raise ValueError("GENERATOR_RESEARCH_QUESTION_REQUIRED")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         unsafe_absence_ids.update(
