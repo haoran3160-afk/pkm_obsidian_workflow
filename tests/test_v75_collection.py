@@ -61,6 +61,21 @@ def test_only_due_active_sources_are_fetched_and_only_core_sources_form_denomina
     assert "rss_guardian_science" not in seen
     assert "youtube_3blue1brown" not in seen
     assert "youtube_statquest" not in seen
+    source_audit = result.audit["source_observations"]
+    assert len(source_audit) == len(seen)
+    assert all(
+        set(row)
+        == {
+            "source_id",
+            "selection_role",
+            "coverage_member",
+            "healthy",
+            "zero_yield",
+            "reason_code",
+            "item_count",
+        }
+        for row in source_audit
+    )
 
 
 def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
@@ -100,6 +115,9 @@ def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
         sum(candidate.source_id == source_id for candidate in result.candidates)
         for source_id in {candidate.source_id for candidate in result.candidates}
     ) <= 2
+    candidate_audit = result.audit["candidate_audit"]
+    assert len(candidate_audit) == 8
+    assert all("summary" not in row and "canonical_url" not in row for row in candidate_audit)
 
 
 def test_fulltext_attempts_are_bounded_at_sixteen() -> None:

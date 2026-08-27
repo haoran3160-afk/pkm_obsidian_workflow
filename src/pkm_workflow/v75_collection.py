@@ -418,9 +418,33 @@ def collect_v75_candidates(
         evidence_healthy_sources=len(assessment_source_ids),
         audit={
             "due_source_ids": [source.source_id for source in due_sources],
+            "source_observations": [
+                {
+                    "source_id": source.source_id,
+                    "selection_role": source.selection_role,
+                    "coverage_member": source.coverage_member,
+                    "healthy": observations[source.source_id].healthy,
+                    "zero_yield": observations[source.source_id].zero_yield,
+                    "reason_code": observations[source.source_id].reason_code,
+                    "item_count": len(observations[source.source_id].items),
+                }
+                for source in due_sources
+            ],
             "metadata_qualified_count": len(ranked),
             "fulltext_attempt_count": attempts,
             "exclusions": exclusions,
+            "candidate_audit": [
+                {
+                    "evidence_id": candidate.evidence_id,
+                    "source_id": candidate.source_id,
+                    "pillars": list(candidate.pillars),
+                    "metadata_score": candidate.metadata_score,
+                    "access_state": candidate.access_state.value,
+                    "evidence_kind": candidate.evidence_kind,
+                    "published": candidate.published,
+                }
+                for candidate in candidates
+            ],
         },
     )
 
