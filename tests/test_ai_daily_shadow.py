@@ -529,7 +529,7 @@ def test_unapproved_context_reference_fails_closed_without_markdown(tmp_path: Pa
     result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
 
     assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_CLAIM_BINDING_INVALID"
+    assert result.error_code == "GENERATOR_CONTEXT_REF_UNKNOWN"
     assert result.markdown_path is None
 
 

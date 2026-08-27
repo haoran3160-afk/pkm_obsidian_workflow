@@ -69,7 +69,7 @@ _MVP_PROMPTS = {
         "is worth the reader's attention. The deterministic v7.5 curation layer has already "
         "ranked candidates by approved personal pillars, evidence quality, novelty, and freshness; "
         "do not substitute generic industry popularity for that ranking. Use only supplied evidence and bind every factual "
-        "claim to evidence IDs. Keep event, mechanism, importance, impact, uncertainty, watch "
+        "claim to evidence IDs. For editorial or action claims, copy context_refs only from candidate profile_refs bound to that claim's evidence; never prefix a copied path with fields and never invent a path. Keep event, mechanism, importance, impact, uncertainty, watch "
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
         "tools, or prose outside the JSON object. Use only three to eight concise claims per "
         "story and keep each statement under 120 Chinese characters. Story IDs and claim IDs "

@@ -356,18 +356,31 @@ def _validate_generator_draft(
                 not isinstance(claim_id, str)
                 or claim_id in claim_ids
                 or not isinstance(claim.get("statement"), str)
-                or not isinstance(evidence_ids, list)
+            ):
+                raise ValueError("GENERATOR_CLAIM_ID_INVALID")
+            if (
+                not isinstance(evidence_ids, list)
                 or not evidence_ids
                 or any(not isinstance(item, str) or item not in evidence for item in evidence_ids)
-                or claim_kind not in {"fact", "editorial_inference", "action"}
-                or not isinstance(context_refs, list)
-                or len(context_refs) != len(set(context_refs))
-                or any(
-                    not isinstance(item, str) or item not in allowed_context_refs
-                    for item in context_refs
-                )
             ):
-                raise ValueError("GENERATOR_CLAIM_BINDING_INVALID")
+                raise ValueError("GENERATOR_EVIDENCE_BINDING_INVALID")
+            if claim_kind not in {"fact", "editorial_inference", "action"}:
+                raise ValueError("GENERATOR_CLAIM_KIND_INVALID")
+            if (
+                not isinstance(context_refs, list)
+                or len(context_refs) != len(set(context_refs))
+                or any(not isinstance(item, str) for item in context_refs)
+            ):
+                raise ValueError("GENERATOR_CONTEXT_REFS_INVALID")
+            if any(item not in allowed_context_refs for item in context_refs):
+                raise ValueError("GENERATOR_CONTEXT_REF_UNKNOWN")
+            candidate_context_refs = {
+                ref
+                for evidence_id in evidence_ids
+                for ref in evidence[evidence_id].profile_refs
+            }
+            if any(item not in candidate_context_refs for item in context_refs):
+                raise ValueError("GENERATOR_CONTEXT_REF_NOT_BOUND_TO_EVIDENCE")
             if claim_kind in {"editorial_inference", "action"} and not context_refs:
                 raise ValueError("GENERATOR_CONTEXT_BINDING_REQUIRED")
             action_type = claim.get("action_type")

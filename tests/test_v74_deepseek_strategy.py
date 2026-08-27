@@ -79,7 +79,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:6ee592f3b28170fec72506241ba5b35aed807162d9dd11d642dba13e3fdd9141"
+        "sha256:a58d26c9b7270a2531b024136a4d9bc15366c42d955274fef3243ac87ca35285"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -116,6 +116,8 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert strategy.generator_schema() != generator_output_schema()
     assert 'action_type exactly "NONE"' in MVP_GENERATOR_PROMPT
     assert "watch and uncertainty claims are not actions" in MVP_GENERATOR_PROMPT
+    assert "copy context_refs only from candidate profile_refs" in MVP_GENERATOR_PROMPT
+    assert "never prefix a copied path with fields" in MVP_GENERATOR_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
