@@ -26,10 +26,7 @@ from .deepseek_provider import (
     mvp_generator_output_schema,
     mvp_reviewer_output_schema,
 )
-
-APPROVED_USER_CONTEXT_HASH = (
-    "sha256:ce307d029565fe20659ec9e43561d949ac1ec7d7ec67720bad25c7ad73460e3f"
-)
+from .user_context_v75 import load_approved_user_context_v75
 
 
 class CoverageLevel(str, Enum):
@@ -149,15 +146,6 @@ def _read_json_object(path: Path) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value
-
-
-def _load_approved_user_context() -> dict[str, object]:
-    path = Path(r"D:\personal\obsidian_workflow\UserContextContract-v7.3.json")
-    raw = _read_json_object(path)
-    actual_hash = _digest(raw)
-    if actual_hash != APPROVED_USER_CONTEXT_HASH:
-        raise ValueError("USER_CONTEXT_HASH_MISMATCH")
-    return {"user_context_hash": actual_hash, "fields": raw}
 
 
 def _quality_config(config: object) -> dict[str, object]:
@@ -305,7 +293,7 @@ def _default_ports() -> ShadowPorts:
         collect=_collect_existing_sources,
         provider=DeepSeekShadowProvider(),
         runtime_root=Path(r"D:\personal\obsidian_workflow-runtime"),
-        load_user_context=_load_approved_user_context,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
     )
 
 
@@ -348,9 +336,14 @@ def _model_metrics(*results: ProviderResult) -> dict[str, int]:
 def _validate_user_context(value: object) -> dict[str, object]:
     if (
         not isinstance(value, dict)
-        or set(value) != {"fields", "user_context_hash"}
+        or not {"fields", "user_context_hash"}.issubset(value)
+        or set(value) - {"fields", "knowledge_anchors", "user_context_hash"}
         or not isinstance(value.get("fields"), dict)
         or not isinstance(value.get("user_context_hash"), str)
+        or (
+            "knowledge_anchors" in value
+            and not isinstance(value.get("knowledge_anchors"), list)
+        )
     ):
         raise ValueError("UserContext payload is invalid")
     return value
@@ -363,7 +356,7 @@ def _attach_profile_refs(
     fields = context.get("fields")
     priorities = fields.get("priorities") if isinstance(fields, dict) else None
     if not isinstance(priorities, list):
-        return candidates
+        priorities = []
     topic_refs: list[tuple[str, str]] = []
     for priority_index, priority in enumerate(priorities):
         topics = priority.get("topics") if isinstance(priority, dict) else None
@@ -374,6 +367,33 @@ def _attach_profile_refs(
                 topic_refs.append(
                     (topic.strip(), f"priorities[{priority_index}].topics[{topic_index}]")
                 )
+    prior_knowledge = fields.get("prior_knowledge") if isinstance(fields, dict) else None
+    if isinstance(prior_knowledge, list):
+        for knowledge_index, knowledge in enumerate(prior_knowledge):
+            topic = knowledge.get("topic") if isinstance(knowledge, dict) else None
+            if isinstance(topic, str) and topic.strip():
+                topic_refs.append(
+                    (topic.strip(), f"prior_knowledge[{knowledge_index}].topic")
+                )
+    projects = fields.get("projects") if isinstance(fields, dict) else None
+    if isinstance(projects, list):
+        for project_index, project in enumerate(projects):
+            if isinstance(project, str) and project.strip():
+                topic_refs.append((project.strip(), f"projects[{project_index}]"))
+    anchors = context.get("knowledge_anchors")
+    if isinstance(anchors, list):
+        for anchor_index, anchor in enumerate(anchors):
+            topics = anchor.get("topics") if isinstance(anchor, dict) else None
+            if not isinstance(topics, list):
+                continue
+            for topic_index, topic in enumerate(topics):
+                if isinstance(topic, str) and topic.strip():
+                    topic_refs.append(
+                        (
+                            topic.strip(),
+                            f"knowledge_anchors[{anchor_index}].topics[{topic_index}]",
+                        )
+                    )
     enriched: list[Candidate] = []
     for candidate in candidates:
         searchable = f"{candidate.title}\n{candidate.summary}"

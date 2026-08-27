@@ -15,6 +15,7 @@ from pkm_workflow.ai_daily_shadow import (
     run_ai_daily_shadow,
 )
 from pkm_workflow.deepseek_provider import DeepSeekShadowProvider, TransportResponse
+from pkm_workflow.user_context_v75 import load_approved_user_context_v75
 
 
 class _GenerateReviewTransport:
@@ -191,6 +192,38 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert "无需行动" in markdown
     assert "## Top 2" not in markdown
     assert transport.calls == 2
+
+
+def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="SWE-bench evaluation exposes coding-agent reliability gap",
+        link="https://example.com/swe-bench-eval",
+        published="2026-08-26",
+        summary="A SWE-bench evaluation reports a coding-agent reliability gap.",
+        content_type="research",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=9,
+            healthy_sources=9,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["personalization_refs"] == ["prior_knowledge[1].topic"]
 
 
 def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(

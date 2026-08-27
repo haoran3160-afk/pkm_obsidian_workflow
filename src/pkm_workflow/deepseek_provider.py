@@ -1537,9 +1537,14 @@ class DeepSeekShadowProvider:
                 or sealed.get("coverage_level") not in {"A", "B"}
                 or re.fullmatch(_HASH_PATTERN, sealed.get("evidence_hash", "")) is None
                 or not isinstance(context, dict)
-                or set(context) != {"fields", "user_context_hash"}
+                or not {"fields", "user_context_hash"}.issubset(context)
+                or set(context) - {"fields", "knowledge_anchors", "user_context_hash"}
                 or re.fullmatch(_HASH_PATTERN, context.get("user_context_hash", "")) is None
                 or not isinstance(context.get("fields"), dict)
+                or (
+                    "knowledge_anchors" in context
+                    and not isinstance(context.get("knowledge_anchors"), list)
+                )
                 or not isinstance(rubric, dict)
                 or rubric
                 != {
