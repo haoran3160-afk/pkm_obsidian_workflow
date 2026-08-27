@@ -401,3 +401,41 @@ def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None
     )
 
     assert len(result.candidates) == 2
+
+
+def test_natural_title_phrase_without_matching_url_slug_does_not_merge() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    target_ids = {"rss_openai_news", "rss_google_ai"}
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in target_ids:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        suffix = "research-update" if source.source_id == "rss_openai_news" else "product-news"
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id=f"{source.source_id}-natural-phrase",
+                    title=f"Practical systems improve teams {source.source_id}",
+                    canonical_url=f"https://example.com/{suffix}",
+                    published_at="2026-08-27",
+                    summary="Distinct evidence and implementation detail. " * 8,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Canonical public article body. " * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 2

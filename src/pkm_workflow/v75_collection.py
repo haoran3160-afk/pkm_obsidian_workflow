@@ -210,13 +210,15 @@ def _explicit_event_phrases(item: MetadataItem) -> set[str]:
         "publishes",
         "independent",
     }
-    phrases: set[str] = set()
+    phrase_sets: list[set[str]] = []
     for tokens in (title_tokens, path_tokens):
+        phrases: set[str] = set()
         for index in range(max(0, len(tokens) - 2)):
             phrase_tokens = tokens[index : index + 3]
             if all(token not in generic for token in phrase_tokens):
                 phrases.add(" ".join(phrase_tokens))
-    return phrases
+        phrase_sets.append(phrases)
+    return phrase_sets[0] & phrase_sets[1]
 
 
 def _published_date(value: str) -> date | None:
