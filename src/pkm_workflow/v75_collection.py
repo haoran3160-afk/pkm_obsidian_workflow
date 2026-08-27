@@ -356,7 +356,7 @@ def _is_public_fulltext(value: str) -> bool:
     normalized = re.sub(r"\s+", " ", value).strip()
     if len(normalized) < 800:
         return False
-    lowered = normalized.casefold()[:2000]
+    lowered = normalized.casefold()
     if any(term in lowered for term in _PAYWALL_TERMS):
         return False
     access_signal = re.search(

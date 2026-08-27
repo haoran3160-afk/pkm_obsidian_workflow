@@ -336,6 +336,31 @@ def test_membership_upgrade_preview_is_not_full_free() -> None:
     assert result.candidates == ()
 
 
+def test_paywall_signal_at_end_of_bounded_text_is_not_full_free() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    core_ids = {source.source_id for source in catalog.operational_coverage_sources}
+
+    def fetch_metadata(source, _content_date):
+        items = (_item(source.source_id, 1),) if source.source_id in core_ids else ()
+        return MetadataObservation(True, not items, "OK" if items else "ZERO_YIELD", items)
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                ("Preview paragraph without the full article. " * 120)
+                + " Become a member to read the rest and upgrade your plan for access."
+            ),
+        ),
+    )
+
+    assert result.candidates == ()
+
+
 def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None:
     catalog = load_source_catalog(MANIFEST)
     target_ids = {"rss_openai_news", "rss_google_ai"}

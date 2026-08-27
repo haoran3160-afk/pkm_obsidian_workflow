@@ -504,7 +504,9 @@ def test_rejected_event_claim_drops_the_entire_story(tmp_path: Path) -> None:
     assert result.markdown_path is None
 
 
-def test_renderer_keeps_all_accepted_visible_claim_roles(tmp_path: Path) -> None:
+def test_renderer_keeps_supported_visible_roles_and_omits_excerpt_uncertainty(
+    tmp_path: Path,
+) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Example AI",
@@ -542,7 +544,7 @@ def test_renderer_keeps_all_accepted_visible_claim_roles(tmp_path: Path) -> None
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "它与用户当前的 Agent 工程优先级直接相关" in markdown
-    assert "所有网站都已完全兼容" in markdown
+    assert "所有网站都已完全兼容" not in markdown
     assert "观察后续是否公布跨站点成功率" in markdown
     assert "本周用一个浏览任务对比复用前后的脚本量" in markdown
     assert "无需行动" not in markdown
@@ -662,6 +664,8 @@ def test_bounded_excerpt_cannot_support_absence_claim(tmp_path: Path) -> None:
         "The report does not mention exploit details.",
         "Exploit details remain undisclosed.",
         "The report omits exploit details.",
+        "No exploit details are included.",
+        "没有漏洞利用细节。",
     ],
 )
 def test_bounded_excerpt_rejects_structural_absence_phrasing(

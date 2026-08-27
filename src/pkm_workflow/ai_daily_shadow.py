@@ -480,6 +480,14 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_ACTION_ROLE_INVALID")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
+        unsafe_absence_ids.update(
+            claim_id
+            for claim_id in story["uncertainty_claim_ids"]
+            if any(
+                not evidence[evidence_id].source_complete
+                for evidence_id in local_claims[claim_id]["evidence_ids"]
+            )
+        )
         core_claim_ids = {
             story["title_claim_id"],
             *story["event_claim_ids"],
