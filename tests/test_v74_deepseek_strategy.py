@@ -13,6 +13,7 @@ from pkm_workflow.deepseek_mvp_strategy import (
 from pkm_workflow.deepseek_provider import (
     API_URL,
     MODEL_NAME,
+    MVP_GENERATOR_PROMPT,
     DeepSeekShadowProvider,
     ProviderRole,
     RequestBudget,
@@ -78,7 +79,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:f8f50f330ef55505d1ccfbcd2f9f132fc1733c394a2890480433e6d27cc5eb5f"
+        "sha256:6ee592f3b28170fec72506241ba5b35aed807162d9dd11d642dba13e3fdd9141"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -113,6 +114,8 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert strategy.generator_schema() == mvp_generator_output_schema()
     assert strategy.reviewer_schema() == mvp_reviewer_output_schema()
     assert strategy.generator_schema() != generator_output_schema()
+    assert 'action_type exactly "NONE"' in MVP_GENERATOR_PROMPT
+    assert "watch and uncertainty claims are not actions" in MVP_GENERATOR_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:

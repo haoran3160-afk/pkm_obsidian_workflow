@@ -78,8 +78,10 @@ _MVP_PROMPTS = {
         "claims empty unless the approved context explicitly shows the user uses the affected "
         "technology. Every claim must declare claim_kind and context_refs. An editorial inference "
         "requires at least one exact approved context field path. An action additionally requires "
-        "a non-NONE action_type, a concrete action_object, and a measurable success_criterion; all "
-        "non-action claims must leave those action fields empty and use NONE. Uncertainty and watch claims must name an evidence-specific unknown or "
+        "a non-NONE action_type, a concrete action_object, and a measurable success_criterion. "
+        "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
+        "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
+        "Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),
     "reviewer": (
