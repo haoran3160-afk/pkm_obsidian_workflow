@@ -72,7 +72,7 @@ _MVP_PROMPTS = {
         "claim to evidence IDs. Each evidence_id may support at most one story; do not split a roundup or candidate into multiple stories. "
         "For editorial or action claims, copy context_refs only from candidate profile_refs or exact approved context paths; never prefix a copied path with fields and never invent a path. Every story must include an impact claim using a semantic purpose, selection question, prior knowledge, project, or approved anchor reference; pillar_id alone is not a semantic personalization reference. Keep event, mechanism, importance, impact, uncertainty, watch "
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
-        "tools, or prose outside the JSON object. Use six to eight substantive claims per "
+        "tools, or prose outside the JSON object. Use six to ten substantive claims per "
         "story, emit exactly two distinct mechanism/detail claims, and keep each statement under 220 Chinese characters. Story IDs and claim IDs "
         "must be globally unique across the entire response. Rank stories by the supplied user "
         "priorities and material engineering impact, never by candidate order. Leave action "
@@ -83,6 +83,7 @@ _MVP_PROMPTS = {
         "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
         "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
         "Across the whole response emit at most two action claims; omit actions from lower-ranked stories rather than exceeding this limit. "
+        "Across all stories emit at most 24 claims; omit optional uncertainty or watch claims from lower-ranked stories before exceeding this total. "
         "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
         "Use only source-scoped superlatives: first results never means the world's first product, and an organization's first product must remain explicitly scoped to that organization. existing revenue or valuation cannot validate a newly announced direction; never say existing scale reflects or supports the new trend. without adoption or result evidence, say only that company scale makes the direction worth observing. "
         "Research candidates: identify the research problem, method or evaluation evidence, limits, the increment relative to known work such as ReAct or SWE-bench when applicable, and one testable research question with a variable, baseline, or metric. "
@@ -395,7 +396,7 @@ _MVP_STORY_SCHEMA = _closed_object(
         "claims": {
             "type": "array",
             "minItems": 3,
-            "maxItems": 8,
+            "maxItems": 10,
             "items": _MVP_CLAIM_SCHEMA,
         },
     },

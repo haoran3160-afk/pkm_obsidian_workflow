@@ -401,7 +401,6 @@ def _validate_generator_draft(
         "action_claim_ids",
     )
     allowed_context_refs = _approved_context_paths(context)
-    action_count = 0
     used_story_evidence_ids: set[str] = set()
     for story in stories:
         if not isinstance(story, dict):
@@ -486,7 +485,6 @@ def _validate_generator_draft(
             action_object = claim.get("action_object")
             success_criterion = claim.get("success_criterion")
             if claim_kind == "action":
-                action_count += 1
                 if (
                     action_type
                     not in {
@@ -616,9 +614,7 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_EVIDENCE_REUSED_ACROSS_STORIES")
         used_story_evidence_ids.update(story_evidence_ids)
         validated.append(story)
-    if action_count <= 2:
-        return tuple(validated)
-    bounded: list[dict[str, Any]] = []
+    action_bounded: list[dict[str, Any]] = []
     remaining_actions = 2
     for story in sorted(validated, key=lambda item: item["rank"]):
         keep_action_ids = story["action_claim_ids"][:remaining_actions]
@@ -639,8 +635,36 @@ def _validate_generator_draft(
             for claim in story["claims"]
             if claim["claim_id"] not in removed_action_ids
         ]
-        bounded.append(projected)
-    return tuple(bounded)
+        action_bounded.append(projected)
+
+    total_claims = sum(len(story["claims"]) for story in action_bounded)
+    if total_claims <= 24:
+        return tuple(action_bounded)
+    claim_bounded = [dict(story) for story in action_bounded]
+    for story in reversed(claim_bounded):
+        if total_claims <= 24:
+            break
+        optional_ids = [
+            *story["uncertainty_claim_ids"],
+            *story["watch_claim_ids"],
+        ]
+        remove_count = min(len(optional_ids), total_claims - 24)
+        removed_ids = set(optional_ids[-remove_count:]) if remove_count else set()
+        story["uncertainty_claim_ids"] = [
+            claim_id
+            for claim_id in story["uncertainty_claim_ids"]
+            if claim_id not in removed_ids
+        ]
+        story["watch_claim_ids"] = [
+            claim_id for claim_id in story["watch_claim_ids"] if claim_id not in removed_ids
+        ]
+        story["claims"] = [
+            claim for claim in story["claims"] if claim["claim_id"] not in removed_ids
+        ]
+        total_claims -= len(removed_ids)
+    if total_claims > 24:
+        raise ValueError("GENERATOR_TOTAL_CLAIM_LIMIT_EXCEEDED")
+    return tuple(claim_bounded)
 
 
 def _review_requirements(stories: tuple[dict[str, Any], ...]) -> tuple[list[dict[str, object]], str]:

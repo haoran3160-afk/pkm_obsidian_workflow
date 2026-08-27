@@ -80,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:69dc014484976fc6ba3bf86eebf57b26d6116c1e689f9f1d853d87d2233cb78f"
+        "sha256:8ddc6d29ff8b3a4e0e8cf2e41c2192b52022fbb596d7bfc482538983b549e9fe"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -135,6 +135,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Cognition candidates: name the default assumption" in MVP_GENERATOR_PROMPT
     assert "Every research story must include one action claim" in MVP_GENERATOR_PROMPT
     assert "prefer at least two story types" in MVP_GENERATOR_PROMPT
+    assert "Across all stories emit at most 24 claims" in MVP_GENERATOR_PROMPT
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
@@ -157,7 +158,7 @@ def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories
         "claims",
     }
     assert story["additionalProperties"] is False
-    assert story["properties"]["claims"]["maxItems"] == 8
+    assert story["properties"]["claims"]["maxItems"] == 10
     assert (
         story["properties"]["claims"]["items"]["properties"]["statement"]["maxLength"]
         == 600
