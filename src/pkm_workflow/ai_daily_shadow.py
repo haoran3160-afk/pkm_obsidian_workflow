@@ -385,25 +385,17 @@ def _validate_generator_draft(
                 raise ValueError("GENERATOR_CONTEXT_REFS_INVALID")
             if any(item not in allowed_context_refs for item in context_refs):
                 raise ValueError("GENERATOR_CONTEXT_REF_UNKNOWN")
-            candidate_context_refs = {
-                ref
-                for evidence_id in evidence_ids
-                for ref in evidence[evidence_id].profile_refs
-            }
-            if any(item not in candidate_context_refs for item in context_refs):
-                raise ValueError("GENERATOR_CONTEXT_REF_NOT_BOUND_TO_EVIDENCE")
             statement = str(claim["statement"]).casefold()
-            absence_terms = (
-                "未明确",
-                "未披露",
-                "没有说明",
-                "未提供",
-                "does not disclose",
-                "did not disclose",
-                "not disclosed",
-                "no details",
+            chinese_absence = re.search(
+                r"(?:未|没有|无|尚未).{0,6}(?:披露|提及|说明|明确|提供|公布|公开|给出)",
+                statement,
+            ) or re.search(r"(?:缺乏|尚无|不详).{0,8}(?:细节|信息|数据|说明)", statement)
+            english_absence = re.search(
+                r"(?:does not|did not|doesn't|didn't|not|no).{0,24}"
+                r"(?:disclose|mention|specify|provide|detail|state|report)",
+                statement,
             )
-            if any(term in statement for term in absence_terms) and any(
+            if (chinese_absence or english_absence) and any(
                 not evidence[evidence_id].source_complete for evidence_id in evidence_ids
             ):
                 raise ValueError("GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE")

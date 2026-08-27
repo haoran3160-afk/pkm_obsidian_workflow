@@ -268,3 +268,69 @@ def test_exact_same_event_title_across_urls_occupies_one_candidate_slot() -> Non
     )
 
     assert len(result.candidates) == 1
+
+
+def test_shared_explicit_event_phrase_clusters_different_titles_and_urls() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    target_ids = {"rss_openai_news", "rss_metr"}
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in target_ids:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        title = (
+            "OpenAI publishes Hugging Face incident technical report"
+            if source.source_id == "rss_openai_news"
+            else "Independent review of Hugging Face incident response"
+        )
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id=f"{source.source_id}-hf-incident",
+                    title=title,
+                    canonical_url=f"https://example.com/{source.source_id}/hugging-face-incident",
+                    published_at="2026-08-27",
+                    summary="Hugging Face incident evidence and technical investigation. " * 8,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Canonical public incident report body. " * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+
+
+def test_membership_upgrade_preview_is_not_full_free() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    core_ids = {source.source_id for source in catalog.operational_coverage_sources}
+
+    def fetch_metadata(source, _content_date):
+        items = (_item(source.source_id, 1),) if source.source_id in core_ids else ()
+        return MetadataObservation(True, not items, "OK" if items else "ZERO_YIELD", items)
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "Become a member to read the rest. Upgrade your plan for access. " * 10
+            ),
+        ),
+    )
+
+    assert result.candidates == ()

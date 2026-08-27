@@ -30,6 +30,7 @@ class _GenerateReviewTransport:
         invalid_context_ref: bool = False,
         omit_impact: bool = False,
         uncertainty_statement: str = "所有网站都已完全兼容。",
+        context_ref_override: str | None = None,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -40,6 +41,7 @@ class _GenerateReviewTransport:
         self.invalid_context_ref = invalid_context_ref
         self.omit_impact = omit_impact
         self.uncertainty_statement = uncertainty_statement
+        self.context_ref_override = context_ref_override
         self.generator_profile_refs: list[str] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
@@ -60,6 +62,8 @@ class _GenerateReviewTransport:
                 context_ref = "prior_knowledge[1].topic"
             if self.invalid_context_ref:
                 context_ref = "private_inference.unapproved"
+            elif self.context_ref_override is not None:
+                context_ref = self.context_ref_override
 
             def claim(
                 claim_id: str,
@@ -644,6 +648,91 @@ def test_bounded_excerpt_cannot_support_absence_claim(tmp_path: Path) -> None:
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE"
     assert result.markdown_path is None
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "报告没有披露漏洞利用细节。",
+        "报告未提及生产 worker 数量。",
+        "The report does not mention exploit details.",
+    ],
+)
+def test_bounded_excerpt_rejects_structural_absence_phrasing(
+    tmp_path: Path, statement: str
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI security incident report",
+        link="https://example.com/security-report",
+        published="2026-08-26",
+        summary="A bounded canonical excerpt describing a security incident.",
+        content_type="engineering",
+        fulltext_enriched=True,
+        source_complete=False,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", uncertainty_statement=statement
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.error_code == "GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE"
+    assert result.markdown_path is None
+
+
+def test_valid_approved_context_path_need_not_appear_in_source_text(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Browser tool release",
+        link="https://example.com/browser-tool",
+        published="2026-08-26",
+        summary="A canonical excerpt about a reusable browser tool.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", context_ref_override="projects[0]"
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"projects": ["Obsidian PKM Workflow"]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
 
 
 def test_only_success_or_zero_yield_counts_as_healthy_coverage() -> None:

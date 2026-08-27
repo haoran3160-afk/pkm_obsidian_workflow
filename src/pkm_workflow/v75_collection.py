@@ -185,6 +185,40 @@ def _exact_title_event_key(title: str) -> str | None:
     return f"title:{normalized}" if len(tokens) >= 4 else None
 
 
+def _explicit_event_phrases(item: MetadataItem) -> set[str]:
+    title = unicodedata.normalize("NFKC", item.title).casefold()
+    title_tokens = re.sub(r"[^\w]+", " ", title, flags=re.UNICODE).split()
+    path_tokens = re.sub(
+        r"[^\w]+", " ", urlsplit(item.canonical_url).path.casefold(), flags=re.UNICODE
+    ).split()
+    generic = {
+        "the",
+        "and",
+        "agent",
+        "ai",
+        "evaluation",
+        "for",
+        "with",
+        "from",
+        "new",
+        "model",
+        "release",
+        "report",
+        "review",
+        "technical",
+        "response",
+        "publishes",
+        "independent",
+    }
+    phrases: set[str] = set()
+    for tokens in (title_tokens, path_tokens):
+        for index in range(max(0, len(tokens) - 2)):
+            phrase_tokens = tokens[index : index + 3]
+            if sum(token not in generic for token in phrase_tokens) >= 2:
+                phrases.add(" ".join(phrase_tokens))
+    return phrases
+
+
 def _published_date(value: str) -> date | None:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
@@ -253,6 +287,7 @@ def _ranked_metadata(
     ranked: list[_RankedItem] = []
     seen_urls: set[str] = set()
     seen_event_titles: set[str] = set()
+    seen_event_phrases: set[str] = set()
     for source_id, observation in observations.items():
         source = sources[source_id]
         if source.evidence_role == "DISCOVERY_PROVENANCE" or source.selection_role in {
@@ -263,11 +298,13 @@ def _ranked_metadata(
         for item in observation.items:
             url = _normalize_url(item.canonical_url)
             event_title = _exact_title_event_key(item.title)
+            event_phrases = _explicit_event_phrases(item)
             if (
                 not url
                 or url in seen_urls
                 or url in used_urls
                 or (event_title is not None and event_title in seen_event_titles)
+                or bool(event_phrases & seen_event_phrases)
             ):
                 continue
             published = _published_date(item.published_at)
@@ -285,6 +322,7 @@ def _ranked_metadata(
             seen_urls.add(url)
             if event_title is not None:
                 seen_event_titles.add(event_title)
+            seen_event_phrases.update(event_phrases)
             ranked.append(_RankedItem(source=source, item=item, metadata_score=score))
     ranked.sort(
         key=lambda row: (
@@ -312,10 +350,20 @@ def _ranked_metadata(
 
 def _is_public_fulltext(value: str) -> bool:
     normalized = re.sub(r"\s+", " ", value).strip()
-    if len(normalized) < 200:
+    if len(normalized) < 800:
         return False
     lowered = normalized.casefold()[:2000]
-    return not any(term in lowered for term in _PAYWALL_TERMS)
+    if any(term in lowered for term in _PAYWALL_TERMS):
+        return False
+    access_signal = re.search(
+        r"\b(member(?:ship)?|subscrib(?:e|er|tion)|upgrade|premium|paywall|sign in|log in)\b",
+        lowered,
+    )
+    reading_signal = re.search(
+        r"\b(read|rest|full|unlock|access|article|post|plan|continue)\b",
+        lowered,
+    )
+    return not (len(normalized) < 4000 and access_signal and reading_signal)
 
 
 def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Candidate:
