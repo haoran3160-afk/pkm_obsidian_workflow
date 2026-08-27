@@ -26,12 +26,14 @@ class _GenerateReviewTransport:
         reject_claim: str = "uncertainty-claim",
         unknown_evidence: bool = False,
         uncertainty_risk: str = "low",
+        include_watch_and_action: bool = False,
     ) -> None:
         self.calls = 0
         self.empty = empty
         self.reject_claim = reject_claim
         self.unknown_evidence = unknown_evidence
         self.uncertainty_risk = uncertainty_risk
+        self.include_watch_and_action = include_watch_and_action
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
@@ -45,12 +47,16 @@ class _GenerateReviewTransport:
                         "rank": 1,
                         "title_claim_id": "title-claim",
                         "event_claim_ids": ["event-claim"],
-                        "mechanism_claim_ids": ["event-claim"],
+                        "mechanism_claim_ids": ["mechanism-claim"],
                         "importance_claim_ids": ["importance-claim"],
                         "impact_claim_ids": ["impact-claim"],
                         "uncertainty_claim_ids": ["uncertainty-claim"],
-                        "watch_claim_ids": [],
-                        "action_claim_ids": [],
+                        "watch_claim_ids": (
+                            ["watch-claim"] if self.include_watch_and_action else []
+                        ),
+                        "action_claim_ids": (
+                            ["action-claim"] if self.include_watch_and_action else []
+                        ),
                         "claims": [
                             {
                                 "claim_id": "title-claim",
@@ -67,6 +73,12 @@ class _GenerateReviewTransport:
                                 "statement": "该工具新增了可复用的浏览器操作能力。",
                                 "evidence_ids": ["evidence-1"],
                                 "claimed_risk": "high",
+                            },
+                            {
+                                "claim_id": "mechanism-claim",
+                                "statement": "浏览器操作被封装为可复用工具接口。",
+                                "evidence_ids": ["evidence-1"],
+                                "claimed_risk": "medium",
                             },
                             {
                                 "claim_id": "importance-claim",
@@ -86,6 +98,24 @@ class _GenerateReviewTransport:
                                 "evidence_ids": ["evidence-1"],
                                 "claimed_risk": self.uncertainty_risk,
                             },
+                            *(
+                                [
+                                    {
+                                        "claim_id": "watch-claim",
+                                        "statement": "观察后续是否公布跨站点成功率。",
+                                        "evidence_ids": ["evidence-1"],
+                                        "claimed_risk": "low",
+                                    },
+                                    {
+                                        "claim_id": "action-claim",
+                                        "statement": "本周用一个浏览任务对比复用前后的脚本量。",
+                                        "evidence_ids": ["evidence-1"],
+                                        "claimed_risk": "low",
+                                    },
+                                ]
+                                if self.include_watch_and_action
+                                else []
+                            ),
                         ],
                     }
                 ]
@@ -148,7 +178,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
         fulltext_enriched=True,
         profile_refs=(),
     )
-    transport = _GenerateReviewTransport(reject_claim="")
+    transport = _GenerateReviewTransport(reject_claim="uncertainty-claim")
     ports = ShadowPorts(
         collect=lambda _content_date: CollectionResult(
             coverage=CoverageLevel.A,
@@ -189,7 +219,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert "近 72 小时补漏" in markdown
     assert "发布 2026-08-25" in markdown
     assert "https://example.com/agent-release" in markdown
-    assert "无需行动" in markdown
+    assert "无需行动" not in markdown
     assert "## Top 2" not in markdown
     assert transport.calls == 2
 
@@ -294,6 +324,83 @@ def test_rejected_optional_claim_is_not_published_but_keeps_accepted_story(
     assert result.markdown_path is not None
     assert result.story_count == 1
     assert "所有网站都已完全兼容" not in result.markdown_path.read_text(encoding="utf-8")
+
+
+def test_rejected_event_claim_drops_the_entire_story(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI Agent tool release",
+        link="https://example.com/agent-release",
+        published="2026-08-25",
+        summary="Example AI released a reusable browser operation tool for agents.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=9,
+            healthy_sources=9,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim="event-claim"),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
+def test_renderer_keeps_all_accepted_visible_claim_roles(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI Agent tool release",
+        link="https://example.com/agent-release",
+        published="2026-08-25",
+        summary="Example AI released a reusable browser operation tool for agents.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=9,
+            healthy_sources=9,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", include_watch_and_action=True
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "它与用户当前的 Agent 工程优先级直接相关" in markdown
+    assert "所有网站都已完全兼容" in markdown
+    assert "观察后续是否公布跨站点成功率" in markdown
+    assert "本周用一个浏览任务对比复用前后的脚本量" in markdown
+    assert "无需行动" not in markdown
 
 
 def test_only_success_or_zero_yield_counts_as_healthy_coverage() -> None:

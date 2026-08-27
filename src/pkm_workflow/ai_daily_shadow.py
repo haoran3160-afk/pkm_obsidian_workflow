@@ -514,7 +514,7 @@ def _accepted_stories(
     for story in stories:
         rendered_claim_ids = {
             story["title_claim_id"],
-            *story["mechanism_claim_ids"],
+            *story["event_claim_ids"],
             *story["importance_claim_ids"],
         }
         if any(
@@ -571,11 +571,15 @@ def _render_markdown(
         "",
         f"> 今日入选 {len(stories)} 条经证据与 Reviewer 双审的变化。",
         "> 信息窗口：近 72 小时补漏；条目发布日期见各证据。",
-        "> 行动结论：无需行动（没有经 Reviewer 接受且与明确使用场景绑定的行动项）。",
     ]
     labels = (
-        ("mechanism_claim_ids", "机制"),
-        ("importance_claim_ids", "为什么重要"),
+        ("event_claim_ids", "发生了什么"),
+        ("mechanism_claim_ids", "关键细节"),
+        ("importance_claim_ids", "为什么值得注意"),
+        ("impact_claim_ids", "与你的连接"),
+        ("uncertainty_claim_ids", "证据边界"),
+        ("watch_claim_ids", "继续观察"),
+        ("action_claim_ids", "可以做什么"),
     )
     for story in stories:
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
