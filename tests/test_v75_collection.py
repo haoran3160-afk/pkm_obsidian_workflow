@@ -616,3 +616,42 @@ def test_paid_course_cohort_promotion_is_not_a_daily_candidate() -> None:
     )
 
     assert result.candidates == ()
+
+
+def test_paid_cohort_promotion_hidden_from_metadata_is_rejected_after_access_probe() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_hamel_husain":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="hamel-neutral-metadata",
+                    title="AI Evals for Engineers",
+                    canonical_url="https://example.com/evals",
+                    published_at="2026-08-27",
+                    summary="Agent evaluation, error analysis, and CI integration methods. " * 6,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "Join the live cohort course on Maven. Enroll now for office hours. " * 30
+            ),
+        ),
+    )
+
+    assert result.candidates == ()
+    assert result.audit["exclusions"][0]["reason"] == "PROMOTIONAL_CONTENT_NOT_DAILY"

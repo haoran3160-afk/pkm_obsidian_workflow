@@ -33,6 +33,7 @@ class _GenerateReviewTransport:
         context_ref_override: str | None = None,
         reviewer_http_status: int = 200,
         duplicate_story_evidence: bool = False,
+        importance_statement: str = "这会减少 Agent 工作流中的重复浏览器脚本。",
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -46,6 +47,7 @@ class _GenerateReviewTransport:
         self.context_ref_override = context_ref_override
         self.reviewer_http_status = reviewer_http_status
         self.duplicate_story_evidence = duplicate_story_evidence
+        self.importance_statement = importance_statement
         self.generator_profile_refs: list[str] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
@@ -110,7 +112,7 @@ class _GenerateReviewTransport:
                 ),
                 claim(
                     "importance-claim",
-                    "这会减少 Agent 工作流中的重复浏览器脚本。",
+                    self.importance_statement,
                     "medium",
                 ),
                 claim(
@@ -823,6 +825,44 @@ def test_one_evidence_candidate_cannot_be_split_into_multiple_stories(
 
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_EVIDENCE_REUSED_ACROSS_STORIES"
+    assert result.markdown_path is None
+
+
+def test_existing_scale_cannot_prove_a_new_product_direction(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Company announces a new Agent platform direction",
+        link="https://example.com/new-direction",
+        published="2026-08-26",
+        summary="The company announced a new Agent platform direction.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                importance_statement="既有年化收入和估值反映了 Agent 平台趋势。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.story_count == 0
     assert result.markdown_path is None
 
 

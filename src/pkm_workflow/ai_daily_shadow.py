@@ -575,6 +575,21 @@ def _validate_generator_draft(
                     if claim_id not in unsafe_absence_ids
                 ]
             story = projected
+        financial_scale_pattern = re.compile(
+            r"(?:revenue|valuation|\barr\b|年化收入|营收|估值|公司规模)",
+            re.IGNORECASE,
+        )
+        causal_trend_pattern = re.compile(
+            r"(?:validat|prov|reflect|support.{0,8}trend|验证|证明|反映|"
+            r"支持.{0,8}趋势|表明.{0,8}趋势)",
+            re.IGNORECASE,
+        )
+        if any(
+            financial_scale_pattern.search(local_claims[claim_id]["statement"])
+            and causal_trend_pattern.search(local_claims[claim_id]["statement"])
+            for claim_id in story["importance_claim_ids"]
+        ):
+            continue
         story_evidence_ids = {
             evidence_id
             for claim in story["claims"]

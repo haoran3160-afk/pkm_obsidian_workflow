@@ -225,6 +225,14 @@ def _policy_mapping(policies: Mapping[str, object], name: str) -> Mapping[str, o
     return value
 
 
+def _is_paid_learning_promotion(value: str) -> bool:
+    text = value.casefold()
+    return any(term in text for term in ("course", "cohort", "workshop")) and any(
+        term in text
+        for term in ("enroll", "discount", "office hours", "community access", "maven")
+    )
+
+
 def _coverage_level(healthy: int, total: int, *, a_bps: int, b_bps: int) -> CoverageLevel:
     if total <= 0:
         return CoverageLevel.INSUFFICIENT
@@ -371,10 +379,7 @@ def _metadata_score(
     ):
         return -1
     promotional_text = f"{item.title}\n{item.summary}".casefold()
-    if any(term in promotional_text for term in ("course", "cohort", "workshop")) and any(
-        term in promotional_text
-        for term in ("enroll", "discount", "office hours", "community access", "maven")
-    ):
+    if _is_paid_learning_promotion(promotional_text):
         return -1
     weights = {pillar.pillar_id: pillar.weight_bps for pillar in user_context.pillars}
     text = promotional_text
@@ -618,6 +623,17 @@ def collect_v75_candidates(
                     "source_id": row.source.source_id,
                     "item_native_id": row.item.item_native_id,
                     "reason": "FULL_FREE_EVIDENCE_UNAVAILABLE",
+                }
+            )
+            continue
+        if _is_paid_learning_promotion(
+            f"{row.item.title}\n{row.item.summary}\n{fulltext}"
+        ):
+            exclusions.append(
+                {
+                    "source_id": row.source.source_id,
+                    "item_native_id": row.item.item_native_id,
+                    "reason": "PROMOTIONAL_CONTENT_NOT_DAILY",
                 }
             )
             continue
