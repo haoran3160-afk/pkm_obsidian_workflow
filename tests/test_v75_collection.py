@@ -386,6 +386,23 @@ def test_default_access_probe_scans_beyond_model_excerpt_limit(
     assert len(body) > 12000
 
 
+def test_research_blog_rss_is_not_mislabeled_as_a_paper_abstract(monkeypatch) -> None:
+    catalog = load_source_catalog(MANIFEST)
+    metr = catalog.source("rss_metr")
+    observed: list[str] = []
+
+    def fake_feed(feed_config, *_args, **_kwargs):
+        observed.append(feed_config["content_type"])
+        return [], {"reason_code": "ZERO_YIELD"}
+
+    monkeypatch.setattr("fetcher.fetch_rss_feed", fake_feed)
+    ports = default_collection_ports(catalog)
+
+    ports.fetch_metadata(metr, date(2026, 8, 27))
+
+    assert observed == ["news"]
+
+
 def test_mixed_freemium_preview_is_not_assessment_evidence() -> None:
     catalog = load_source_catalog(MANIFEST)
 

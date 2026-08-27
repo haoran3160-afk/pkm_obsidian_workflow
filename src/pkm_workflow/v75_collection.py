@@ -714,7 +714,7 @@ def default_collection_ports(catalog: SourceCatalog) -> CollectionPorts:
             "note_folder": "shadow-only",
             "domain": "ai-news",
             "filter_keywords": list(source.include_terms),
-            "content_type": "paper" if source.evidence_role == "RESEARCH_PRIMARY" else "news",
+            "content_type": "paper" if source.adapter_kind == "ARXIV_QUERY" else "news",
         }
         items, meta = fetcher.fetch_rss_feed(
             feed,
