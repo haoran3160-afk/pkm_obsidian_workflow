@@ -96,6 +96,10 @@ def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
     assert all(candidate.access_state is AccessState.FULL_FREE for candidate in result.candidates)
     assert all(candidate.fulltext_enriched for candidate in result.candidates)
     assert all(candidate.metadata_score >= 5000 for candidate in result.candidates)
+    assert max(
+        sum(candidate.source_id == source_id for candidate in result.candidates)
+        for source_id in {candidate.source_id for candidate in result.candidates}
+    ) <= 2
 
 
 def test_fulltext_attempts_are_bounded_at_sixteen() -> None:
@@ -158,3 +162,32 @@ def test_short_feed_preview_does_not_count_as_assessment_or_claim_evidence() -> 
     assert result.coverage is CoverageLevel.A
     assert result.evidence_level is CoverageLevel.INSUFFICIENT
     assert result.candidates == ()
+
+
+def test_verified_fulltext_upgrades_evidence_availability(tmp_path: Path) -> None:
+    catalog = load_source_catalog(MANIFEST)
+    core_ids = {source.source_id for source in catalog.operational_coverage_sources}
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in core_ids:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            healthy=True,
+            zero_yield=False,
+            reason_code="OK",
+            items=(_item(source.source_id, 1, summary="short preview"),),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Verified canonical article body. " * 30,
+        ),
+    )
+
+    assert result.evidence_level is CoverageLevel.A
+    assert result.evidence_healthy_sources == 8

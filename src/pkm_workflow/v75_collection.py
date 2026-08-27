@@ -339,25 +339,23 @@ def collect_v75_candidates(
     healthy_sources = sum(
         observations[source.source_id].healthy for source in coverage_sources
     )
-    assessment_sources = sum(
-        observation.healthy
+    assessment_source_ids = {
+        source.source_id
+        for source in coverage_sources
+        if observations[source.source_id].healthy
         and (
-            observation.zero_yield
-            or any(len(item.summary.strip()) >= 200 for item in observation.items)
+            observations[source.source_id].zero_yield
+            or any(
+                len(item.summary.strip()) >= 200
+                for item in observations[source.source_id].items
+            )
         )
-        for observation in (observations[source.source_id] for source in coverage_sources)
-    )
+    }
     coverage = _coverage_level(
         healthy_sources,
         len(coverage_sources),
         a_bps=_policy_int(policies, "operational_coverage_a_bps"),
         b_bps=_policy_int(policies, "operational_coverage_b_bps"),
-    )
-    evidence_level = _coverage_level(
-        assessment_sources,
-        healthy_sources,
-        a_bps=_policy_int(policies, "evidence_availability_a_bps"),
-        b_bps=_policy_int(policies, "evidence_availability_b_bps"),
     )
     ranked = _ranked_metadata(
         observations=observations,
@@ -372,14 +370,21 @@ def collect_v75_candidates(
     max_attempts = _policy_int(policies, "max_fulltext_attempts")
     attempts = 0
     candidates: list[Candidate] = []
+    source_attempts: dict[str, int] = {}
+    source_candidates: dict[str, int] = {}
     exclusions: list[dict[str, str]] = []
     for row in ranked:
         if len(candidates) >= max_candidates or attempts >= max_attempts:
             break
+        source_id = row.source.source_id
+        if source_candidates.get(source_id, 0) >= 2 or source_attempts.get(source_id, 0) >= 2:
+            continue
         if row.item.content_type == "paper" and len(row.item.summary.strip()) >= 200:
             candidates.append(_candidate(row, row.item.summary, "PUBLIC_ABSTRACT"))
+            source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
             continue
         attempts += 1
+        source_attempts[source_id] = source_attempts.get(source_id, 0) + 1
         fulltext = ports.fetch_fulltext(row.item.canonical_url)
         if not _is_public_fulltext(fulltext):
             exclusions.append(
@@ -391,13 +396,26 @@ def collect_v75_candidates(
             )
             continue
         candidates.append(_candidate(row, fulltext, "CANONICAL_FULLTEXT"))
+        source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
+    assessment_source_ids.update(
+        candidate.source_id
+        for candidate in candidates
+        if candidate.source_id
+        in {source.source_id for source in coverage_sources}
+    )
+    evidence_level = _coverage_level(
+        len(assessment_source_ids),
+        healthy_sources,
+        a_bps=_policy_int(policies, "evidence_availability_a_bps"),
+        b_bps=_policy_int(policies, "evidence_availability_b_bps"),
+    )
     return CollectionResult(
         coverage=coverage,
         configured_sources=len(coverage_sources),
         healthy_sources=healthy_sources,
         candidates=tuple(candidates),
         evidence_level=evidence_level,
-        evidence_healthy_sources=assessment_sources,
+        evidence_healthy_sources=len(assessment_source_ids),
         audit={
             "due_source_ids": [source.source_id for source in due_sources],
             "metadata_qualified_count": len(ranked),
