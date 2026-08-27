@@ -75,6 +75,7 @@ _MVP_PROMPTS = {
         "tools, or prose outside the JSON object. Use six to ten substantive claims per "
         "story, emit exactly two distinct mechanism/detail claims, and keep each statement under 220 Chinese characters. Story IDs and claim IDs "
         "must be globally unique across the entire response. Rank stories by approved user priorities and material impact. candidate order encodes deterministic pillar exposure after the quality gate; pillar_exposure and editorial_score are deterministic tie-break signals. Select the strongest story first, then prefer an exposed different story_type before another same-type story unless its evidence is materially weaker. Leave action "
+        "If rubric diversity_evidence_id is non-null and you emit two or three stories, one story must use that exact evidence_id; emitting zero or one story does not force it. "
         "claims empty unless the approved context explicitly shows the user uses the affected "
         "technology. Every claim must declare claim_kind and context_refs. An editorial inference "
         "requires at least one exact approved context field path. An action additionally requires "
@@ -1604,12 +1605,18 @@ class DeepSeekShadowProvider:
                     and not isinstance(context.get("knowledge_anchors"), list)
                 )
                 or not isinstance(rubric, dict)
-                or rubric
+                or set(rubric)
                 != {
-                    "contract_version": MVP_CONTRACT_VERSION,
-                    "max_stories": 3,
-                    "top_cap": 3,
+                    "contract_version",
+                    "max_stories",
+                    "top_cap",
+                    "diversity_evidence_id",
                 }
+                or rubric.get("contract_version") != MVP_CONTRACT_VERSION
+                or rubric.get("max_stories") != 3
+                or rubric.get("top_cap") != 3
+                or rubric.get("diversity_evidence_id") is not None
+                and not isinstance(rubric.get("diversity_evidence_id"), str)
             ):
                 raise ValueError("AI Daily Generator input is invalid")
             candidates = sealed.get("candidates")
@@ -1618,6 +1625,9 @@ class DeepSeekShadowProvider:
             ids = [cls._validate_mvp_evidence_item(item) for item in candidates]
             if len(ids) != len(set(ids)):
                 raise ValueError("AI Daily evidence IDs must be unique")
+            diversity_evidence_id = rubric.get("diversity_evidence_id")
+            if diversity_evidence_id is not None and diversity_evidence_id not in ids:
+                raise ValueError("AI Daily diversity evidence ID is invalid")
             return
 
         sealed = value.get("sealed_evidence")

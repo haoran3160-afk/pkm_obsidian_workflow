@@ -51,12 +51,14 @@ class _GenerateReviewTransport:
         self.importance_statement = importance_statement
         self.single_mechanism = single_mechanism
         self.generator_profile_refs: list[str] = []
+        self.generator_rubric: dict[str, object] = {}
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
         request = json.loads(bytes(kwargs["body"]))
         sealed = json.loads(request["messages"][1]["content"])["sealed_request"]
         if self.calls == 1:
+            self.generator_rubric = dict(sealed["rubric"])
             self.generator_profile_refs = list(
                 sealed["sealed_evidence"]["candidates"][0]["profile_refs"]
             )
@@ -364,6 +366,61 @@ def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Pat
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert "prior_knowledge[1].topic" in report["personalization_refs"]
     assert "pillars[1].purpose" in transport.generator_profile_refs
+
+
+def test_generator_receives_close_cross_type_diversity_target(tmp_path: Path) -> None:
+    research = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="Agent harness evaluation release",
+        link="https://example.com/research",
+        published="2026-08-27",
+        summary="Agent harness evaluation evidence and benchmark details.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+        pillar_exposure=True,
+        metadata_score=8000,
+        editorial_score=10000,
+    )
+    builder = Candidate(
+        evidence_id="evidence-builder",
+        source="Builder",
+        title="Agent product validation case study",
+        link="https://example.com/builder",
+        published="2026-08-27",
+        summary="Builder product users distribution and revenue evidence.",
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS",),
+        pillar_exposure=True,
+        metadata_score=7000,
+        editorial_score=8500,
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(research, builder),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert transport.generator_rubric["diversity_evidence_id"] == "evidence-builder"
 
 
 def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:

@@ -184,6 +184,22 @@ def _model_metrics(*results: ProviderResult) -> dict[str, int]:
     }
 
 
+def _diversity_evidence_id(candidates: tuple[Candidate, ...]) -> str | None:
+    if len(candidates) < 2:
+        return None
+    strongest = max(candidates, key=lambda candidate: candidate.editorial_score)
+    alternatives = [
+        candidate
+        for candidate in candidates
+        if candidate.pillar_exposure
+        and candidate.story_type != strongest.story_type
+        and candidate.editorial_score + 3000 >= strongest.editorial_score
+    ]
+    if not alternatives:
+        return None
+    return max(alternatives, key=lambda candidate: candidate.editorial_score).evidence_id
+
+
 def _no_story_disposition(
     coverage: CoverageLevel,
     evidence_level: CoverageLevel,
@@ -384,6 +400,7 @@ def _validate_generator_draft(
     draft: object,
     evidence: Mapping[str, Candidate],
     context: Mapping[str, object],
+    diversity_evidence_id: str | None = None,
 ) -> tuple[dict[str, Any], ...]:
     if not isinstance(draft, dict) or set(draft) != {"stories"}:
         raise ValueError("GENERATOR_DRAFT_INVALID")
@@ -639,6 +656,16 @@ def _validate_generator_draft(
             if claim["claim_id"] not in removed_action_ids
         ]
         action_bounded.append(projected)
+
+    if len(action_bounded) >= 2 and diversity_evidence_id is not None:
+        selected_evidence_ids = {
+            evidence_id
+            for story in action_bounded
+            for claim in story["claims"]
+            for evidence_id in claim["evidence_ids"]
+        }
+        if diversity_evidence_id not in selected_evidence_ids:
+            raise ValueError("GENERATOR_REQUIRED_EXPOSURE_MISSING")
 
     total_claims = sum(len(story["claims"]) for story in action_bounded)
     if total_claims <= 24:
@@ -1047,6 +1074,7 @@ def run_ai_daily_shadow(
     evidence = {item.evidence_id: item for item in collected.candidates}
     if len(evidence) != len(collected.candidates):
         raise ValueError("candidate evidence IDs must be unique")
+    diversity_evidence_id = _diversity_evidence_id(collected.candidates)
     generator_request = _canonical(
         {
             "approved_user_context": context,
@@ -1054,6 +1082,7 @@ def run_ai_daily_shadow(
                 "contract_version": MVP_CONTRACT_VERSION,
                 "max_stories": 3,
                 "top_cap": 3,
+                "diversity_evidence_id": diversity_evidence_id,
             },
             "sealed_evidence": {
                 "coverage_level": collected.coverage.value,
@@ -1099,7 +1128,10 @@ def run_ai_daily_shadow(
         )
     try:
         stories = _validate_generator_draft(
-            generator.validated_structured_result, evidence, context
+            generator.validated_structured_result,
+            evidence,
+            context,
+            diversity_evidence_id=diversity_evidence_id,
         )
     except ValueError as error:
         return _finish(

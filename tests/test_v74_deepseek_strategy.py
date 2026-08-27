@@ -80,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:41928da61296cf5315373faeb01a3e4cbc7f153c4d328f670fb802ea4fd02089"
+        "sha256:522978e4b5af757dbd9cc3c1eac7cd97cb9a56030c51f5277bff82333db1a1c1"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -138,6 +138,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Across all stories emit at most 24 claims" in MVP_GENERATOR_PROMPT
     assert "candidate order encodes deterministic pillar exposure" in MVP_GENERATOR_PROMPT
     assert "pillar_exposure and editorial_score are deterministic tie-break signals" in MVP_GENERATOR_PROMPT
+    assert "diversity_evidence_id is non-null" in MVP_GENERATOR_PROMPT
     assert "never by candidate order" not in MVP_GENERATOR_PROMPT
 
 
@@ -187,6 +188,7 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
                 "contract_version": MVP_CONTRACT_VERSION,
                 "max_stories": 3,
                 "top_cap": 3,
+                "diversity_evidence_id": None,
             },
             "sealed_evidence": {
                 "coverage_level": "A",
