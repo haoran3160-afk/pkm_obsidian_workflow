@@ -20,7 +20,7 @@ MANIFEST = Path(r"D:\personal\obsidian_workflow\Source-Manifest-v7.5.json")
 def _item(source_id: str, index: int, *, summary: str | None = None) -> MetadataItem:
     return MetadataItem(
         item_native_id=f"{source_id}-{index}",
-        title=f"Agent evaluation release {index}",
+        title=f"{source_id} Agent evaluation release {index}",
         canonical_url=f"https://example.com/{source_id}/{index}",
         published_at="2026-08-27",
         summary=summary or ("Agent evaluation evidence and implementation detail. " * 8),
@@ -117,7 +117,7 @@ def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
     ) <= 2
     candidate_audit = result.audit["candidate_audit"]
     assert len(candidate_audit) == 8
-    assert all("summary" not in row and "canonical_url" not in row for row in candidate_audit)
+    assert all("summary" not in row and row["canonical_url"] for row in candidate_audit)
 
 
 def test_fulltext_attempts_are_bounded_at_sixteen() -> None:
@@ -209,3 +209,62 @@ def test_verified_fulltext_upgrades_evidence_availability(tmp_path: Path) -> Non
 
     assert result.evidence_level is CoverageLevel.B
     assert result.evidence_healthy_sources == 8
+
+
+def test_members_only_preview_never_becomes_claim_evidence() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    core_ids = {source.source_id for source in catalog.operational_coverage_sources}
+
+    def fetch_metadata(source, _content_date):
+        items = (_item(source.source_id, 1),) if source.source_id in core_ids else ()
+        return MetadataObservation(True, not items, "OK" if items else "ZERO_YIELD", items)
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "Members-only preview. Subscribe now to unlock this article. " * 8
+            ),
+        ),
+    )
+
+    assert result.candidates == ()
+    assert all(
+        row["reason"] == "FULL_FREE_EVIDENCE_UNAVAILABLE"
+        for row in result.audit["exclusions"]
+    )
+
+
+def test_exact_same_event_title_across_urls_occupies_one_candidate_slot() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    core_ids = {source.source_id for source in catalog.operational_coverage_sources}
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in core_ids:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        item = MetadataItem(
+            item_native_id=f"{source.source_id}-event",
+            title="Exact Shared Agent Evaluation Release",
+            canonical_url=f"https://example.com/{source.source_id}/event",
+            published_at="2026-08-27",
+            summary="Agent evaluation evidence and implementation detail. " * 8,
+            content_type="engineering",
+        )
+        return MetadataObservation(True, False, "OK", (item,))
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Canonical public article body. " * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 1

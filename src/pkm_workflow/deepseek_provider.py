@@ -69,7 +69,7 @@ _MVP_PROMPTS = {
         "is worth the reader's attention. The deterministic v7.5 curation layer has already "
         "ranked candidates by approved personal pillars, evidence quality, novelty, and freshness; "
         "do not substitute generic industry popularity for that ranking. Use only supplied evidence and bind every factual "
-        "claim to evidence IDs. For editorial or action claims, copy context_refs only from candidate profile_refs bound to that claim's evidence; never prefix a copied path with fields and never invent a path. Keep event, mechanism, importance, impact, uncertainty, watch "
+        "claim to evidence IDs. For editorial or action claims, copy context_refs only from candidate profile_refs bound to that claim's evidence; never prefix a copied path with fields and never invent a path. Every story must include an impact claim using a semantic purpose, selection question, prior knowledge, project, or approved anchor reference; pillar_id alone is not a semantic personalization reference. Keep event, mechanism, importance, impact, uncertainty, watch "
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
         "tools, or prose outside the JSON object. Use only three to eight concise claims per "
         "story and keep each statement under 120 Chinese characters. Story IDs and claim IDs "
@@ -81,6 +81,7 @@ _MVP_PROMPTS = {
         "a non-NONE action_type, a concrete action_object, and a measurable success_criterion. "
         "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
         "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
+        "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
         "Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),
@@ -1714,6 +1715,7 @@ class DeepSeekShadowProvider:
             "profile_refs",
             "published",
             "source",
+            "source_complete",
             "source_id",
             "summary",
             "title",
@@ -1723,8 +1725,9 @@ class DeepSeekShadowProvider:
             or set(item) != fields
             or type(item.get("fulltext_enriched")) is not bool
             or type(item.get("metadata_score")) is not int
+            or type(item.get("source_complete")) is not bool
             or item.get("access_state") != "FULL_FREE"
-            or item.get("evidence_kind") not in {"CANONICAL_FULLTEXT", "PUBLIC_ABSTRACT"}
+            or item.get("evidence_kind") not in {"CANONICAL_EXCERPT", "PUBLIC_ABSTRACT"}
             or not isinstance(item.get("pillars"), list)
             or not item["pillars"]
             or any(not isinstance(pillar, str) or not pillar for pillar in item["pillars"])
@@ -1736,7 +1739,13 @@ class DeepSeekShadowProvider:
             or any(
                 not isinstance(item.get(field), str) or not str(item[field]).strip()
                 for field in fields
-                - {"fulltext_enriched", "metadata_score", "pillars", "profile_refs"}
+                - {
+                    "fulltext_enriched",
+                    "metadata_score",
+                    "pillars",
+                    "profile_refs",
+                    "source_complete",
+                }
             )
         ):
             raise ValueError("AI Daily evidence item is invalid")

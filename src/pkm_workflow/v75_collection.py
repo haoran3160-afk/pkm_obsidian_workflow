@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -68,7 +69,8 @@ class Candidate:
     pillars: tuple[str, ...] = ("AI_MASTERY",)
     metadata_score: int = 5000
     access_state: AccessState = AccessState.FULL_FREE
-    evidence_kind: str = "CANONICAL_FULLTEXT"
+    evidence_kind: str = "CANONICAL_EXCERPT"
+    source_complete: bool = False
 
     def model_payload(self) -> dict[str, object]:
         return {
@@ -84,6 +86,7 @@ class Candidate:
             "profile_refs": list(self.profile_refs),
             "published": self.published,
             "source": self.source,
+            "source_complete": self.source_complete,
             "source_id": self.source_id,
             "summary": self.summary,
             "title": self.title,
@@ -111,7 +114,15 @@ class _RankedItem:
 _HYPE_TERMS = ("sponsored", "webinar", "conference tickets", "coupon")
 _PAYWALL_TERMS = (
     "subscribe to continue",
+    "subscribe now",
     "paid subscribers",
+    "members-only",
+    "members only",
+    "member-only",
+    "premium content",
+    "unlock this article",
+    "unlock the full",
+    "continue reading with",
     "sign in to read",
     "already a subscriber",
 )
@@ -165,6 +176,13 @@ def _normalize_url(value: str) -> str:
             "",
         )
     )
+
+
+def _exact_title_event_key(title: str) -> str | None:
+    normalized = unicodedata.normalize("NFKC", title).casefold()
+    normalized = re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE).strip()
+    tokens = normalized.split()
+    return f"title:{normalized}" if len(tokens) >= 4 else None
 
 
 def _published_date(value: str) -> date | None:
@@ -234,6 +252,7 @@ def _ranked_metadata(
 ) -> tuple[_RankedItem, ...]:
     ranked: list[_RankedItem] = []
     seen_urls: set[str] = set()
+    seen_event_titles: set[str] = set()
     for source_id, observation in observations.items():
         source = sources[source_id]
         if source.evidence_role == "DISCOVERY_PROVENANCE" or source.selection_role in {
@@ -243,7 +262,13 @@ def _ranked_metadata(
             continue
         for item in observation.items:
             url = _normalize_url(item.canonical_url)
-            if not url or url in seen_urls or url in used_urls:
+            event_title = _exact_title_event_key(item.title)
+            if (
+                not url
+                or url in seen_urls
+                or url in used_urls
+                or (event_title is not None and event_title in seen_event_titles)
+            ):
                 continue
             published = _published_date(item.published_at)
             if published is None or not content_date - timedelta(days=7) <= published <= content_date:
@@ -258,6 +283,8 @@ def _ranked_metadata(
             if score < quality_threshold:
                 continue
             seen_urls.add(url)
+            if event_title is not None:
+                seen_event_titles.add(event_title)
             ranked.append(_RankedItem(source=source, item=item, metadata_score=score))
     ranked.sort(
         key=lambda row: (
@@ -305,7 +332,7 @@ def _candidate(row: _RankedItem, evidence_text: str, evidence_kind: str) -> Cand
         published=item.published_at.strip(),
         summary=evidence_text.strip()[:12_000],
         content_type=item.content_type.strip(),
-        fulltext_enriched=evidence_kind == "CANONICAL_FULLTEXT",
+        fulltext_enriched=evidence_kind == "CANONICAL_EXCERPT",
         source_id=source.source_id,
         canonical_origin_id=source.canonical_origin_id,
         evidence_role=source.evidence_role,
@@ -395,7 +422,7 @@ def collect_v75_candidates(
                 }
             )
             continue
-        candidates.append(_candidate(row, fulltext, "CANONICAL_FULLTEXT"))
+        candidates.append(_candidate(row, fulltext, "CANONICAL_EXCERPT"))
         source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
     assessment_source_ids.update(
         candidate.source_id
@@ -437,6 +464,8 @@ def collect_v75_candidates(
                 {
                     "evidence_id": candidate.evidence_id,
                     "source_id": candidate.source_id,
+                    "title": candidate.title,
+                    "canonical_url": candidate.link,
                     "pillars": list(candidate.pillars),
                     "metadata_score": candidate.metadata_score,
                     "access_state": candidate.access_state.value,
@@ -456,6 +485,7 @@ def default_collection_ports(catalog: SourceCatalog) -> CollectionPorts:
 
     limits = _policy_mapping(catalog.policies, "limits")
     summary_limit = _policy_int(limits, "metadata_summary_chars")
+    fulltext_limit = _policy_int(limits, "fulltext_chars")
 
     def fetch_metadata(source: SourceDefinition, content_date: date) -> MetadataObservation:
         if source.adapter_kind != "RSS_ATOM":
@@ -513,5 +543,7 @@ def default_collection_ports(catalog: SourceCatalog) -> CollectionPorts:
 
     return CollectionPorts(
         fetch_metadata=fetch_metadata,
-        fetch_fulltext=fetcher._fetch_article_fulltext,
+        fetch_fulltext=lambda url: fetcher._fetch_article_fulltext(
+            url, max_chars=fulltext_limit
+        ),
     )

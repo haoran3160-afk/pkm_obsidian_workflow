@@ -28,6 +28,8 @@ class _GenerateReviewTransport:
         uncertainty_risk: str = "low",
         include_watch_and_action: bool = False,
         invalid_context_ref: bool = False,
+        omit_impact: bool = False,
+        uncertainty_statement: str = "所有网站都已完全兼容。",
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -36,12 +38,18 @@ class _GenerateReviewTransport:
         self.uncertainty_risk = uncertainty_risk
         self.include_watch_and_action = include_watch_and_action
         self.invalid_context_ref = invalid_context_ref
+        self.omit_impact = omit_impact
+        self.uncertainty_statement = uncertainty_statement
+        self.generator_profile_refs: list[str] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
         request = json.loads(bytes(kwargs["body"]))
         sealed = json.loads(request["messages"][1]["content"])["sealed_request"]
         if self.calls == 1:
+            self.generator_profile_refs = list(
+                sealed["sealed_evidence"]["candidates"][0]["profile_refs"]
+            )
             fields = sealed["approved_user_context"]["fields"]
             priorities = fields.get("priorities", [])
             prior_knowledge = fields.get("prior_knowledge", [])
@@ -99,11 +107,11 @@ class _GenerateReviewTransport:
                 ),
                 claim(
                     "uncertainty-claim",
-                    "所有网站都已完全兼容。",
+                    self.uncertainty_statement,
                     self.uncertainty_risk,
                 ),
             ]
-            if context_ref:
+            if context_ref and not self.omit_impact:
                 claims.append(
                     claim(
                         "impact-claim",
@@ -142,7 +150,9 @@ class _GenerateReviewTransport:
                         "event_claim_ids": ["event-claim"],
                         "mechanism_claim_ids": ["mechanism-claim"],
                         "importance_claim_ids": ["importance-claim"],
-                        "impact_claim_ids": ["impact-claim"] if context_ref else [],
+                        "impact_claim_ids": (
+                            ["impact-claim"] if context_ref and not self.omit_impact else []
+                        ),
                         "uncertainty_claim_ids": ["uncertainty-claim"],
                         "watch_claim_ids": (
                             ["watch-claim"] if self.include_watch_and_action else []
@@ -249,8 +259,8 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert "Example AI 发布了新的 Agent 工具" in markdown
     assert "该工具新增了可复用的浏览器操作能力" in markdown
     assert "所有网站都已完全兼容" not in markdown
-    assert "原文" in markdown
-    assert "近 72 小时补漏" in markdown
+    assert "原始页面" in markdown
+    assert "evidence_date_start: 2026-08-25" in markdown
     assert "发布 2026-08-25" in markdown
     assert "https://example.com/agent-release" in markdown
     assert "无需行动" not in markdown
@@ -269,6 +279,7 @@ def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Pat
         content_type="research",
         fulltext_enriched=True,
     )
+    transport = _GenerateReviewTransport(reject_claim="")
     ports = ShadowPorts(
         collect=lambda _content_date: CollectionResult(
             coverage=CoverageLevel.A,
@@ -278,7 +289,7 @@ def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Pat
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
-            transport=_GenerateReviewTransport(reject_claim=""),
+            transport=transport,
         ),
         runtime_root=tmp_path,
         load_user_context=lambda: load_approved_user_context_v75().model_payload(),
@@ -287,7 +298,41 @@ def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Pat
     result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
 
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
-    assert report["personalization_refs"] == ["prior_knowledge[1].topic"]
+    assert "prior_knowledge[1].topic" in report["personalization_refs"]
+    assert "pillars[1].purpose" in transport.generator_profile_refs
+
+
+def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="SWE-bench evaluation exposes coding-agent reliability gap",
+        link="https://example.com/swe-bench-eval",
+        published="2026-08-26",
+        summary="A SWE-bench evaluation reports a coding-agent reliability gap.",
+        content_type="research",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(omit_impact=True),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_PERSONAL_IMPACT_REQUIRED"
+    assert result.markdown_path is None
 
 
 def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
@@ -472,6 +517,8 @@ def test_renderer_keeps_all_accepted_visible_claim_roles(tmp_path: Path) -> None
             configured_sources=9,
             healthy_sources=9,
             candidates=(candidate,),
+            evidence_level=CoverageLevel.B,
+            evidence_healthy_sources=7,
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
@@ -495,6 +542,32 @@ def test_renderer_keeps_all_accepted_visible_claim_roles(tmp_path: Path) -> None
     assert "观察后续是否公布跨站点成功率" in markdown
     assert "本周用一个浏览任务对比复用前后的脚本量" in markdown
     assert "无需行动" not in markdown
+    assert "operational_coverage: A" in markdown
+    assert "evidence_availability: B" in markdown
+    assert "部分 CORE 来源" in markdown
+    assert "evidence_date_start: 2026-08-25" in markdown
+
+
+def test_collection_contract_failure_returns_retryable_report(tmp_path: Path) -> None:
+    ports = ShadowPorts(
+        collect=lambda _content_date: (_ for _ in ()).throw(
+            ValueError("SOURCE_MANIFEST_SCHEMA_INVALID")
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.exit_code == 4
+    assert result.status == "COLLECTION_FAILED"
+    assert result.error_code == "SOURCE_MANIFEST_SCHEMA_INVALID"
+    assert result.report_path.is_file()
+    assert result.markdown_path is None
 
 
 def test_unapproved_context_reference_fails_closed_without_markdown(tmp_path: Path) -> None:
@@ -530,6 +603,46 @@ def test_unapproved_context_reference_fails_closed_without_markdown(tmp_path: Pa
 
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_CONTEXT_REF_UNKNOWN"
+    assert result.markdown_path is None
+
+
+def test_bounded_excerpt_cannot_support_absence_claim(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI security incident report",
+        link="https://example.com/security-report",
+        published="2026-08-26",
+        summary="A bounded canonical excerpt describing a security incident.",
+        content_type="engineering",
+        fulltext_enriched=True,
+        source_complete=False,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                uncertainty_statement="技术报告未明确漏洞利用细节。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE"
     assert result.markdown_path is None
 
 

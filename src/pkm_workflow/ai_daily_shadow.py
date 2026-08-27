@@ -8,7 +8,7 @@ import re
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -259,12 +259,19 @@ def _attach_profile_refs(
                         )
                     )
     context_pillars = fields.get("pillars") if isinstance(fields, dict) else None
-    pillar_refs: dict[str, str] = {}
+    pillar_refs: dict[str, tuple[str, ...]] = {}
     if isinstance(context_pillars, list):
         for pillar_index, pillar in enumerate(context_pillars):
             pillar_id = pillar.get("pillar_id") if isinstance(pillar, dict) else None
             if isinstance(pillar_id, str):
-                pillar_refs[pillar_id] = f"pillars[{pillar_index}].pillar_id"
+                semantic_refs = [f"pillars[{pillar_index}].purpose"]
+                questions = pillar.get("selection_questions")
+                if isinstance(questions, list):
+                    semantic_refs.extend(
+                        f"pillars[{pillar_index}].selection_questions[{question_index}]"
+                        for question_index in range(len(questions))
+                    )
+                pillar_refs[pillar_id] = tuple(semantic_refs)
     enriched: list[Candidate] = []
     for candidate in candidates:
         searchable = f"{candidate.title}\n{candidate.summary}"
@@ -277,7 +284,11 @@ def _attach_profile_refs(
                         rf"(?<!\w){re.escape(topic)}(?!\w)", searchable, re.IGNORECASE
                     )
                 ]
-                + [pillar_refs[pillar] for pillar in candidate.pillars if pillar in pillar_refs]
+                + [
+                    ref
+                    for pillar in candidate.pillars
+                    for ref in pillar_refs.get(pillar, ())
+                ]
             )
         )
         enriched.append(replace(candidate, profile_refs=refs))
@@ -381,6 +392,21 @@ def _validate_generator_draft(
             }
             if any(item not in candidate_context_refs for item in context_refs):
                 raise ValueError("GENERATOR_CONTEXT_REF_NOT_BOUND_TO_EVIDENCE")
+            statement = str(claim["statement"]).casefold()
+            absence_terms = (
+                "未明确",
+                "未披露",
+                "没有说明",
+                "未提供",
+                "does not disclose",
+                "did not disclose",
+                "not disclosed",
+                "no details",
+            )
+            if any(term in statement for term in absence_terms) and any(
+                not evidence[evidence_id].source_complete for evidence_id in evidence_ids
+            ):
+                raise ValueError("GENERATOR_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE")
             if claim_kind in {"editorial_inference", "action"} and not context_refs:
                 raise ValueError("GENERATOR_CONTEXT_BINDING_REQUIRED")
             action_type = claim.get("action_type")
@@ -413,9 +439,22 @@ def _validate_generator_draft(
             ids = story.get(field)
             if not isinstance(ids, list) or any(item not in local_claims for item in ids):
                 raise ValueError(f"GENERATOR_{field.upper()}_BINDING_INVALID")
+        if len(story["action_claim_ids"]) > 1:
+            raise ValueError("GENERATOR_PER_STORY_ACTION_LIMIT_EXCEEDED")
+        fields = context.get("fields")
+        is_v75 = isinstance(fields, dict) and fields.get("schema_version") == "7.5"
+        if is_v75 and not story["impact_claim_ids"]:
+            raise ValueError("GENERATOR_PERSONAL_IMPACT_REQUIRED")
         if any(
             local_claims[claim_id]["claim_kind"] != "editorial_inference"
             or not local_claims[claim_id]["context_refs"]
+            or (
+                is_v75
+                and all(
+                    context_ref.endswith(".pillar_id")
+                    for context_ref in local_claims[claim_id]["context_refs"]
+                )
+            )
             for claim_id in story["impact_claim_ids"]
         ):
             raise ValueError("GENERATOR_IMPACT_CONTEXT_INVALID")
@@ -485,6 +524,7 @@ def _accepted_stories(
             story["title_claim_id"],
             *story["event_claim_ids"],
             *story["importance_claim_ids"],
+            *story["impact_claim_ids"],
         }
         if any(
             verdicts.get(claim_id) != "ACCEPT" for claim_id in rendered_claim_ids
@@ -533,26 +573,41 @@ def _claim_texts(story: Mapping[str, Any], field: str) -> list[str]:
 def _render_markdown(
     content_date: date,
     coverage: CoverageLevel,
+    evidence_level: CoverageLevel,
     stories: tuple[dict[str, Any], ...],
     evidence: Mapping[str, Candidate],
 ) -> str:
-    window_start = content_date - timedelta(days=2)
+    referenced_evidence_ids = {
+        evidence_id
+        for story in stories
+        for claim in story["claims"]
+        for evidence_id in claim["evidence_ids"]
+    }
+    evidence_dates = sorted(
+        published
+        for evidence_id in referenced_evidence_ids
+        if (published := evidence[evidence_id].published[:10])
+    )
+    evidence_start = evidence_dates[0] if evidence_dates else content_date.isoformat()
+    evidence_end = evidence_dates[-1] if evidence_dates else content_date.isoformat()
     lines = [
         "---",
         f"date: {content_date.isoformat()}",
         "type: ai-daily-shadow",
-        f"coverage: {coverage.value}",
-        f"window_start: {window_start.isoformat()}",
-        f"window_end: {content_date.isoformat()}",
-        "catch_up_window: 3-calendar-days",
+        f"operational_coverage: {coverage.value}",
+        f"evidence_availability: {evidence_level.value}",
+        f"evidence_date_start: {evidence_start}",
+        f"evidence_date_end: {evidence_end}",
         "production: false",
         "---",
         "",
         f"# AI Daily · {content_date.isoformat()}",
         "",
         f"> 今日入选 {len(stories)} 条经证据与 Reviewer 双审的变化。",
-        "> 信息窗口：近 72 小时补漏；条目发布日期见各证据。",
+        f"> 本期入选证据日期：{evidence_start} 至 {evidence_end}。",
     ]
+    if evidence_level is CoverageLevel.B:
+        lines.append("> Evidence B：部分 CORE 来源只有有限 assessment evidence。")
     labels = (
         ("event_claim_ids", "发生了什么"),
         ("mechanism_claim_ids", "关键细节"),
@@ -578,7 +633,7 @@ def _render_markdown(
         links = []
         for evidence_id in evidence_ids:
             item = evidence[evidence_id]
-            label = "原文" if item.fulltext_enriched else "来源链接"
+            label = "原始页面" if item.fulltext_enriched else "公开摘要"
             links.append(
                 f"[{label} · {item.source}]({item.link})（发布 {item.published}）"
             )
@@ -666,8 +721,29 @@ def run_ai_daily_shadow(
 
     ports = ports or _default_ports()
     selected_date = content_date or date.today()
-    collected = ports.collect(selected_date)
     run_dir = _new_run_dir(ports.runtime_root)
+    try:
+        collected = ports.collect(selected_date)
+    except (ValueError, OSError, TimeoutError) as error:
+        raw_code = str(error)
+        error_code = (
+            raw_code
+            if re.fullmatch(r"[A-Z][A-Z0-9_:.-]{2,80}", raw_code)
+            else "COLLECTION_FAILED"
+        )
+        return _finish(
+            ports=ports,
+            run_dir=run_dir,
+            content_date=selected_date,
+            coverage=CoverageLevel.INSUFFICIENT,
+            evidence_level=CoverageLevel.INSUFFICIENT,
+            candidate_count=0,
+            story_count=0,
+            request_count=0,
+            status="COLLECTION_FAILED",
+            exit_code=4,
+            error_code=error_code,
+        )
     if collected.coverage is CoverageLevel.INSUFFICIENT:
         return _finish(
             ports=ports,
@@ -701,7 +777,7 @@ def run_ai_daily_shadow(
             audit=collected.audit,
         )
     if not collected.candidates:
-        status, exit_code, error_code = _no_story_disposition(
+        no_story_status, no_story_exit, no_story_error = _no_story_disposition(
             collected.coverage, collected.evidence_level
         )
         return _finish(
@@ -714,9 +790,9 @@ def run_ai_daily_shadow(
             candidate_count=0,
             story_count=0,
             request_count=0,
-            status=status,
-            exit_code=exit_code,
-            error_code=error_code,
+            status=no_story_status,
+            exit_code=no_story_exit,
+            error_code=no_story_error,
             audit=collected.audit,
         )
     if len(collected.candidates) > 8:
@@ -793,7 +869,7 @@ def run_ai_daily_shadow(
             audit=collected.audit,
         )
     if not stories:
-        status, exit_code, error_code = _no_story_disposition(
+        no_story_status, no_story_exit, no_story_error = _no_story_disposition(
             collected.coverage, collected.evidence_level
         )
         return _finish(
@@ -806,9 +882,9 @@ def run_ai_daily_shadow(
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=generator.request_count,
-            status=status,
-            exit_code=exit_code,
-            error_code=error_code,
+            status=no_story_status,
+            exit_code=no_story_exit,
+            error_code=no_story_error,
             model_metrics=_model_metrics(generator),
             audit=collected.audit,
         )
@@ -867,7 +943,7 @@ def run_ai_daily_shadow(
         )
     accepted = _accepted_stories(stories, reviewer.validated_structured_result)
     if not accepted:
-        status, exit_code, error_code = _no_story_disposition(
+        no_story_status, no_story_exit, no_story_error = _no_story_disposition(
             collected.coverage, collected.evidence_level
         )
         return _finish(
@@ -880,13 +956,19 @@ def run_ai_daily_shadow(
             candidate_count=len(collected.candidates),
             story_count=0,
             request_count=total_requests,
-            status=status,
-            exit_code=exit_code,
-            error_code=error_code,
+            status=no_story_status,
+            exit_code=no_story_exit,
+            error_code=no_story_error,
             model_metrics=_model_metrics(generator, reviewer),
             audit=collected.audit,
         )
-    markdown = _render_markdown(selected_date, collected.coverage, accepted, evidence)
+    markdown = _render_markdown(
+        selected_date,
+        collected.coverage,
+        collected.evidence_level,
+        accepted,
+        evidence,
+    )
     personalized = tuple(
         sorted(
             {
@@ -908,6 +990,37 @@ def run_ai_daily_shadow(
             for evidence_id in claim["evidence_ids"]
         }
     )
+    generator_evidence_ids = {
+        evidence_id
+        for story in stories
+        for claim in story["claims"]
+        for evidence_id in claim["evidence_ids"]
+    }
+    final_evidence_ids = {
+        evidence_id
+        for story in accepted
+        for claim in story["claims"]
+        for evidence_id in claim["evidence_ids"]
+    }
+    candidate_audit_rows = collected.audit.get("candidate_audit", [])
+    if not isinstance(candidate_audit_rows, list):
+        candidate_audit_rows = []
+    final_candidate_audit = [
+        {
+            **row,
+            "generator_selected": row["evidence_id"] in generator_evidence_ids,
+            "final_selected": row["evidence_id"] in final_evidence_ids,
+            "disposition": (
+                "FINAL_SELECTED"
+                if row["evidence_id"] in final_evidence_ids
+                else "REVIEW_REJECTED_OR_STORY_DROPPED"
+                if row["evidence_id"] in generator_evidence_ids
+                else "GENERATOR_NOT_SELECTED"
+            ),
+        }
+        for row in candidate_audit_rows
+        if isinstance(row, dict) and isinstance(row.get("evidence_id"), str)
+    ]
     return _finish(
         ports=ports,
         run_dir=run_dir,
@@ -925,6 +1038,7 @@ def run_ai_daily_shadow(
         personalization_refs=personalized,
         audit={
             **collected.audit,
+            "candidate_audit": final_candidate_audit,
             "evidence_hash": _digest(
                 [item.model_payload() for item in collected.candidates]
             ),
