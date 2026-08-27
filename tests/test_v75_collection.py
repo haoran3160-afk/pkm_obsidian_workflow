@@ -294,7 +294,7 @@ def test_shared_explicit_event_phrase_clusters_different_titles_and_urls() -> No
                     title=title,
                     canonical_url=f"https://example.com/{source.source_id}/hugging-face-incident",
                     published_at="2026-08-27",
-                    summary="Hugging Face incident evidence and technical investigation. " * 8,
+                    summary="Agent behavior in the Hugging Face incident investigation. " * 8,
                     content_type="engineering",
                 ),
             ),
@@ -476,7 +476,7 @@ def test_natural_title_phrase_without_matching_url_slug_does_not_merge() -> None
                     title=f"Practical systems improve teams {source.source_id}",
                     canonical_url=f"https://example.com/{suffix}",
                     published_at="2026-08-27",
-                    summary="Distinct evidence and implementation detail. " * 8,
+                    summary="Distinct Agent workflow evidence and implementation detail. " * 8,
                     content_type="engineering",
                 ),
             ),
@@ -530,3 +530,46 @@ def test_latent_space_ainews_roundup_is_discovery_only_without_direct_children()
     )
 
     assert result.candidates == ()
+
+
+def test_generic_official_expansion_gets_no_agentic_source_bonus() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    target_ids = {"rss_openai_news", "rss_hamel_husain"}
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in target_ids:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        if source.source_id == "rss_openai_news":
+            title = "Company expands regional presence"
+            summary = "Regional office, community partnerships, and local operations. " * 6
+        else:
+            title = "AI Evals for Engineers"
+            summary = "Agent evaluation, error analysis, and coding workflow evidence. " * 6
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id=f"{source.source_id}-item",
+                    title=title,
+                    canonical_url=f"https://example.com/{source.source_id}/item",
+                    published_at="2026-08-27",
+                    summary=summary,
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Canonical public article body. " * 30,
+        ),
+    )
+
+    assert [candidate.source_id for candidate in result.candidates] == ["rss_hamel_husain"]

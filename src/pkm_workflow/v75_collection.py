@@ -132,6 +132,83 @@ _MIXED_FREEMIUM_SOURCE_IDS = {
     "rss_stratechery",
     "rss_not_boring",
 }
+_PILLAR_TERMS = {
+    "AGENTIC_RESEARCH": (
+        "agent",
+        "agentic",
+        "harness",
+        "scaffold",
+        "eval",
+        "evaluation",
+        "benchmark",
+        "swe-bench",
+        "coding agent",
+        "tool use",
+        "computer use",
+        "mcp",
+        "reward hacking",
+        "long-horizon",
+        "trajectory",
+        "sandbox",
+    ),
+    "AI_MASTERY": (
+        "prompt",
+        "context",
+        "workflow",
+        "tool",
+        "skill",
+        "mcp",
+        "eval",
+        "coding",
+        "api",
+        "inference",
+        "reasoning",
+        "model",
+        "retrieval",
+        "embedding",
+        "quantization",
+        "fine-tun",
+        "deployment",
+        "rag",
+    ),
+    "BUILDERS": (
+        "builder",
+        "founder",
+        "startup",
+        "saas",
+        "product",
+        "revenue",
+        "mrr",
+        "customer",
+        "pricing",
+        "distribution",
+        "launch",
+        "bootstrap",
+        "solo",
+    ),
+    "VC": (
+        "investment",
+        "investor",
+        "venture",
+        "funding",
+        "capital",
+        "valuation",
+        "market",
+        "moat",
+        "economics",
+    ),
+    "COGNITION": (
+        "framework",
+        "assumption",
+        "incentive",
+        "institution",
+        "mental model",
+        "cognition",
+        "agency",
+        "progress",
+        "innovation",
+    ),
+}
 
 
 def _policy_int(policies: Mapping[str, object], name: str) -> int:
@@ -264,18 +341,32 @@ def _metadata_score(
     ):
         return -1
     weights = {pillar.pillar_id: pillar.weight_bps for pillar in user_context.pillars}
-    primary_weight = weights[source.pillars[0]]
-    pillar_relevance = min(4000, primary_weight * 4000 // 3500)
+    text = f"{item.title}\n{item.summary}".casefold()
+    matched_pillars = [
+        pillar
+        for pillar in source.pillars
+        if any(term in text for term in _PILLAR_TERMS[pillar])
+    ]
+    if source.pillars[0] in matched_pillars:
+        primary_weight = weights[source.pillars[0]]
+        pillar_relevance = min(4000, primary_weight * 4000 // 3500)
+    elif matched_pillars:
+        secondary_relevance = max(
+            min(4000, weights[pillar] * 4000 // 3500) for pillar in matched_pillars
+        )
+        pillar_relevance = secondary_relevance * 3 // 4
+    else:
+        pillar_relevance = 0
     quality_value = source_quality_scores[source.evidence_role]
     if type(quality_value) is not int:
         raise ValueError("SOURCE_QUALITY_SCORE_INVALID")
     evidence_precheck = 1500 if item.content_type == "paper" else 1000
     if len(item.summary.strip()) < 200:
         evidence_precheck = 0
-    text = f"{item.title}\n{item.summary}".casefold()
     if any(term.casefold() in text for term in source.exclude_terms):
         return -1
     hype_penalty = -1000 if any(term in text for term in _HYPE_TERMS) else 0
+    relevance_penalty = -1500 if not matched_pillars else 0
     return (
         pillar_relevance
         + quality_value
@@ -283,6 +374,7 @@ def _metadata_score(
         + evidence_precheck
         + _freshness_score(item.published_at, content_date)
         + hype_penalty
+        + relevance_penalty
     )
 
 
