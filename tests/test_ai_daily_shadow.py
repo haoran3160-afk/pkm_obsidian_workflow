@@ -27,6 +27,7 @@ class _GenerateReviewTransport:
         unknown_evidence: bool = False,
         uncertainty_risk: str = "low",
         include_watch_and_action: bool = False,
+        invalid_context_ref: bool = False,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -34,12 +35,104 @@ class _GenerateReviewTransport:
         self.unknown_evidence = unknown_evidence
         self.uncertainty_risk = uncertainty_risk
         self.include_watch_and_action = include_watch_and_action
+        self.invalid_context_ref = invalid_context_ref
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
         request = json.loads(bytes(kwargs["body"]))
         sealed = json.loads(request["messages"][1]["content"])["sealed_request"]
         if self.calls == 1:
+            fields = sealed["approved_user_context"]["fields"]
+            priorities = fields.get("priorities", [])
+            prior_knowledge = fields.get("prior_knowledge", [])
+            context_ref = None
+            if priorities and priorities[0].get("topics"):
+                context_ref = "priorities[0].topics[0]"
+            elif any(row.get("topic") == "SWE-bench" for row in prior_knowledge):
+                context_ref = "prior_knowledge[1].topic"
+            if self.invalid_context_ref:
+                context_ref = "private_inference.unapproved"
+
+            def claim(
+                claim_id: str,
+                statement: str,
+                risk: str,
+                *,
+                kind: str = "fact",
+                context_refs: list[str] | None = None,
+                action_type: str = "NONE",
+                action_object: str = "",
+                success_criterion: str = "",
+            ) -> dict[str, object]:
+                return {
+                    "claim_id": claim_id,
+                    "statement": statement,
+                    "evidence_ids": [
+                        "unknown-evidence"
+                        if self.unknown_evidence and claim_id == "title-claim"
+                        else "evidence-1"
+                    ],
+                    "claimed_risk": risk,
+                    "claim_kind": kind,
+                    "context_refs": context_refs or [],
+                    "action_type": action_type,
+                    "action_object": action_object,
+                    "success_criterion": success_criterion,
+                }
+
+            claims = [
+                claim("title-claim", "Example AI 发布了新的 Agent 工具。", "medium"),
+                claim(
+                    "event-claim",
+                    "该工具新增了可复用的浏览器操作能力。",
+                    "high",
+                ),
+                claim(
+                    "mechanism-claim",
+                    "浏览器操作被封装为可复用工具接口。",
+                    "medium",
+                ),
+                claim(
+                    "importance-claim",
+                    "这会减少 Agent 工作流中的重复浏览器脚本。",
+                    "medium",
+                ),
+                claim(
+                    "uncertainty-claim",
+                    "所有网站都已完全兼容。",
+                    self.uncertainty_risk,
+                ),
+            ]
+            if context_ref:
+                claims.append(
+                    claim(
+                        "impact-claim",
+                        "它与用户当前的 Agent 工程优先级直接相关。",
+                        "medium",
+                        kind="editorial_inference",
+                        context_refs=[context_ref],
+                    )
+                )
+            if self.include_watch_and_action:
+                claims.extend(
+                    [
+                        claim(
+                            "watch-claim",
+                            "观察后续是否公布跨站点成功率。",
+                            "low",
+                        ),
+                        claim(
+                            "action-claim",
+                            "本周用一个浏览任务对比复用前后的脚本量。",
+                            "low",
+                            kind="action",
+                            context_refs=[context_ref] if context_ref else [],
+                            action_type="THIS_WEEK_EXPERIMENT",
+                            action_object="一个真实浏览任务",
+                            success_criterion="复用后重复脚本行数下降",
+                        ),
+                    ]
+                )
             structured = {"stories": []} if self.empty else {
                 "stories": [
                     {
@@ -49,7 +142,7 @@ class _GenerateReviewTransport:
                         "event_claim_ids": ["event-claim"],
                         "mechanism_claim_ids": ["mechanism-claim"],
                         "importance_claim_ids": ["importance-claim"],
-                        "impact_claim_ids": ["impact-claim"],
+                        "impact_claim_ids": ["impact-claim"] if context_ref else [],
                         "uncertainty_claim_ids": ["uncertainty-claim"],
                         "watch_claim_ids": (
                             ["watch-claim"] if self.include_watch_and_action else []
@@ -57,66 +150,7 @@ class _GenerateReviewTransport:
                         "action_claim_ids": (
                             ["action-claim"] if self.include_watch_and_action else []
                         ),
-                        "claims": [
-                            {
-                                "claim_id": "title-claim",
-                                "statement": "Example AI 发布了新的 Agent 工具。",
-                                "evidence_ids": [
-                                    "unknown-evidence"
-                                    if self.unknown_evidence
-                                    else "evidence-1"
-                                ],
-                                "claimed_risk": "medium",
-                            },
-                            {
-                                "claim_id": "event-claim",
-                                "statement": "该工具新增了可复用的浏览器操作能力。",
-                                "evidence_ids": ["evidence-1"],
-                                "claimed_risk": "high",
-                            },
-                            {
-                                "claim_id": "mechanism-claim",
-                                "statement": "浏览器操作被封装为可复用工具接口。",
-                                "evidence_ids": ["evidence-1"],
-                                "claimed_risk": "medium",
-                            },
-                            {
-                                "claim_id": "importance-claim",
-                                "statement": "这会减少 Agent 工作流中的重复浏览器脚本。",
-                                "evidence_ids": ["evidence-1"],
-                                "claimed_risk": "medium",
-                            },
-                            {
-                                "claim_id": "impact-claim",
-                                "statement": "它与用户当前的 Agent 工程优先级直接相关。",
-                                "evidence_ids": ["evidence-1"],
-                                "claimed_risk": "medium",
-                            },
-                            {
-                                "claim_id": "uncertainty-claim",
-                                "statement": "所有网站都已完全兼容。",
-                                "evidence_ids": ["evidence-1"],
-                                "claimed_risk": self.uncertainty_risk,
-                            },
-                            *(
-                                [
-                                    {
-                                        "claim_id": "watch-claim",
-                                        "statement": "观察后续是否公布跨站点成功率。",
-                                        "evidence_ids": ["evidence-1"],
-                                        "claimed_risk": "low",
-                                    },
-                                    {
-                                        "claim_id": "action-claim",
-                                        "statement": "本周用一个浏览任务对比复用前后的脚本量。",
-                                        "evidence_ids": ["evidence-1"],
-                                        "claimed_risk": "low",
-                                    },
-                                ]
-                                if self.include_watch_and_action
-                                else []
-                            ),
-                        ],
+                        "claims": claims,
                     }
                 ]
             }
@@ -461,6 +495,42 @@ def test_renderer_keeps_all_accepted_visible_claim_roles(tmp_path: Path) -> None
     assert "观察后续是否公布跨站点成功率" in markdown
     assert "本周用一个浏览任务对比复用前后的脚本量" in markdown
     assert "无需行动" not in markdown
+
+
+def test_unapproved_context_reference_fails_closed_without_markdown(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI Agent tool release",
+        link="https://example.com/agent-release",
+        published="2026-08-25",
+        summary="Example AI released a reusable browser operation tool for agents.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=9,
+            healthy_sources=9,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(invalid_context_ref=True),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_CLAIM_BINDING_INVALID"
+    assert result.markdown_path is None
 
 
 def test_only_success_or_zero_yield_counts_as_healthy_coverage() -> None:

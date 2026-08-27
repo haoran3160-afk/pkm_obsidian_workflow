@@ -76,7 +76,10 @@ _MVP_PROMPTS = {
         "must be globally unique across the entire response. Rank stories by the supplied user "
         "priorities and material engineering impact, never by candidate order. Leave action "
         "claims empty unless the approved context explicitly shows the user uses the affected "
-        "technology. Uncertainty and watch claims must name an evidence-specific unknown or "
+        "technology. Every claim must declare claim_kind and context_refs. An editorial inference "
+        "requires at least one exact approved context field path. An action additionally requires "
+        "a non-NONE action_type, a concrete action_object, and a measurable success_criterion; all "
+        "non-action claims must leave those action fields empty and use NONE. Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),
     "reviewer": (
@@ -87,7 +90,9 @@ _MVP_PROMPTS = {
         "requirement, and hash bindings exactly. Do not emit URLs, Markdown, paths, tools, or "
         "extra prose. ABSTAIN from claims that turn a general topic match into a statement about "
         "the user's current stack, or recommend migration/adoption without explicit context and "
-        "evidence. Return exactly one JSON object matching output_schema."
+        "evidence. Verify editorial and action claims against the supplied approved context, and "
+        "ABSTAIN when a context reference does not support the inference or action. Return exactly "
+        "one JSON object matching output_schema."
     ),
 }
 MVP_GENERATOR_PROMPT = _MVP_PROMPTS["generator"]
@@ -325,8 +330,40 @@ _MVP_CLAIM_SCHEMA = _closed_object(
             "type": "string",
             "enum": ["critical", "high", "medium", "low"],
         },
+        "claim_kind": {
+            "type": "string",
+            "enum": ["fact", "editorial_inference", "action"],
+        },
+        "context_refs": {
+            "type": "array",
+            "maxItems": 8,
+            "uniqueItems": True,
+            "items": _STRING_TEXT,
+        },
+        "action_type": {
+            "type": "string",
+            "enum": [
+                "NONE",
+                "IMMEDIATE_ACTION",
+                "THIS_WEEK_EXPERIMENT",
+                "RESEARCH_QUESTION",
+                "CONTINUE_WATCHING",
+            ],
+        },
+        "action_object": {"type": "string", "maxLength": 240},
+        "success_criterion": {"type": "string", "maxLength": 240},
     },
-    ("claim_id", "statement", "evidence_ids", "claimed_risk"),
+    (
+        "claim_id",
+        "statement",
+        "evidence_ids",
+        "claimed_risk",
+        "claim_kind",
+        "context_refs",
+        "action_type",
+        "action_object",
+        "success_criterion",
+    ),
 )
 _MVP_STORY_SCHEMA = _closed_object(
     {
@@ -1208,11 +1245,17 @@ class DeepSeekShadowProvider:
                 raise ValueError("sealed input is not canonical")
             if not isinstance(sealed_value, dict):
                 raise ValueError("sealed input must be an object")
-            expected_fields = (
-                {"sealed_evidence", "approved_user_context", "rubric"}
-                if role is ProviderRole.GENERATOR
-                else {"sealed_evidence", "generator_result", "rubric"}
-            )
+            if role is ProviderRole.GENERATOR:
+                expected_fields = {"sealed_evidence", "approved_user_context", "rubric"}
+            elif is_mvp:
+                expected_fields = {
+                    "sealed_evidence",
+                    "generator_result",
+                    "approved_context",
+                    "rubric",
+                }
+            else:
+                expected_fields = {"sealed_evidence", "generator_result", "rubric"}
             if set(sealed_value) != expected_fields:
                 raise ValueError("sealed input fields do not match the role contract")
             if is_mvp:
@@ -1564,6 +1607,7 @@ class DeepSeekShadowProvider:
 
         sealed = value.get("sealed_evidence")
         generator = value.get("generator_result")
+        approved_context = value.get("approved_context")
         rubric = value.get("rubric")
         if (
             not isinstance(sealed, dict)
@@ -1571,6 +1615,15 @@ class DeepSeekShadowProvider:
             or re.fullmatch(_HASH_PATTERN, sealed.get("evidence_hash", "")) is None
             or not isinstance(generator, dict)
             or set(generator) != {"draft", "structured_result_hash"}
+            or not isinstance(approved_context, dict)
+            or not {"fields", "user_context_hash"}.issubset(approved_context)
+            or set(approved_context)
+            - {"fields", "knowledge_anchors", "user_context_hash"}
+            or re.fullmatch(
+                _HASH_PATTERN, approved_context.get("user_context_hash", "")
+            )
+            is None
+            or not isinstance(approved_context.get("fields"), dict)
             or not isinstance(rubric, dict)
             or set(rubric) != {"allowed_decisions", "contract_version", "requirements"}
             or rubric.get("contract_version") != MVP_CONTRACT_VERSION
@@ -1595,6 +1648,11 @@ class DeepSeekShadowProvider:
             "claim_id",
             "statement",
             "evidence_ids",
+            "claim_kind",
+            "context_refs",
+            "action_type",
+            "action_object",
+            "success_criterion",
             "required",
             "generator_draft_hash",
             "review_requirement_hash",
@@ -1615,6 +1673,11 @@ class DeepSeekShadowProvider:
             if (
                 requirement.get("statement") != claim.get("statement")
                 or requirement.get("evidence_ids") != claim_evidence
+                or requirement.get("claim_kind") != claim.get("claim_kind")
+                or requirement.get("context_refs") != claim.get("context_refs")
+                or requirement.get("action_type") != claim.get("action_type")
+                or requirement.get("action_object") != claim.get("action_object")
+                or requirement.get("success_criterion") != claim.get("success_criterion")
                 or requirement.get("required") is not True
                 or requirement.get("generator_draft_hash") != draft_hash
             ):
@@ -1646,6 +1709,7 @@ class DeepSeekShadowProvider:
             "fulltext_enriched",
             "metadata_score",
             "pillars",
+            "profile_refs",
             "published",
             "source",
             "source_id",
@@ -1662,10 +1726,15 @@ class DeepSeekShadowProvider:
             or not isinstance(item.get("pillars"), list)
             or not item["pillars"]
             or any(not isinstance(pillar, str) or not pillar for pillar in item["pillars"])
+            or not isinstance(item.get("profile_refs"), list)
+            or any(
+                not isinstance(context_ref, str) or not context_ref
+                for context_ref in item["profile_refs"]
+            )
             or any(
                 not isinstance(item.get(field), str) or not str(item[field]).strip()
                 for field in fields
-                - {"fulltext_enriched", "metadata_score", "pillars"}
+                - {"fulltext_enriched", "metadata_score", "pillars", "profile_refs"}
             )
         ):
             raise ValueError("AI Daily evidence item is invalid")

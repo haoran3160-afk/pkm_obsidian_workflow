@@ -258,21 +258,54 @@ def _attach_profile_refs(
                             f"knowledge_anchors[{anchor_index}].topics[{topic_index}]",
                         )
                     )
+    context_pillars = fields.get("pillars") if isinstance(fields, dict) else None
+    pillar_refs: dict[str, str] = {}
+    if isinstance(context_pillars, list):
+        for pillar_index, pillar in enumerate(context_pillars):
+            pillar_id = pillar.get("pillar_id") if isinstance(pillar, dict) else None
+            if isinstance(pillar_id, str):
+                pillar_refs[pillar_id] = f"pillars[{pillar_index}].pillar_id"
     enriched: list[Candidate] = []
     for candidate in candidates:
         searchable = f"{candidate.title}\n{candidate.summary}"
         refs = tuple(
-            path
-            for topic, path in topic_refs
-            if re.search(rf"(?<!\w){re.escape(topic)}(?!\w)", searchable, re.IGNORECASE)
+            dict.fromkeys(
+                [
+                    path
+                    for topic, path in topic_refs
+                    if re.search(
+                        rf"(?<!\w){re.escape(topic)}(?!\w)", searchable, re.IGNORECASE
+                    )
+                ]
+                + [pillar_refs[pillar] for pillar in candidate.pillars if pillar in pillar_refs]
+            )
         )
         enriched.append(replace(candidate, profile_refs=refs))
     return tuple(enriched)
 
 
+def _approved_context_paths(context: Mapping[str, object]) -> set[str]:
+    paths: set[str] = set()
+
+    def visit(value: object, path: str) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                visit(item, f"{path}.{key}" if path else key)
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, f"{path}[{index}]")
+        elif isinstance(value, (str, int, bool)) and path:
+            paths.add(path)
+
+    visit(context.get("fields"), "")
+    visit(context.get("knowledge_anchors"), "knowledge_anchors")
+    return paths
+
+
 def _validate_generator_draft(
     draft: object,
     evidence: Mapping[str, Candidate],
+    context: Mapping[str, object],
 ) -> tuple[dict[str, Any], ...]:
     if not isinstance(draft, dict) or set(draft) != {"stories"}:
         raise ValueError("GENERATOR_DRAFT_INVALID")
@@ -292,6 +325,8 @@ def _validate_generator_draft(
         "watch_claim_ids",
         "action_claim_ids",
     )
+    allowed_context_refs = _approved_context_paths(context)
+    action_count = 0
     for story in stories:
         if not isinstance(story, dict):
             raise ValueError("GENERATOR_STORY_INVALID")
@@ -315,6 +350,8 @@ def _validate_generator_draft(
                 raise ValueError("GENERATOR_CLAIM_INVALID")
             claim_id = claim.get("claim_id")
             evidence_ids = claim.get("evidence_ids")
+            claim_kind = claim.get("claim_kind")
+            context_refs = claim.get("context_refs")
             if (
                 not isinstance(claim_id, str)
                 or claim_id in claim_ids
@@ -322,8 +359,38 @@ def _validate_generator_draft(
                 or not isinstance(evidence_ids, list)
                 or not evidence_ids
                 or any(not isinstance(item, str) or item not in evidence for item in evidence_ids)
+                or claim_kind not in {"fact", "editorial_inference", "action"}
+                or not isinstance(context_refs, list)
+                or len(context_refs) != len(set(context_refs))
+                or any(
+                    not isinstance(item, str) or item not in allowed_context_refs
+                    for item in context_refs
+                )
             ):
                 raise ValueError("GENERATOR_CLAIM_BINDING_INVALID")
+            if claim_kind in {"editorial_inference", "action"} and not context_refs:
+                raise ValueError("GENERATOR_CONTEXT_BINDING_REQUIRED")
+            action_type = claim.get("action_type")
+            action_object = claim.get("action_object")
+            success_criterion = claim.get("success_criterion")
+            if claim_kind == "action":
+                action_count += 1
+                if (
+                    action_type
+                    not in {
+                        "IMMEDIATE_ACTION",
+                        "THIS_WEEK_EXPERIMENT",
+                        "RESEARCH_QUESTION",
+                        "CONTINUE_WATCHING",
+                    }
+                    or not isinstance(action_object, str)
+                    or not action_object.strip()
+                    or not isinstance(success_criterion, str)
+                    or not success_criterion.strip()
+                ):
+                    raise ValueError("GENERATOR_ACTION_BINDING_INVALID")
+            elif action_type != "NONE" or action_object != "" or success_criterion != "":
+                raise ValueError("GENERATOR_NON_ACTION_FIELDS_INVALID")
             claim_ids.add(claim_id)
             local_claims[claim_id] = claim
         title_claim_id = story.get("title_claim_id")
@@ -333,9 +400,29 @@ def _validate_generator_draft(
             ids = story.get(field)
             if not isinstance(ids, list) or any(item not in local_claims for item in ids):
                 raise ValueError(f"GENERATOR_{field.upper()}_BINDING_INVALID")
+        if any(
+            local_claims[claim_id]["claim_kind"] != "editorial_inference"
+            or not local_claims[claim_id]["context_refs"]
+            for claim_id in story["impact_claim_ids"]
+        ):
+            raise ValueError("GENERATOR_IMPACT_CONTEXT_INVALID")
+        if any(
+            local_claims[claim_id]["claim_kind"] != "action"
+            for claim_id in story["action_claim_ids"]
+        ):
+            raise ValueError("GENERATOR_ACTION_ROLE_INVALID")
+        action_ids = {
+            claim_id
+            for claim_id, claim in local_claims.items()
+            if claim["claim_kind"] == "action"
+        }
+        if action_ids != set(story["action_claim_ids"]):
+            raise ValueError("GENERATOR_ACTION_ROLE_INVALID")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         validated.append(story)
+    if action_count > 2:
+        raise ValueError("GENERATOR_DAILY_ACTION_LIMIT_EXCEEDED")
     return tuple(validated)
 
 
@@ -349,6 +436,11 @@ def _review_requirements(stories: tuple[dict[str, Any], ...]) -> tuple[list[dict
                 "claim_id": claim["claim_id"],
                 "statement": claim["statement"],
                 "evidence_ids": claim["evidence_ids"],
+                "claim_kind": claim["claim_kind"],
+                "context_refs": claim["context_refs"],
+                "action_type": claim["action_type"],
+                "action_object": claim["action_object"],
+                "success_criterion": claim["success_criterion"],
                 "required": True,
                 "generator_draft_hash": draft_hash,
             }
@@ -409,8 +501,20 @@ def _accepted_stories(
 
 
 def _claim_texts(story: Mapping[str, Any], field: str) -> list[str]:
-    claims = {claim["claim_id"]: claim["statement"] for claim in story["claims"]}
-    return [claims[claim_id] for claim_id in story[field] if claim_id in claims]
+    claims = {claim["claim_id"]: claim for claim in story["claims"]}
+    rendered: list[str] = []
+    for claim_id in story[field]:
+        claim = claims.get(claim_id)
+        if claim is None:
+            continue
+        text = claim["statement"]
+        if claim.get("claim_kind") == "action":
+            text = (
+                f"{text}（对象：{claim['action_object']}；"
+                f"判据：{claim['success_criterion']}）"
+            )
+        rendered.append(text)
+    return rendered
 
 
 def _render_markdown(
@@ -655,7 +759,9 @@ def run_ai_daily_shadow(
             audit=collected.audit,
         )
     try:
-        stories = _validate_generator_draft(generator.validated_structured_result, evidence)
+        stories = _validate_generator_draft(
+            generator.validated_structured_result, evidence, context
+        )
     except ValueError as error:
         return _finish(
             ports=ports,
@@ -705,6 +811,7 @@ def run_ai_daily_shadow(
     ]
     reviewer_request = _canonical(
         {
+            "approved_context": context,
             "generator_result": {
                 "draft": {"stories": list(stories)},
                 "structured_result_hash": draft_hash,
@@ -773,8 +880,7 @@ def run_ai_daily_shadow(
                 ref
                 for story in accepted
                 for claim in story["claims"]
-                for evidence_id in claim["evidence_ids"]
-                for ref in evidence[evidence_id].profile_refs
+                for ref in claim["context_refs"]
             }
         )
     )

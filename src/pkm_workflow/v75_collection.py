@@ -81,6 +81,7 @@ class Candidate:
             "fulltext_enriched": self.fulltext_enriched,
             "metadata_score": self.metadata_score,
             "pillars": list(self.pillars),
+            "profile_refs": list(self.profile_refs),
             "published": self.published,
             "source": self.source,
             "source_id": self.source_id,

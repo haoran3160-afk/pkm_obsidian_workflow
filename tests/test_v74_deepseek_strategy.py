@@ -78,7 +78,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:629b0859271c9b9c0ba4b9acea97415514e7560ff9915dedda2ef720946f2b9b"
+        "sha256:f8f50f330ef55505d1ccfbcd2f9f132fc1733c394a2890480433e6d27cc5eb5f"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -140,6 +140,14 @@ def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories
         story["properties"]["claims"]["items"]["properties"]["statement"]["maxLength"]
         == 600
     )
+    claim = story["properties"]["claims"]["items"]
+    assert {
+        "claim_kind",
+        "context_refs",
+        "action_type",
+        "action_object",
+        "success_criterion",
+    }.issubset(claim["required"])
 
 
 def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> None:
@@ -168,6 +176,7 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
                         "fulltext_enriched": False,
                         "metadata_score": 7000,
                         "pillars": ["AI_MASTERY"],
+                        "profile_refs": [],
                         "published": "2026-08-25",
                         "source": "Example AI",
                         "source_id": "rss-example-ai",
@@ -205,6 +214,11 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
             "statement": statement,
             "evidence_ids": ["evidence-1"],
             "claimed_risk": "high" if claim_id == "event-claim" else "medium",
+            "claim_kind": "fact",
+            "context_refs": [],
+            "action_type": "NONE",
+            "action_object": "",
+            "success_criterion": "",
         }
         for claim_id, statement in (
             ("title-claim", "Example AI released a new model."),
@@ -237,6 +251,11 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
             "claim_id": claim["claim_id"],
             "statement": claim["statement"],
             "evidence_ids": claim["evidence_ids"],
+            "claim_kind": claim["claim_kind"],
+            "context_refs": claim["context_refs"],
+            "action_type": claim["action_type"],
+            "action_object": claim["action_object"],
+            "success_criterion": claim["success_criterion"],
             "required": True,
             "generator_draft_hash": draft_hash,
         }
@@ -261,6 +280,7 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
         "fulltext_enriched": True,
         "metadata_score": 7000,
         "pillars": ["AI_MASTERY"],
+        "profile_refs": [],
         "published": "2026-08-25",
         "source": "Example AI",
         "source_id": "rss-example-ai",
@@ -269,6 +289,10 @@ def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None
     }
     sealed = _canonical(
         {
+            "approved_context": {
+                "fields": {"priorities": []},
+                "user_context_hash": _digest("context"),
+            },
             "generator_result": {"draft": draft, "structured_result_hash": draft_hash},
             "rubric": {
                 "allowed_decisions": ["ACCEPT", "REJECT", "ABSTAIN"],
