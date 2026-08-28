@@ -732,6 +732,34 @@ def test_one_structural_schema_repair_can_recover_and_accumulates_usage() -> Non
     assert result.credential_mode == "SYNTHETIC_INJECTED"
 
 
+def test_explicit_invocation_deadline_is_shared_with_schema_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    incomplete = {"stories": _generator_result()["stories"]}
+    transport = SequenceTransport(
+        [
+            _success_response(_canonical(incomplete).decode()),
+            _success_response(_canonical(_generator_result()).decode()),
+        ]
+    )
+    times = iter((0.0, 1.0, 4.0, 4.5))
+    monkeypatch.setattr(provider_module, "monotonic", lambda: next(times))
+
+    result = DeepSeekShadowProvider(
+        credential_reader=lambda: bytearray(b"runtime-only-secret"),
+        transport=transport,
+    ).invoke(
+        ProviderRole.GENERATOR,
+        _generator_request(),
+        _object_schema(),
+        RequestBudget(limit=4),
+        timeout_seconds=5.0,
+    )
+
+    assert result.terminal_classification is TerminalClassification.VALIDATED
+    assert [call["timeout_seconds"] for call in transport.calls] == [4.0, 1.0]
+
+
 def test_semantic_retry_can_disable_schema_repair_to_reserve_reviewer_budget() -> None:
     incomplete = {"stories": _generator_result()["stories"]}
     transport = SequenceTransport([_success_response(_canonical(incomplete).decode())])

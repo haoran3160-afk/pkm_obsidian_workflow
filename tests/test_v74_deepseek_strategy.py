@@ -79,6 +79,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["request_budget"] == 4
     assert binding["mvp_request_limits"] == {
         "max_output_tokens": 8192,
+        "pipeline_timeout_seconds": 180.0,
         "total_timeout_seconds": 60.0,
     }
     assert binding["model_contract_adapter"] == MVP_CONTRACT_VERSION
@@ -86,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:f7c06fd394146c9174c0856ea7ae107c821c8f383aa0fad9834e330109558eb9"
+        "sha256:7f603cfa88257e1fa17dab2ae556d341f85ad37cda044c43b35c51cbdf9fec9b"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"

@@ -10,10 +10,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 
-from .deepseek_mvp_strategy import deepseek_mvp_strategy_binding
+from .deepseek_mvp_strategy import (
+    MVP_PIPELINE_TIMEOUT_SECONDS,
+    deepseek_mvp_strategy_binding,
+)
 from .deepseek_provider import (
     MVP_CONTRACT_VERSION,
     DeepSeekShadowProvider,
@@ -1151,12 +1155,21 @@ def run_ai_daily_shadow(
         semantic_correction=None,
     )
     budget = RequestBudget(limit=4)
+    model_pipeline_started = monotonic()
+
+    def remaining_model_timeout() -> float:
+        remaining = MVP_PIPELINE_TIMEOUT_SECONDS - (
+            monotonic() - model_pipeline_started
+        )
+        return max(0.001, remaining)
+
     generator = ports.provider.invoke(
         ProviderRole.GENERATOR,
         generator_request,
         mvp_generator_output_schema(),
         budget,
         contract_version=MVP_CONTRACT_VERSION,
+        timeout_seconds=remaining_model_timeout(),
     )
     if generator.terminal_classification is not TerminalClassification.VALIDATED:
         return _finish(
@@ -1220,6 +1233,7 @@ def run_ai_daily_shadow(
                 budget,
                 contract_version=MVP_CONTRACT_VERSION,
                 allow_schema_repair=False,
+                timeout_seconds=remaining_model_timeout(),
             )
             generator_results.append(retry_generator)
             if (
@@ -1351,6 +1365,7 @@ def run_ai_daily_shadow(
         mvp_reviewer_output_schema(),
         budget,
         contract_version=MVP_CONTRACT_VERSION,
+        timeout_seconds=remaining_model_timeout(),
     )
     total_requests = generator_request_count + reviewer.request_count
     if reviewer.terminal_classification is not TerminalClassification.VALIDATED:

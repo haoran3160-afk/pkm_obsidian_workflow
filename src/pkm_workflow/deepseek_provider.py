@@ -1212,6 +1212,7 @@ class DeepSeekShadowProvider:
         *,
         contract_version: str | None = None,
         allow_schema_repair: bool = True,
+        timeout_seconds: float | None = None,
     ) -> ProviderResult:
         if contract_version not in {None, MVP_CONTRACT_VERSION}:
             raise ValueError("unknown DeepSeek contract version")
@@ -1219,7 +1220,20 @@ class DeepSeekShadowProvider:
         request_timeout_seconds = (
             MVP_TOTAL_TIMEOUT_SECONDS if is_mvp else TOTAL_TIMEOUT_SECONDS
         )
+        if timeout_seconds is not None:
+            if (
+                isinstance(timeout_seconds, bool)
+                or not isinstance(timeout_seconds, (int, float))
+                or timeout_seconds <= 0
+            ):
+                raise ValueError("timeout_seconds must be a positive number")
+            request_timeout_seconds = min(
+                request_timeout_seconds, float(timeout_seconds)
+            )
         started = monotonic()
+        invocation_deadline = (
+            started + request_timeout_seconds if timeout_seconds is not None else None
+        )
         request_id = uuid4().hex
         input_hash = _sha256(sealed_request)
         schema_hash = _sha256(output_schema)
@@ -1375,6 +1389,30 @@ class DeepSeekShadowProvider:
                         usage=total_usage,
                         schema_repair_used=repair_dispatched,
                     )
+                attempt_timeout_seconds = request_timeout_seconds
+                if invocation_deadline is not None:
+                    attempt_timeout_seconds = invocation_deadline - monotonic()
+                    if attempt_timeout_seconds <= 0:
+                        return self._result(
+                            role=role,
+                            request_id=request_id,
+                            input_hash=input_hash,
+                            prompt_hash=prompt_hash,
+                            schema_hash=schema_hash,
+                            started=started,
+                            terminal=TerminalClassification.TIMEOUT,
+                            error_code="TIMEOUT",
+                            request_count=attempts,
+                            raw_response_hash=raw_hash,
+                            raw_response_hashes=tuple(raw_hashes),
+                            attempt_prompt_hashes=tuple(attempt_prompt_hashes),
+                            request_body_hashes=tuple(request_body_hashes),
+                            provider_response_id_hashes=tuple(
+                                provider_response_id_hashes
+                            ),
+                            usage=total_usage,
+                            schema_repair_used=repair_dispatched,
+                        )
                 if not request_budget.reserve():
                     return self._result(
                         role=role,
@@ -1411,7 +1449,7 @@ class DeepSeekShadowProvider:
                         url=API_URL,
                         body=request_body,
                         credential=secret,
-                        timeout_seconds=request_timeout_seconds,
+                        timeout_seconds=attempt_timeout_seconds,
                         max_response_bytes=MAX_RESPONSE_BYTES,
                     )
                 except TimeoutError:

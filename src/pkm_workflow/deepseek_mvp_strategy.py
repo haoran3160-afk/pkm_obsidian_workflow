@@ -28,6 +28,8 @@ from .deepseek_provider import (
     reviewer_output_schema,
 )
 
+MVP_PIPELINE_TIMEOUT_SECONDS = 180.0
+
 
 def _canonical(value: object) -> bytes:
     return json.dumps(
@@ -58,6 +60,7 @@ _D018_BASE: dict[str, object] = {
     "request_budget": 4,
     "mvp_request_limits": {
         "max_output_tokens": MVP_MAX_OUTPUT_TOKENS,
+        "pipeline_timeout_seconds": MVP_PIPELINE_TIMEOUT_SECONDS,
         "total_timeout_seconds": MVP_TOTAL_TIMEOUT_SECONDS,
     },
     "production_eligible": False,
