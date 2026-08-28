@@ -52,12 +52,14 @@ class _GenerateReviewTransport:
         self.single_mechanism = single_mechanism
         self.generator_profile_refs: list[str] = []
         self.generator_rubric: dict[str, object] = {}
+        self.generator_calls = 0
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
         request = json.loads(bytes(kwargs["body"]))
         sealed = json.loads(request["messages"][1]["content"])["sealed_request"]
-        if self.calls == 1:
+        if "approved_user_context" in sealed:
+            self.generator_calls += 1
             self.generator_rubric = dict(sealed["rubric"])
             self.generator_profile_refs = list(
                 sealed["sealed_evidence"]["candidates"][0]["profile_refs"]

@@ -206,6 +206,7 @@ def _generator_request_bytes(
     coverage: CoverageLevel,
     context: Mapping[str, object],
     diversity_evidence_id: str | None,
+    semantic_correction: str | None,
 ) -> bytes:
     payloads = [item.model_payload() for item in candidates]
     return _canonical(
@@ -216,6 +217,7 @@ def _generator_request_bytes(
                 "max_stories": 3,
                 "top_cap": 3,
                 "diversity_evidence_id": diversity_evidence_id,
+                "semantic_correction": semantic_correction,
             },
             "sealed_evidence": {
                 "coverage_level": coverage.value,
@@ -227,9 +229,13 @@ def _generator_request_bytes(
 
 
 def _diversity_retry_candidates(
-    candidates: tuple[Candidate, ...], diversity_evidence_id: str
+    candidates: tuple[Candidate, ...], diversity_evidence_id: str | None
 ) -> tuple[Candidate, ...]:
     strongest = max(candidates, key=lambda candidate: candidate.editorial_score)
+    if diversity_evidence_id is None:
+        return tuple(
+            sorted(candidates, key=lambda candidate: -candidate.editorial_score)[:2]
+        )
     target = next(
         candidate for candidate in candidates if candidate.evidence_id == diversity_evidence_id
     )
@@ -1118,6 +1124,7 @@ def run_ai_daily_shadow(
         coverage=collected.coverage,
         context=context,
         diversity_evidence_id=diversity_evidence_id,
+        semantic_correction=None,
     )
     budget = RequestBudget(limit=4)
     generator = ports.provider.invoke(
@@ -1162,11 +1169,13 @@ def run_ai_daily_shadow(
         )
     except ValueError as error:
         validation_error: ValueError | None = error
-        if (
-            str(error) == "GENERATOR_REQUIRED_EXPOSURE_MISSING"
-            and diversity_evidence_id is not None
-            and budget.remaining >= 2
-        ):
+        retryable_semantic_errors = {
+            "GENERATOR_REQUIRED_EXPOSURE_MISSING",
+            "GENERATOR_RESEARCH_QUESTION_REQUIRED",
+            "GENERATOR_DETAIL_DEPTH_REQUIRED",
+            "GENERATOR_PERSONAL_IMPACT_REQUIRED",
+        }
+        if str(error) in retryable_semantic_errors and budget.remaining >= 2:
             retry_candidates = _diversity_retry_candidates(
                 collected.candidates, diversity_evidence_id
             )
@@ -1175,6 +1184,7 @@ def run_ai_daily_shadow(
                 coverage=collected.coverage,
                 context=context,
                 diversity_evidence_id=diversity_evidence_id,
+                semantic_correction=str(error),
             )
             retry_generator = ports.provider.invoke(
                 ProviderRole.GENERATOR,

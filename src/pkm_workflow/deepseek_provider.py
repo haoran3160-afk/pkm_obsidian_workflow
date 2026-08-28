@@ -74,9 +74,10 @@ _MVP_PROMPTS = {
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
         "tools, or prose outside the JSON object. Use six to ten substantive claims per "
         "story, emit exactly two distinct mechanism/detail claims, and keep each statement under 220 Chinese characters. Story IDs and claim IDs "
-        "must be globally unique across the entire response. Rank stories by approved user priorities and material impact. candidate order encodes deterministic pillar exposure after the quality gate; pillar_exposure and editorial_score are deterministic tie-break signals. Select the strongest story first, then prefer an exposed different story_type before another same-type story unless its evidence is materially weaker. Leave action "
+        "must be globally unique across the entire response. Rank stories by approved user priorities and material impact. candidate order encodes deterministic pillar exposure after the quality gate; pillar_exposure and editorial_score are deterministic tie-break signals. Select the strongest story first, then prefer an exposed different story_type before another same-type story unless its evidence is materially weaker. "
         "If rubric diversity_evidence_id is non-null and you emit two or three stories, one story must use that exact evidence_id; emitting zero or one story does not force it. "
-        "claims empty unless the approved context explicitly shows the user uses the affected "
+        "If rubric semantic_correction is non-null, correct that exact contract failure while regenerating from the same evidence; do not repeat the invalid structure. "
+        "Leave action claims empty unless the approved context explicitly shows the user uses the affected "
         "technology. Every claim must declare claim_kind and context_refs. An editorial inference "
         "requires at least one exact approved context field path. An action additionally requires "
         "a non-NONE action_type, a concrete action_object, and a measurable success_criterion. "
@@ -1611,12 +1612,19 @@ class DeepSeekShadowProvider:
                     "max_stories",
                     "top_cap",
                     "diversity_evidence_id",
+                    "semantic_correction",
                 }
                 or rubric.get("contract_version") != MVP_CONTRACT_VERSION
                 or rubric.get("max_stories") != 3
                 or rubric.get("top_cap") != 3
-                or rubric.get("diversity_evidence_id") is not None
-                and not isinstance(rubric.get("diversity_evidence_id"), str)
+                or (
+                    rubric.get("diversity_evidence_id") is not None
+                    and not isinstance(rubric.get("diversity_evidence_id"), str)
+                )
+                or (
+                    rubric.get("semantic_correction") is not None
+                    and not isinstance(rubric.get("semantic_correction"), str)
+                )
             ):
                 raise ValueError("AI Daily Generator input is invalid")
             candidates = sealed.get("candidates")
