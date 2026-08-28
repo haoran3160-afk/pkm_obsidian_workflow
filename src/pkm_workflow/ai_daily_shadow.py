@@ -612,11 +612,12 @@ def _validate_generator_draft(
             elif action_type != "NONE" or action_object != "" or success_criterion != "":
                 raise ValueError("GENERATOR_NON_ACTION_FIELDS_INVALID")
             rate_present = re.search(
-                r"\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%",
+                r"(?<!\d)\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%",
                 statement,
             )
             sample_scope = re.search(
-                r"\b\d+\s*/\s*\d+\b|\b\d+\s+out of\s+\d+\b|"
+                r"(?<!\d)\d+\s*/\s*\d+(?!\d)|"
+                r"(?<!\d)\d+\s+out of\s+\d+(?!\d)|"
                 r"(?:在|共|基于).{0,30}\d+\s*(?:次|项|个|条|份|例|段|轮|组|模型)|"
                 r"\bin\s+\d+\s+(?:tests?|runs?|samples?|cases?|trials?|models?)\b",
                 statement,

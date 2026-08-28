@@ -556,7 +556,7 @@ def test_percentage_without_sample_scope_never_reaches_reviewer_or_markdown(
     )
     transport = _GenerateReviewTransport(
         reject_claim="",
-        title_statement="提示注入攻击的成功率约为 80%。",
+        title_statement="提示注入攻击的成功率约80%。",
     )
     ports = ShadowPorts(
         collect=lambda _content_date: CollectionResult(
