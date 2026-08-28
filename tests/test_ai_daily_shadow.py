@@ -617,7 +617,9 @@ def test_research_story_renders_type_specific_takeaway_and_detail_list(
     assert "**可做的复现或实验**" in markdown
 
 
-def test_research_story_without_testable_question_fails_closed(tmp_path: Path) -> None:
+def test_research_story_without_testable_question_keeps_other_deep_takeaways(
+    tmp_path: Path,
+) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Research Lab",
@@ -647,12 +649,11 @@ def test_research_story_without_testable_question_fails_closed(tmp_path: Path) -
 
     result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_RESEARCH_QUESTION_REQUIRED"
-    assert result.markdown_path is None
-    assert transport.generator_calls == 2
-    assert transport.generator_candidate_ids[-1] == ["evidence-1"]
-    assert "list it in action_claim_ids" in str(transport.semantic_corrections[-1])
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    assert result.story_count == 1
+    assert transport.generator_calls == 1
+    assert "**可做的复现或实验**" not in result.markdown_path.read_text(encoding="utf-8")
 
 
 def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
@@ -862,7 +863,7 @@ def test_reviewer_rejecting_one_required_detail_drops_story(tmp_path: Path) -> N
     assert result.markdown_path is None
 
 
-def test_reviewer_rejecting_research_question_drops_research_story(
+def test_reviewer_rejecting_optional_research_action_keeps_research_story(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -895,8 +896,9 @@ def test_reviewer_rejecting_research_question_drops_research_story(
 
     result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
 
-    assert result.story_count == 0
-    assert result.markdown_path is None
+    assert result.story_count == 1
+    assert result.markdown_path is not None
+    assert "本周用一个浏览任务" not in result.markdown_path.read_text(encoding="utf-8")
 
 
 def test_one_story_cannot_mix_multiple_candidate_evidence_packages(

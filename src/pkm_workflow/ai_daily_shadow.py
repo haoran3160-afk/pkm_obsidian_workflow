@@ -252,14 +252,7 @@ def _generator_request_bytes(
 def _diversity_retry_candidates(
     candidates: tuple[Candidate, ...],
     diversity_evidence_id: str | None,
-    semantic_error: str,
 ) -> tuple[Candidate, ...]:
-    if semantic_error == "GENERATOR_RESEARCH_QUESTION_REQUIRED":
-        research = [
-            candidate for candidate in candidates if candidate.story_type == "research"
-        ]
-        if research:
-            return (max(research, key=lambda candidate: candidate.metadata_score),)
     strongest = max(candidates, key=lambda candidate: candidate.editorial_score)
     if diversity_evidence_id is None:
         return tuple(
@@ -278,12 +271,6 @@ def _semantic_correction_instruction(error_code: str) -> str:
         "GENERATOR_REQUIRED_EXPOSURE_MISSING": (
             "If emitting two or more stories, include the candidate named by "
             "diversity_evidence_id as exactly one story."
-        ),
-        "GENERATOR_RESEARCH_QUESTION_REQUIRED": (
-            "For the emitted research story, create exactly one claim with claim_kind "
-            "action and action_type RESEARCH_QUESTION or THIS_WEEK_EXPERIMENT; give it "
-            "a concrete action_object and measurable success_criterion, then list it in "
-            "action_claim_ids."
         ),
         "GENERATOR_DETAIL_DEPTH_REQUIRED": (
             "For every emitted story, create exactly two distinct evidence-backed "
@@ -668,16 +655,6 @@ def _validate_generator_draft(
         }
         if len(story_evidence_ids) != 1:
             raise ValueError("GENERATOR_MULTIPLE_CANDIDATES_PER_STORY")
-        story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
-        if is_v75 and story_types == {"research"}:
-            research_actions = [
-                local_claims[claim_id]
-                for claim_id in story["action_claim_ids"]
-                if local_claims[claim_id]["action_type"]
-                in {"RESEARCH_QUESTION", "THIS_WEEK_EXPERIMENT"}
-            ]
-            if not research_actions:
-                raise ValueError("GENERATOR_RESEARCH_QUESTION_REQUIRED")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         unsafe_absence_ids.update(
@@ -740,14 +717,6 @@ def _validate_generator_draft(
         keep_action_ids = story["action_claim_ids"][:remaining_actions]
         remaining_actions -= len(keep_action_ids)
         removed_action_ids = set(story["action_claim_ids"]) - set(keep_action_ids)
-        story_evidence_ids = {
-            evidence_id
-            for claim in story["claims"]
-            for evidence_id in claim["evidence_ids"]
-        }
-        story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
-        if removed_action_ids and story_types == {"research"}:
-            continue
         projected = dict(story)
         projected["action_claim_ids"] = keep_action_ids
         projected["claims"] = [
@@ -854,7 +823,6 @@ def _accepted_stories(
             claim for claim in story["claims"] if verdicts.get(claim["claim_id"]) == "ACCEPT"
         ]
         kept_ids = {claim["claim_id"] for claim in kept_claims}
-        kept_by_id = {claim["claim_id"]: claim for claim in kept_claims}
         projected = dict(story)
         projected["claims"] = kept_claims
         for field in (
@@ -876,17 +844,6 @@ def _accepted_stories(
         }
         if len(story_evidence_ids) != 1:
             continue
-        story_type = evidence[next(iter(story_evidence_ids))].story_type
-        if story_type == "research":
-            accepted_research_actions = [
-                kept_by_id[claim_id]
-                for claim_id in projected["action_claim_ids"]
-                if claim_id in kept_by_id
-                and kept_by_id[claim_id]["action_type"]
-                in {"RESEARCH_QUESTION", "THIS_WEEK_EXPERIMENT"}
-            ]
-            if not accepted_research_actions:
-                continue
         accepted.append(projected)
     accepted.sort(key=lambda story: story["rank"])
     for index, story in enumerate(accepted, start=1):
@@ -1263,13 +1220,12 @@ def run_ai_daily_shadow(
         validation_error: ValueError | None = error
         retryable_semantic_errors = {
             "GENERATOR_REQUIRED_EXPOSURE_MISSING",
-            "GENERATOR_RESEARCH_QUESTION_REQUIRED",
             "GENERATOR_DETAIL_DEPTH_REQUIRED",
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 3:
             retry_candidates = _diversity_retry_candidates(
-                collected.candidates, diversity_evidence_id, str(error)
+                collected.candidates, diversity_evidence_id
             )
             retry_evidence = {
                 candidate.evidence_id: candidate for candidate in retry_candidates

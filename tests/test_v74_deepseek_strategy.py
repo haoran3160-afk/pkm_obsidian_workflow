@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:2e2c8782be9a98c9f47548189a2895e62676eaae976dded80684a306ea72db08"
+        "sha256:e1601c6bf4ac47491bb6d207450f783cf8e6d5e6c726d5dc14b9e0c427728387"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -141,7 +141,8 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Builder candidates: explain the user problem" in MVP_GENERATOR_PROMPT
     assert "VC candidates: identify the layer being funded" in MVP_GENERATOR_PROMPT
     assert "Cognition candidates: name the default assumption" in MVP_GENERATOR_PROMPT
-    assert "Every research story must include one action claim" in MVP_GENERATOR_PROMPT
+    assert "a research story may include one action claim" in MVP_GENERATOR_PROMPT
+    assert "never invent an action merely to fill the field" in MVP_GENERATOR_PROMPT
     assert (
         "an approved research priority, prior knowledge, project, or affected technology"
         in MVP_GENERATOR_PROMPT
