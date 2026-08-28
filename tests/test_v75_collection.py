@@ -13,6 +13,7 @@ from pkm_workflow.v75_collection import (
     CoverageLevel,
     MetadataItem,
     MetadataObservation,
+    _is_public_fulltext,
     collect_v75_candidates,
     default_collection_ports,
 )
@@ -348,6 +349,21 @@ def test_members_only_preview_never_becomes_claim_evidence() -> None:
         row["reason"] == "FULL_FREE_EVIDENCE_UNAVAILABLE"
         for row in result.audit["exclusions"]
     )
+
+
+@pytest.mark.parametrize(
+    "gate",
+    [
+        "Sign in to continue.",
+        "This story is for members.",
+        "Subscribe for full access.",
+        "Subscribers get access to the rest.",
+    ],
+)
+def test_common_access_gates_never_qualify_as_public_fulltext(gate: str) -> None:
+    preview = ("Long editorial preview with useful technical context. " * 24) + gate
+
+    assert _is_public_fulltext(preview) is False
 
 
 def test_exact_same_event_title_across_urls_occupies_one_candidate_slot() -> None:

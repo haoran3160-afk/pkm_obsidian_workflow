@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 
 from .deepseek_provider import (
@@ -77,7 +78,7 @@ _D018_BINDING = {**_D018_BASE, "strategy_hash": _hash(_D018_BASE)}
 def deepseek_mvp_strategy_binding() -> dict[str, object]:
     """Return a fresh copy of the current shadow-only D-018 strategy."""
 
-    return dict(_D018_BINDING)
+    return deepcopy(_D018_BINDING)
 
 
 @dataclass(frozen=True)

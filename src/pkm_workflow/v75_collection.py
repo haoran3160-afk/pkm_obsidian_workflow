@@ -531,6 +531,17 @@ def _is_public_fulltext(value: str) -> bool:
     lowered = normalized.casefold()
     if any(term in lowered for term in _PAYWALL_TERMS):
         return False
+    direct_gate_pattern = (
+        r"\b(?:sign|log) in(?: or (?:sign|log) up)? to "
+        r"(?:continue|read|access|view|unlock)\b|"
+        r"\b(?:this|the) (?:story|article|post|content) is "
+        r"(?:available )?(?:only )?for (?:paid )?(?:members|subscribers)\b|"
+        r"\bsubscribe(?: now)? (?:for|to get) (?:full|complete|unlimited) access\b|"
+        r"\bsubscribers? (?:only |get |have |receive )?(?:full )?access "
+        r"to (?:the )?(?:rest|full (?:story|article|post|content))\b"
+    )
+    if re.search(direct_gate_pattern, lowered):
+        return False
     access_pattern = (
         r"\b(?:member(?:s|ship)?|subscrib(?:e|ers?|tions?)|upgrade|premium|paywall|"
         r"sign in|log in)\b"
@@ -728,6 +739,9 @@ def collect_v75_candidates(
         evidence_level=evidence_level,
         evidence_healthy_sources=len(assessment_source_ids),
         audit={
+            "diversity_metadata_gap": _policy_int(
+                policies, "diversity_metadata_gap"
+            ),
             "due_source_ids": [source.source_id for source in due_sources],
             "source_observations": [
                 {

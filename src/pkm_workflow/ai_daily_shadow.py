@@ -188,16 +188,33 @@ def _model_metrics(*results: ProviderResult) -> dict[str, int]:
     }
 
 
-def _diversity_evidence_id(candidates: tuple[Candidate, ...]) -> str | None:
+def _has_type_evidence_for_diversity(candidate: Candidate) -> bool:
+    if candidate.story_type != "builder":
+        return True
+    normalized = re.sub(r"\s+", " ", candidate.summary).casefold()
+    observed_result = re.search(
+        r"\b\d[\d,.]*\s+(?:active |paying |paid )?"
+        r"(?:users?|customers?|signups?|downloads?|visitors?|sales)\b|"
+        r"(?:\$|€|£)\s*\d[\d,.]*\s*(?:mrr|arr|revenue|sales)?\b|"
+        r"\b(?:mrr|arr|revenue|conversion|retention)\b.{0,24}\b\d[\d,.]*%?",
+        normalized,
+    )
+    return observed_result is not None
+
+
+def _diversity_evidence_id(
+    candidates: tuple[Candidate, ...], *, max_metadata_gap: int
+) -> str | None:
     if len(candidates) < 2:
         return None
-    strongest = max(candidates, key=lambda candidate: candidate.editorial_score)
+    strongest = max(candidates, key=lambda candidate: candidate.metadata_score)
     alternatives = [
         candidate
         for candidate in candidates
         if candidate.pillar_exposure
         and candidate.story_type != strongest.story_type
-        and candidate.editorial_score + 3000 >= strongest.editorial_score
+        and candidate.metadata_score + max_metadata_gap >= strongest.metadata_score
+        and _has_type_evidence_for_diversity(candidate)
     ]
     if not alternatives:
         return None
@@ -1146,7 +1163,12 @@ def run_ai_daily_shadow(
     evidence = {item.evidence_id: item for item in collected.candidates}
     if len(evidence) != len(collected.candidates):
         raise ValueError("candidate evidence IDs must be unique")
-    diversity_evidence_id = _diversity_evidence_id(collected.candidates)
+    diversity_gap = collected.audit.get("diversity_metadata_gap", 1500)
+    if type(diversity_gap) is not int or diversity_gap < 0:
+        raise ValueError("INVALID_DIVERSITY_METADATA_GAP")
+    diversity_evidence_id = _diversity_evidence_id(
+        collected.candidates, max_metadata_gap=diversity_gap
+    )
     generator_request = _generator_request_bytes(
         candidates=collected.candidates,
         coverage=collected.coverage,

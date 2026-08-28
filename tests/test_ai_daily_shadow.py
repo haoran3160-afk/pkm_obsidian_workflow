@@ -398,7 +398,10 @@ def test_generator_receives_close_cross_type_diversity_target(tmp_path: Path) ->
         title="Agent product validation case study",
         link="https://example.com/builder",
         published="2026-08-27",
-        summary="Builder product users distribution and revenue evidence.",
+        summary=(
+            "Builder launched through a public directory and reports 120 users, "
+            "8 paid customers, and the acquisition channel."
+        ),
         content_type="builder",
         fulltext_enriched=True,
         story_type="builder",
@@ -430,6 +433,67 @@ def test_generator_receives_close_cross_type_diversity_target(tmp_path: Path) ->
 
     assert result.status == "PUBLISHED"
     assert transport.generator_rubric["diversity_evidence_id"] == "evidence-builder"
+
+
+def test_builder_without_observed_validation_is_not_forced_for_diversity(
+    tmp_path: Path,
+) -> None:
+    research = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="Agent harness evaluation release",
+        link="https://example.com/research",
+        published="2026-08-27",
+        summary="Agent harness evaluation evidence and benchmark details.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+        pillar_exposure=True,
+        metadata_score=9700,
+        editorial_score=12200,
+    )
+    builder = Candidate(
+        evidence_id="evidence-builder",
+        source="Builder",
+        title="A new hotel rating product",
+        link="https://example.com/builder",
+        published="2026-08-27",
+        summary=(
+            "The builder describes the product idea, normalized ratings, and an AI "
+            "visual model, but gives no observed adoption or result."
+        ),
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS",),
+        pillar_exposure=True,
+        metadata_score=6914,
+        editorial_score=9414,
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(research, builder),
+            audit={"diversity_metadata_gap": 1500},
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
 def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:

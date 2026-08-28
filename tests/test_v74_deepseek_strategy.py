@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:fbc72ac89c7c31e004c5c998e150628d80e37369f80d3e4b03827ebe59c74022"
+        "sha256:2e2c8782be9a98c9f47548189a2895e62676eaae976dded80684a306ea72db08"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -147,6 +147,9 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
         in MVP_GENERATOR_PROMPT
     )
     assert "Leave action claims empty unless" not in MVP_GENERATOR_PROMPT
+    assert "retain its exact sample size or denominator" in MVP_GENERATOR_PROMPT
+    assert "first-party Builder claim" in MVP_GENERATOR_PROMPT
+    assert "design goal into a validated outcome" in MVP_REVIEWER_PROMPT
     assert "prefer at least two story types" in MVP_GENERATOR_PROMPT
     assert "Across all stories emit at most 24 claims" in MVP_GENERATOR_PROMPT
     assert "candidate order encodes deterministic pillar exposure" in MVP_GENERATOR_PROMPT
@@ -154,6 +157,17 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "diversity_evidence_id is non-null" in MVP_GENERATOR_PROMPT
     assert "semantic_correction is non-null" in MVP_GENERATOR_PROMPT
     assert "never by candidate order" not in MVP_GENERATOR_PROMPT
+
+
+def test_d018_strategy_binding_returns_an_unshared_nested_copy() -> None:
+    first = deepseek_mvp_strategy_binding()
+    limits = first["mvp_request_limits"]
+    assert isinstance(limits, dict)
+    limits["pipeline_timeout_seconds"] = 1.0
+
+    second = deepseek_mvp_strategy_binding()
+
+    assert second["mvp_request_limits"]["pipeline_timeout_seconds"] == 180.0
 
 
 def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
