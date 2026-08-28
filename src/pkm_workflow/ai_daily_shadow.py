@@ -200,6 +200,44 @@ def _diversity_evidence_id(candidates: tuple[Candidate, ...]) -> str | None:
     return max(alternatives, key=lambda candidate: candidate.editorial_score).evidence_id
 
 
+def _generator_request_bytes(
+    *,
+    candidates: tuple[Candidate, ...],
+    coverage: CoverageLevel,
+    context: Mapping[str, object],
+    diversity_evidence_id: str | None,
+) -> bytes:
+    payloads = [item.model_payload() for item in candidates]
+    return _canonical(
+        {
+            "approved_user_context": context,
+            "rubric": {
+                "contract_version": MVP_CONTRACT_VERSION,
+                "max_stories": 3,
+                "top_cap": 3,
+                "diversity_evidence_id": diversity_evidence_id,
+            },
+            "sealed_evidence": {
+                "coverage_level": coverage.value,
+                "evidence_hash": _digest(payloads),
+                "candidates": payloads,
+            },
+        }
+    )
+
+
+def _diversity_retry_candidates(
+    candidates: tuple[Candidate, ...], diversity_evidence_id: str
+) -> tuple[Candidate, ...]:
+    strongest = max(candidates, key=lambda candidate: candidate.editorial_score)
+    target = next(
+        candidate for candidate in candidates if candidate.evidence_id == diversity_evidence_id
+    )
+    if strongest.evidence_id == target.evidence_id:
+        return (target,)
+    return (strongest, target)
+
+
 def _no_story_disposition(
     coverage: CoverageLevel,
     evidence_level: CoverageLevel,
@@ -1075,23 +1113,11 @@ def run_ai_daily_shadow(
     if len(evidence) != len(collected.candidates):
         raise ValueError("candidate evidence IDs must be unique")
     diversity_evidence_id = _diversity_evidence_id(collected.candidates)
-    generator_request = _canonical(
-        {
-            "approved_user_context": context,
-            "rubric": {
-                "contract_version": MVP_CONTRACT_VERSION,
-                "max_stories": 3,
-                "top_cap": 3,
-                "diversity_evidence_id": diversity_evidence_id,
-            },
-            "sealed_evidence": {
-                "coverage_level": collected.coverage.value,
-                "evidence_hash": _digest(
-                    [item.model_payload() for item in collected.candidates]
-                ),
-                "candidates": [item.model_payload() for item in collected.candidates],
-            },
-        }
+    generator_request = _generator_request_bytes(
+        candidates=collected.candidates,
+        coverage=collected.coverage,
+        context=context,
+        diversity_evidence_id=diversity_evidence_id,
     )
     budget = RequestBudget(limit=4)
     generator = ports.provider.invoke(
@@ -1126,6 +1152,7 @@ def run_ai_daily_shadow(
                 ),
             },
         )
+    generator_results = [generator]
     try:
         stories = _validate_generator_draft(
             generator.validated_structured_result,
@@ -1134,30 +1161,89 @@ def run_ai_daily_shadow(
             diversity_evidence_id=diversity_evidence_id,
         )
     except ValueError as error:
-        return _finish(
-            ports=ports,
-            run_dir=run_dir,
-            content_date=selected_date,
-            coverage=collected.coverage,
-            evidence_level=collected.evidence_level,
-            evidence_healthy_sources=collected.evidence_healthy_sources,
-            candidate_count=len(collected.candidates),
-            story_count=0,
-            request_count=generator.request_count,
-            status="SCHEMA_INVALID",
-            exit_code=4,
-            error_code=str(error),
-            model_metrics=_model_metrics(generator),
-            audit={
-                **collected.audit,
-                "candidate_audit": _candidate_disposition_audit(
-                    collected,
-                    generator_evidence_ids=set(),
-                    final_evidence_ids=set(),
-                    failure_disposition="GENERATOR_SCHEMA_REJECTED",
-                ),
-            },
-        )
+        validation_error: ValueError | None = error
+        if (
+            str(error) == "GENERATOR_REQUIRED_EXPOSURE_MISSING"
+            and diversity_evidence_id is not None
+            and budget.remaining >= 2
+        ):
+            retry_candidates = _diversity_retry_candidates(
+                collected.candidates, diversity_evidence_id
+            )
+            retry_request = _generator_request_bytes(
+                candidates=retry_candidates,
+                coverage=collected.coverage,
+                context=context,
+                diversity_evidence_id=diversity_evidence_id,
+            )
+            retry_generator = ports.provider.invoke(
+                ProviderRole.GENERATOR,
+                retry_request,
+                mvp_generator_output_schema(),
+                budget,
+                contract_version=MVP_CONTRACT_VERSION,
+            )
+            generator_results.append(retry_generator)
+            if (
+                retry_generator.terminal_classification
+                is not TerminalClassification.VALIDATED
+            ):
+                return _finish(
+                    ports=ports,
+                    run_dir=run_dir,
+                    content_date=selected_date,
+                    coverage=collected.coverage,
+                    evidence_level=collected.evidence_level,
+                    evidence_healthy_sources=collected.evidence_healthy_sources,
+                    candidate_count=len(collected.candidates),
+                    story_count=0,
+                    request_count=sum(result.request_count for result in generator_results),
+                    status=retry_generator.terminal_classification.value,
+                    exit_code=_provider_exit(retry_generator),
+                    error_code=retry_generator.error_code,
+                    model_metrics=_model_metrics(*generator_results),
+                    audit=collected.audit,
+                )
+            generator = retry_generator
+            try:
+                stories = _validate_generator_draft(
+                    generator.validated_structured_result,
+                    evidence,
+                    context,
+                    diversity_evidence_id=diversity_evidence_id,
+                )
+            except ValueError as retry_error:
+                validation_error = retry_error
+            else:
+                validation_error = None
+        if validation_error is None:
+            pass
+        else:
+            return _finish(
+                ports=ports,
+                run_dir=run_dir,
+                content_date=selected_date,
+                coverage=collected.coverage,
+                evidence_level=collected.evidence_level,
+                evidence_healthy_sources=collected.evidence_healthy_sources,
+                candidate_count=len(collected.candidates),
+                story_count=0,
+                request_count=sum(result.request_count for result in generator_results),
+                status="SCHEMA_INVALID",
+                exit_code=4,
+                error_code=str(validation_error),
+                model_metrics=_model_metrics(*generator_results),
+                audit={
+                    **collected.audit,
+                    "candidate_audit": _candidate_disposition_audit(
+                        collected,
+                        generator_evidence_ids=set(),
+                        final_evidence_ids=set(),
+                        failure_disposition="GENERATOR_SCHEMA_REJECTED",
+                    ),
+                },
+            )
+    generator_request_count = sum(result.request_count for result in generator_results)
     if not stories:
         no_story_status, no_story_exit, no_story_error = _no_story_disposition(
             collected.coverage, collected.evidence_level
@@ -1171,11 +1257,11 @@ def run_ai_daily_shadow(
             evidence_healthy_sources=collected.evidence_healthy_sources,
             candidate_count=len(collected.candidates),
             story_count=0,
-            request_count=generator.request_count,
+            request_count=generator_request_count,
             status=no_story_status,
             exit_code=no_story_exit,
             error_code=no_story_error,
-            model_metrics=_model_metrics(generator),
+            model_metrics=_model_metrics(*generator_results),
             audit={
                 **collected.audit,
                 "candidate_audit": _candidate_disposition_audit(
@@ -1220,7 +1306,7 @@ def run_ai_daily_shadow(
         budget,
         contract_version=MVP_CONTRACT_VERSION,
     )
-    total_requests = generator.request_count + reviewer.request_count
+    total_requests = generator_request_count + reviewer.request_count
     if reviewer.terminal_classification is not TerminalClassification.VALIDATED:
         return _finish(
             ports=ports,
@@ -1235,7 +1321,7 @@ def run_ai_daily_shadow(
             status=reviewer.terminal_classification.value,
             exit_code=_provider_exit(reviewer),
             error_code=reviewer.error_code,
-            model_metrics=_model_metrics(generator, reviewer),
+            model_metrics=_model_metrics(*generator_results, reviewer),
             audit={
                 **collected.audit,
                 "candidate_audit": _candidate_disposition_audit(
@@ -1271,7 +1357,7 @@ def run_ai_daily_shadow(
             status=no_story_status,
             exit_code=no_story_exit,
             error_code=no_story_error,
-            model_metrics=_model_metrics(generator, reviewer),
+            model_metrics=_model_metrics(*generator_results, reviewer),
             audit={
                 **collected.audit,
                 "candidate_audit": _candidate_disposition_audit(
@@ -1342,7 +1428,7 @@ def run_ai_daily_shadow(
         status="PUBLISHED",
         exit_code=0,
         markdown=markdown,
-        model_metrics=_model_metrics(generator, reviewer),
+        model_metrics=_model_metrics(*generator_results, reviewer),
         personalization_refs=personalized,
         audit={
             **collected.audit,
