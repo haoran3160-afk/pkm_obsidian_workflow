@@ -250,8 +250,16 @@ def _generator_request_bytes(
 
 
 def _diversity_retry_candidates(
-    candidates: tuple[Candidate, ...], diversity_evidence_id: str | None
+    candidates: tuple[Candidate, ...],
+    diversity_evidence_id: str | None,
+    semantic_error: str,
 ) -> tuple[Candidate, ...]:
+    if semantic_error == "GENERATOR_RESEARCH_QUESTION_REQUIRED":
+        research = [
+            candidate for candidate in candidates if candidate.story_type == "research"
+        ]
+        if research:
+            return (max(research, key=lambda candidate: candidate.metadata_score),)
     strongest = max(candidates, key=lambda candidate: candidate.editorial_score)
     if diversity_evidence_id is None:
         return tuple(
@@ -263,6 +271,31 @@ def _diversity_retry_candidates(
     if strongest.evidence_id == target.evidence_id:
         return (target,)
     return (strongest, target)
+
+
+def _semantic_correction_instruction(error_code: str) -> str:
+    instructions = {
+        "GENERATOR_REQUIRED_EXPOSURE_MISSING": (
+            "If emitting two or more stories, include the candidate named by "
+            "diversity_evidence_id as exactly one story."
+        ),
+        "GENERATOR_RESEARCH_QUESTION_REQUIRED": (
+            "For the emitted research story, create exactly one claim with claim_kind "
+            "action and action_type RESEARCH_QUESTION or THIS_WEEK_EXPERIMENT; give it "
+            "a concrete action_object and measurable success_criterion, then list it in "
+            "action_claim_ids."
+        ),
+        "GENERATOR_DETAIL_DEPTH_REQUIRED": (
+            "For every emitted story, create exactly two distinct evidence-backed "
+            "mechanism/detail claims and list both in mechanism_claim_ids."
+        ),
+        "GENERATOR_PERSONAL_IMPACT_REQUIRED": (
+            "For every emitted story, create one cautious editorial_inference impact "
+            "claim with an exact semantic approved context_ref and list it in "
+            "impact_claim_ids."
+        ),
+    }
+    return instructions[error_code]
 
 
 def _no_story_disposition(
@@ -1236,7 +1269,7 @@ def run_ai_daily_shadow(
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 3:
             retry_candidates = _diversity_retry_candidates(
-                collected.candidates, diversity_evidence_id
+                collected.candidates, diversity_evidence_id, str(error)
             )
             retry_evidence = {
                 candidate.evidence_id: candidate for candidate in retry_candidates
@@ -1246,7 +1279,7 @@ def run_ai_daily_shadow(
                 coverage=collected.coverage,
                 context=context,
                 diversity_evidence_id=diversity_evidence_id,
-                semantic_correction=str(error),
+                semantic_correction=_semantic_correction_instruction(str(error)),
             )
             retry_generator = ports.provider.invoke(
                 ProviderRole.GENERATOR,

@@ -55,6 +55,8 @@ class _GenerateReviewTransport:
         self.generator_profile_refs: list[str] = []
         self.generator_rubric: dict[str, object] = {}
         self.generator_calls = 0
+        self.generator_candidate_ids: list[list[str]] = []
+        self.semantic_corrections: list[str | None] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
         self.calls += 1
@@ -63,6 +65,13 @@ class _GenerateReviewTransport:
         if "approved_user_context" in sealed:
             self.generator_calls += 1
             self.generator_rubric = dict(sealed["rubric"])
+            self.generator_candidate_ids.append(
+                [
+                    str(candidate["evidence_id"])
+                    for candidate in sealed["sealed_evidence"]["candidates"]
+                ]
+            )
+            self.semantic_corrections.append(sealed["rubric"]["semantic_correction"])
             self.generator_profile_refs = list(
                 sealed["sealed_evidence"]["candidates"][0]["profile_refs"]
             )
@@ -620,6 +629,7 @@ def test_research_story_without_testable_question_fails_closed(tmp_path: Path) -
         fulltext_enriched=True,
         story_type="research",
     )
+    transport = _GenerateReviewTransport(reject_claim="")
     ports = ShadowPorts(
         collect=lambda _content_date: CollectionResult(
             coverage=CoverageLevel.A,
@@ -629,7 +639,7 @@ def test_research_story_without_testable_question_fails_closed(tmp_path: Path) -
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
-            transport=_GenerateReviewTransport(reject_claim=""),
+            transport=transport,
         ),
         runtime_root=tmp_path,
         load_user_context=lambda: load_approved_user_context_v75().model_payload(),
@@ -640,6 +650,9 @@ def test_research_story_without_testable_question_fails_closed(tmp_path: Path) -
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_RESEARCH_QUESTION_REQUIRED"
     assert result.markdown_path is None
+    assert transport.generator_calls == 2
+    assert transport.generator_candidate_ids[-1] == ["evidence-1"]
+    assert "list it in action_claim_ids" in str(transport.semantic_corrections[-1])
 
 
 def test_coverage_a_without_candidates_is_credible_no_news_without_markdown(
