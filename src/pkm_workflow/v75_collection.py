@@ -134,12 +134,6 @@ _PAYWALL_TERMS = (
     "sign in to read",
     "already a subscriber",
 )
-_MIXED_FREEMIUM_SOURCE_IDS = {
-    "rss_pragmatic_engineer",
-    "rss_interconnects",
-    "rss_stratechery",
-    "rss_not_boring",
-}
 _PILLAR_TERMS = {
     "AGENTIC_RESEARCH": (
         "agent",
@@ -635,7 +629,7 @@ def collect_v75_candidates(
         and (
             observations[source.source_id].zero_yield
             or (
-                source.source_id not in _MIXED_FREEMIUM_SOURCE_IDS
+                source.access_policy != "MIXED_FREEMIUM_DISCOVERY_ONLY"
                 and any(
                     len(item.summary.strip()) >= 200
                     for item in observations[source.source_id].items
@@ -670,6 +664,16 @@ def collect_v75_candidates(
             break
         source_id = row.source.source_id
         if source_candidates.get(source_id, 0) >= 2 or source_attempts.get(source_id, 0) >= 2:
+            continue
+        if row.source.access_policy == "MIXED_FREEMIUM_DISCOVERY_ONLY":
+            exclusions.append(
+                {
+                    "source_id": source_id,
+                    "item_native_id": row.item.item_native_id,
+                    "reason": "SOURCE_SPECIFIC_PUBLIC_PROOF_REQUIRED",
+                }
+            )
+            source_attempts[source_id] = 2
             continue
         if row.item.content_type == "paper" and len(row.item.summary.strip()) >= 200:
             candidates.append(_candidate(row, row.item.summary, "PUBLIC_ABSTRACT"))

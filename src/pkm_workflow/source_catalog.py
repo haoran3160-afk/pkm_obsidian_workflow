@@ -53,6 +53,7 @@ _ADAPTER_KINDS = {
     "ZARA_X_MEMBER",
 }
 _CADENCES = {"ANNUAL_WITH_UPDATE_CHECK", "DAILY", "NONE", "WEEKDAY", "WEEKLY"}
+_ACCESS_POLICIES = {"FREE_ENTRY_REQUIRED", "MIXED_FREEMIUM_DISCOVERY_ONLY"}
 APPROVED_SOURCE_MANIFEST_PATH = Path(
     r"D:\personal\obsidian_workflow\Source-Manifest-v7.5.json"
 )
@@ -155,7 +156,7 @@ def _source(effective: Mapping[str, object], quality_scores: Mapping[str, object
     cadence = _text(effective["cadence"], field="cadence")
     if cadence not in _CADENCES:
         raise ValueError("UNKNOWN_CADENCE")
-    if effective["access_policy"] != "FREE_ENTRY_REQUIRED":
+    if effective["access_policy"] not in _ACCESS_POLICIES:
         raise ValueError("UNKNOWN_ACCESS_POLICY")
     if evidence_role == "DISCOVERY_PROVENANCE" and coverage_member:
         raise ValueError("DISCOVERY_PROVENANCE_COVERAGE_FORBIDDEN")

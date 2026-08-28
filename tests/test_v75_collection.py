@@ -89,10 +89,10 @@ def test_rolling_candidate_observation_can_expose_all_five_pillars() -> None:
     catalog = load_source_catalog(MANIFEST)
     target_text = {
         "rss_simon_willison": "agent harness evaluation benchmark trajectory",
-        "rss_pragmatic_engineer": "prompt context workflow API coding tool",
+        "rss_ethan_mollick": "prompt context workflow API coding tool",
         "rss_pieter_levels": "founder startup SaaS product revenue distribution",
         "rss_air_street_press": "venture investment capital market moat economics",
-        "rss_stratechery": "mental model assumption incentive framework innovation",
+        "rss_works_in_progress": "mental model assumption incentive framework innovation",
     }
 
     def fetch_metadata(source, _content_date):
@@ -252,11 +252,11 @@ def test_short_feed_preview_does_not_count_as_assessment_or_claim_evidence() -> 
     assert result.candidates == ()
 
 
-def test_short_cognitive_metadata_can_qualify_after_verified_fulltext() -> None:
+def test_short_public_cognitive_metadata_can_qualify_after_verified_fulltext() -> None:
     catalog = load_source_catalog(MANIFEST)
 
     def fetch_metadata(source, _content_date):
-        if source.source_id != "rss_stratechery":
+        if source.source_id != "rss_works_in_progress":
             return MetadataObservation(True, True, "ZERO_YIELD", ())
         return MetadataObservation(
             healthy=True,
@@ -264,7 +264,7 @@ def test_short_cognitive_metadata_can_qualify_after_verified_fulltext() -> None:
             reason_code="OK",
             items=(
                 MetadataItem(
-                    item_native_id="stratechery-autonomy",
+                    item_native_id="works-in-progress-autonomy",
                     title="Autonomy and Innovation",
                     canonical_url="https://example.com/autonomy-and-innovation",
                     published_at="2026-08-24",
@@ -328,7 +328,12 @@ def test_members_only_preview_never_becomes_claim_evidence() -> None:
     core_ids = {source.source_id for source in catalog.operational_coverage_sources}
 
     def fetch_metadata(source, _content_date):
-        items = (_item(source.source_id, 1),) if source.source_id in core_ids else ()
+        items = (
+            (_item(source.source_id, 1),)
+            if source.source_id in core_ids
+            and source.access_policy == "FREE_ENTRY_REQUIRED"
+            else ()
+        )
         return MetadataObservation(True, not items, "OK" if items else "ZERO_YIELD", items)
 
     result = collect_v75_candidates(
@@ -615,7 +620,7 @@ def test_research_blog_rss_is_not_mislabeled_as_a_paper_abstract(monkeypatch) ->
     assert observed == ["news"]
 
 
-def test_mixed_freemium_preview_is_not_assessment_evidence() -> None:
+def test_mixed_freemium_source_stays_discovery_only_without_public_proof_adapter() -> None:
     catalog = load_source_catalog(MANIFEST)
 
     def fetch_metadata(source, _content_date):
@@ -637,9 +642,7 @@ def test_mixed_freemium_preview_is_not_assessment_evidence() -> None:
         used_urls=set(),
         ports=CollectionPorts(
             fetch_metadata=fetch_metadata,
-            fetch_fulltext=lambda _url: (
-                ("Public preview body. " * 700) + " This post is for paid subscribers."
-            ),
+            fetch_fulltext=lambda _url: "Apparently complete public article body. " * 100,
         ),
     )
 
@@ -647,6 +650,13 @@ def test_mixed_freemium_preview_is_not_assessment_evidence() -> None:
     assert result.evidence_healthy_sources == 0
     assert result.evidence_level is CoverageLevel.INSUFFICIENT
     assert result.candidates == ()
+    assert result.audit["exclusions"] == [
+        {
+            "source_id": "rss_pragmatic_engineer",
+            "item_native_id": "rss_pragmatic_engineer-1",
+            "reason": "SOURCE_SPECIFIC_PUBLIC_PROOF_REQUIRED",
+        }
+    ]
 
 
 def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None:
