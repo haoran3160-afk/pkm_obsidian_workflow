@@ -281,6 +281,11 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "claim with an exact semantic approved context_ref and list it in "
             "impact_claim_ids."
         ),
+        "GENERATOR_UNSCOPED_RATE": (
+            "Remove every percentage or rate whose claim does not also state an exact "
+            "sample scope such as 4/5 or 4 of 5 tests; summarize the finding "
+            "qualitatively instead."
+        ),
     }
     return instructions[error_code]
 
@@ -606,6 +611,19 @@ def _validate_generator_draft(
                     raise ValueError("GENERATOR_ACTION_BINDING_INVALID")
             elif action_type != "NONE" or action_object != "" or success_criterion != "":
                 raise ValueError("GENERATOR_NON_ACTION_FIELDS_INVALID")
+            rate_present = re.search(
+                r"\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%",
+                statement,
+            )
+            sample_scope = re.search(
+                r"\b\d+\s*/\s*\d+\b|\b\d+\s+out of\s+\d+\b|"
+                r"(?:在|共|基于).{0,30}\d+\s*(?:次|项|个|条|份|例|段|轮|组|模型)|"
+                r"\bin\s+\d+\s+(?:tests?|runs?|samples?|cases?|trials?|models?)\b",
+                statement,
+                re.IGNORECASE,
+            )
+            if rate_present and sample_scope is None:
+                raise ValueError("GENERATOR_UNSCOPED_RATE")
             claim_ids.add(claim_id)
             local_claims[claim_id] = claim
         title_claim_id = story.get("title_claim_id")
@@ -1222,6 +1240,7 @@ def run_ai_daily_shadow(
             "GENERATOR_REQUIRED_EXPOSURE_MISSING",
             "GENERATOR_DETAIL_DEPTH_REQUIRED",
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
+            "GENERATOR_UNSCOPED_RATE",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 3:
             retry_candidates = _diversity_retry_candidates(

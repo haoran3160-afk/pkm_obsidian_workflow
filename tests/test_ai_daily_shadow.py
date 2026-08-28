@@ -36,6 +36,7 @@ class _GenerateReviewTransport:
         importance_statement: str = "这会减少 Agent 工作流中的重复浏览器脚本。",
         single_mechanism: bool = False,
         mixed_evidence_id: str | None = None,
+        title_statement: str = "Example AI 发布了新的 Agent 工具。",
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -52,6 +53,7 @@ class _GenerateReviewTransport:
         self.importance_statement = importance_statement
         self.single_mechanism = single_mechanism
         self.mixed_evidence_id = mixed_evidence_id
+        self.title_statement = title_statement
         self.generator_profile_refs: list[str] = []
         self.generator_rubric: dict[str, object] = {}
         self.generator_calls = 0
@@ -121,7 +123,7 @@ class _GenerateReviewTransport:
                 }
 
             claims = [
-                claim("title-claim", "Example AI 发布了新的 Agent 工具。", "medium"),
+                claim("title-claim", self.title_statement, "medium"),
                 claim(
                     "event-claim",
                     "该工具新增了可复用的浏览器操作能力。",
@@ -536,6 +538,47 @@ def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_PERSONAL_IMPACT_REQUIRED"
     assert result.markdown_path is None
+
+
+def test_percentage_without_sample_scope_never_reaches_reviewer_or_markdown(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="Prompt injection attack report",
+        link="https://example.com/attack",
+        published="2026-08-27",
+        summary="The researcher claims the attack works 80% of the time.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    transport = _GenerateReviewTransport(
+        reject_claim="",
+        title_statement="提示注入攻击的成功率约为 80%。",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_UNSCOPED_RATE"
+    assert result.markdown_path is None
+    assert transport.generator_calls == 2
 
 
 def test_v75_story_requires_two_distinct_evidence_details(tmp_path: Path) -> None:
