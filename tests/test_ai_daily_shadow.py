@@ -12,10 +12,26 @@ from pkm_workflow.ai_daily_shadow import (
     CoverageLevel,
     ShadowPorts,
     _healthy_fetch,
+    _model_safe_summary,
     run_ai_daily_shadow,
 )
 from pkm_workflow.deepseek_provider import DeepSeekShadowProvider, TransportResponse
 from pkm_workflow.user_context_v75 import load_approved_user_context_v75
+
+
+def test_model_evidence_omits_sentence_with_unscoped_rate() -> None:
+    value = (
+        "The attack uses a local struct.py file. "
+        "The researcher claims it works 80% of the time without a sample count. "
+        "Auto Mode then blocked the cleanup command."
+    )
+
+    result = _model_safe_summary(value)
+
+    assert "80%" not in result
+    assert "researcher claims" not in result
+    assert "local struct.py" in result
+    assert "blocked the cleanup" in result
 
 
 class _GenerateReviewTransport:

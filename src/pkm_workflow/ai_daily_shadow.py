@@ -161,6 +161,38 @@ def _canonical(value: object) -> bytes:
     ).encode("utf-8")
 
 
+_RATE_PATTERN = re.compile(
+    r"(?<!\d)\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%"
+)
+_SAMPLE_SCOPE_PATTERN = re.compile(
+    r"(?<!\d)\d+\s*/\s*\d+(?!\d)|"
+    r"(?<!\d)\d+\s+out of\s+\d+(?!\d)|"
+    r"(?:在|共|基于).{0,30}\d+\s*(?:次|项|个|条|份|例|段|轮|组|模型)|"
+    r"\bin\s+\d+\s+(?:tests?|runs?|samples?|cases?|trials?|models?)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_unscoped_rate(value: str) -> bool:
+    return _RATE_PATTERN.search(value) is not None and _SAMPLE_SCOPE_PATTERN.search(
+        value
+    ) is None
+
+
+def _model_safe_summary(value: str) -> str:
+    sentences = re.split(r"(?<=[.!?。！？])\s+", value.strip())
+    retained = [sentence for sentence in sentences if not _has_unscoped_rate(sentence)]
+    if retained:
+        return " ".join(retained)
+    return _RATE_PATTERN.sub("reported rate", value)
+
+
+def _model_candidate_payload(candidate: Candidate) -> dict[str, object]:
+    payload = candidate.model_payload()
+    payload["summary"] = _model_safe_summary(candidate.summary)
+    return payload
+
+
 def _digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(_canonical(value)).hexdigest()
 
@@ -229,7 +261,7 @@ def _generator_request_bytes(
     diversity_evidence_id: str | None,
     semantic_correction: str | None,
 ) -> bytes:
-    payloads = [item.model_payload() for item in candidates]
+    payloads = [_model_candidate_payload(item) for item in candidates]
     return _canonical(
         {
             "approved_user_context": context,
@@ -611,19 +643,7 @@ def _validate_generator_draft(
                     raise ValueError("GENERATOR_ACTION_BINDING_INVALID")
             elif action_type != "NONE" or action_object != "" or success_criterion != "":
                 raise ValueError("GENERATOR_NON_ACTION_FIELDS_INVALID")
-            rate_present = re.search(
-                r"(?<!\d)\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%",
-                statement,
-            )
-            sample_scope = re.search(
-                r"(?<!\d)\d+\s*/\s*\d+(?!\d)|"
-                r"(?<!\d)\d+\s+out of\s+\d+(?!\d)|"
-                r"(?:在|共|基于).{0,30}\d+\s*(?:次|项|个|条|份|例|段|轮|组|模型)|"
-                r"\bin\s+\d+\s+(?:tests?|runs?|samples?|cases?|trials?|models?)\b",
-                statement,
-                re.IGNORECASE,
-            )
-            if rate_present and sample_scope is None:
+            if _has_unscoped_rate(statement):
                 raise ValueError("GENERATOR_UNSCOPED_RATE")
             claim_ids.add(claim_id)
             local_claims[claim_id] = claim
@@ -1370,7 +1390,9 @@ def run_ai_daily_shadow(
         for evidence_id in claim["evidence_ids"]
     }
     reviewer_items = [
-        item.model_payload() for item in collected.candidates if item.evidence_id in referenced_ids
+        _model_candidate_payload(item)
+        for item in collected.candidates
+        if item.evidence_id in referenced_ids
     ]
     reviewer_request = _canonical(
         {
@@ -1529,7 +1551,7 @@ def run_ai_daily_shadow(
                 reviewer.validated_structured_result
             ),
             "evidence_hash": _digest(
-                [item.model_payload() for item in collected.candidates]
+                [_model_candidate_payload(item) for item in collected.candidates]
             ),
             "generator_result_hash": generator.structured_result_hash,
             "review_decisions_hash": reviewer.structured_result_hash,
