@@ -35,6 +35,7 @@ class _GenerateReviewTransport:
         duplicate_story_evidence: bool = False,
         importance_statement: str = "这会减少 Agent 工作流中的重复浏览器脚本。",
         single_mechanism: bool = False,
+        mixed_evidence_id: str | None = None,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -50,6 +51,7 @@ class _GenerateReviewTransport:
         self.duplicate_story_evidence = duplicate_story_evidence
         self.importance_statement = importance_statement
         self.single_mechanism = single_mechanism
+        self.mixed_evidence_id = mixed_evidence_id
         self.generator_profile_refs: list[str] = []
         self.generator_rubric: dict[str, object] = {}
         self.generator_calls = 0
@@ -92,9 +94,14 @@ class _GenerateReviewTransport:
                     "claim_id": claim_id,
                     "statement": statement,
                     "evidence_ids": [
-                        "unknown-evidence"
-                        if self.unknown_evidence and claim_id == "title-claim"
-                        else "evidence-1"
+                        (
+                            "unknown-evidence"
+                            if self.unknown_evidence and claim_id == "title-claim"
+                            else self.mixed_evidence_id
+                            if self.mixed_evidence_id is not None
+                            and claim_id == "mechanism-claim-two"
+                            else "evidence-1"
+                        )
                     ],
                     "claimed_risk": risk,
                     "claim_kind": kind,
@@ -380,7 +387,7 @@ def test_generator_receives_close_cross_type_diversity_target(tmp_path: Path) ->
         summary="Agent harness evaluation evidence and benchmark details.",
         content_type="research",
         fulltext_enriched=True,
-        story_type="research",
+        story_type="ai_practice",
         pillar_exposure=True,
         metadata_score=8000,
         editorial_score=10000,
@@ -741,6 +748,131 @@ def test_rejected_event_claim_drops_the_entire_story(tmp_path: Path) -> None:
         == "REVIEW_REJECTED_OR_STORY_DROPPED"
     )
     assert report["audit"]["review_decisions"]
+
+
+def test_reviewer_rejecting_one_required_detail_drops_story(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example Agent method",
+        link="https://example.com/method",
+        published="2026-08-27",
+        summary="A verified method with two evidence details.",
+        content_type="engineering",
+        fulltext_enriched=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim="mechanism-claim"),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
+def test_reviewer_rejecting_research_question_drops_research_story(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="SWE-bench Agent evaluation",
+        link="https://example.com/research",
+        published="2026-08-27",
+        summary="A verified Agent benchmark study with method details.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="action-claim", include_watch_and_action=True
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
+def test_one_story_cannot_mix_multiple_candidate_evidence_packages(
+    tmp_path: Path,
+) -> None:
+    research = Candidate(
+        evidence_id="evidence-1",
+        source="Research",
+        title="Agent evaluation",
+        link="https://example.com/research",
+        published="2026-08-27",
+        summary="Agent evaluation evidence.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    builder = Candidate(
+        evidence_id="evidence-builder",
+        source="Builder",
+        title="Builder case study",
+        link="https://example.com/builder",
+        published="2026-08-27",
+        summary="Builder product evidence.",
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS",),
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(research, builder),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", mixed_evidence_id="evidence-builder"
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_MULTIPLE_CANDIDATES_PER_STORY"
+    assert result.markdown_path is None
 
 
 def test_renderer_keeps_supported_visible_roles_and_omits_excerpt_uncertainty(

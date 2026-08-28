@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from pkm_workflow.source_catalog import load_source_catalog
 from pkm_workflow.user_context_v75 import load_approved_user_context_v75
 from pkm_workflow.v75_collection import (
@@ -469,6 +471,51 @@ def test_paywall_signal_at_end_of_bounded_text_is_not_full_free() -> None:
                 ("Preview paragraph without the full article. " * 120)
                 + " Become a member to read the rest and upgrade your plan for access."
             ),
+        ),
+    )
+
+    assert result.candidates == ()
+
+
+@pytest.mark.parametrize(
+    "gate_text",
+    [
+        "Become a member to keep reading.",
+        "Log in to view this article.",
+        "This post is for subscribers only.",
+    ],
+)
+def test_common_paywall_gates_never_become_claim_evidence(gate_text: str) -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_pieter_levels":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="gated-builder-preview",
+                    title="I built an Agent product for users",
+                    canonical_url="https://example.com/gated-builder-preview",
+                    published_at="2026-08-28",
+                    summary="Builder product users validation and distribution evidence. " * 6,
+                    content_type="builder",
+                ),
+            ),
+        )
+
+    body = ("Public preview paragraph about the product and users. " * 60) + gate_text
+    result = collect_v75_candidates(
+        date(2026, 8, 28),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: body,
         ),
     )
 

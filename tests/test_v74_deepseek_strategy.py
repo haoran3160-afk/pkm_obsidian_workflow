@@ -29,8 +29,10 @@ from pkm_workflow.deepseek_provider import (
 class _Transport:
     def __init__(self, structured: dict[str, object]) -> None:
         self.structured = structured
+        self.calls: list[dict[str, object]] = []
 
-    def request(self, **_kwargs: object) -> TransportResponse:
+    def request(self, **kwargs: object) -> TransportResponse:
+        self.calls.append(dict(kwargs))
         envelope = {
             "id": "response-ai-daily-v2",
             "object": "chat.completion",
@@ -75,12 +77,16 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["request_topology"] == "SAME_PROVIDER_SAME_MODEL_FRESH_REQUESTS"
     assert binding["billing_policy"] == "EXISTING_BALANCE_NO_AUTO_RECHARGE"
     assert binding["request_budget"] == 4
+    assert binding["mvp_request_limits"] == {
+        "max_output_tokens": 8192,
+        "total_timeout_seconds": 60.0,
+    }
     assert binding["model_contract_adapter"] == MVP_CONTRACT_VERSION
     assert binding["production_eligible"] is False
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:1194d95e7dd5dc5c9b6e476fa2a226179a0944e60b5231b01a963a9ca0c9c704"
+        "sha256:f7c06fd394146c9174c0856ea7ae107c821c8f383aa0fad9834e330109558eb9"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -93,9 +99,9 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
 
 def test_d018_hash_binds_provider_prompts_schemas_request_and_credentials() -> None:
     descriptor = deepseek_provider_contract_descriptor()
-    assert descriptor["request_limits"]["total_timeout_seconds"] == 60.0
+    assert descriptor["request_limits"]["total_timeout_seconds"] == 30.0
     assert descriptor["descriptor_hash"] == (
-        "sha256:280fa577df33ceea9735650326e8f1717e3b54e06733a3de42676e7d73f99647"
+        "sha256:5a20e7666b893dcb6d5cc8ebdd235f52a5b712349df63e68d2741a31fac89abb"
     )
     base = {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
     encoded = json.dumps(
@@ -224,9 +230,10 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
+    transport = _Transport({"stories": []})
     provider = DeepSeekShadowProvider(
         credential_reader=lambda: bytearray(b"test-only-secret"),
-        transport=_Transport({"stories": []}),
+        transport=transport,
     )
     result = provider.invoke(
         ProviderRole.GENERATOR,
@@ -240,6 +247,8 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
     assert result.request_count == 1
     assert result.schema_repair_used is False
     assert result.prompt_hash == deepseek_mvp_strategy_binding()["generator_prompt_hash"]
+    assert json.loads(bytes(transport.calls[0]["body"]))["max_tokens"] == 8192
+    assert transport.calls[0]["timeout_seconds"] == 60.0
 
 
 def test_ai_daily_reviewer_requires_one_bound_decision_for_every_claim() -> None:

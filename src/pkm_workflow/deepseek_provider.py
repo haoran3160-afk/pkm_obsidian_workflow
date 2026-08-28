@@ -27,10 +27,12 @@ PROVIDER_NAME = "deepseek"
 MODEL_NAME = "deepseek-v4-flash"
 API_URL = "https://api.deepseek.com/chat/completions"
 CREDENTIAL_TARGET = "PKM/DeepSeek/shadow-v1"
-MAX_OUTPUT_TOKENS = 8192
+MAX_OUTPUT_TOKENS = 4096
+MVP_MAX_OUTPUT_TOKENS = 8192
 MAX_HTTP_REQUEST_BYTES = 400_000
 MAX_RESPONSE_BYTES = 1_000_000
-TOTAL_TIMEOUT_SECONDS = 60.0
+TOTAL_TIMEOUT_SECONDS = 30.0
+MVP_TOTAL_TIMEOUT_SECONDS = 60.0
 CONNECT_TIMEOUT_SECONDS = 10.0
 MAX_SEALED_INPUT_BYTES = 250_000
 MVP_CONTRACT_VERSION = "D018_AI_DAILY_V75_V3"
@@ -1011,7 +1013,9 @@ class _DirectHTTPSJsonTransport:
             or not isinstance(body, bytes)
             or len(body) > MAX_HTTP_REQUEST_BYTES
             or not isinstance(credential, _SecretBuffer)
-            or not 0 < timeout_value <= TOTAL_TIMEOUT_SECONDS
+            or not 0 < timeout_value <= max(
+                TOTAL_TIMEOUT_SECONDS, MVP_TOTAL_TIMEOUT_SECONDS
+            )
             or max_response_bytes != MAX_RESPONSE_BYTES
         ):
             raise _TransportProtocolError("transport contract is invalid")
@@ -1207,10 +1211,14 @@ class DeepSeekShadowProvider:
         request_budget: RequestBudget,
         *,
         contract_version: str | None = None,
+        allow_schema_repair: bool = True,
     ) -> ProviderResult:
         if contract_version not in {None, MVP_CONTRACT_VERSION}:
             raise ValueError("unknown DeepSeek contract version")
         is_mvp = contract_version == MVP_CONTRACT_VERSION
+        request_timeout_seconds = (
+            MVP_TOTAL_TIMEOUT_SECONDS if is_mvp else TOTAL_TIMEOUT_SECONDS
+        )
         started = monotonic()
         request_id = uuid4().hex
         input_hash = _sha256(sealed_request)
@@ -1403,7 +1411,7 @@ class DeepSeekShadowProvider:
                         url=API_URL,
                         body=request_body,
                         credential=secret,
-                        timeout_seconds=TOTAL_TIMEOUT_SECONDS,
+                        timeout_seconds=request_timeout_seconds,
                         max_response_bytes=MAX_RESPONSE_BYTES,
                     )
                 except TimeoutError:
@@ -1521,7 +1529,7 @@ class DeepSeekShadowProvider:
                         self._validate_reviewer_decisions(structured, sealed_value, usage)
                 except _AttemptFailure as failure:
                     total_usage += failure.usage
-                    if failure.repairable and not is_repair:
+                    if failure.repairable and not is_repair and allow_schema_repair:
                         continue
                     return self._result(
                         role=role,
@@ -2078,7 +2086,11 @@ class DeepSeekShadowProvider:
                 "response_format": {"type": "json_object"},
                 "stream": False,
                 "temperature": 0,
-                "max_tokens": MAX_OUTPUT_TOKENS,
+                "max_tokens": (
+                    MVP_MAX_OUTPUT_TOKENS
+                    if contract_version == MVP_CONTRACT_VERSION
+                    else MAX_OUTPUT_TOKENS
+                ),
             },
             ensure_ascii=False,
             sort_keys=True,

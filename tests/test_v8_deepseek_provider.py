@@ -355,7 +355,7 @@ def test_success_uses_only_frozen_request_configuration() -> None:
     assert body["thinking"] == {"type": "disabled"}
     assert body["stream"] is False
     assert body["response_format"] == {"type": "json_object"}
-    assert body["max_tokens"] == 8192
+    assert body["max_tokens"] == 4096
     assert "tools" not in body
     assert "tool_choice" not in body
     generator_prompt = body["messages"][0]["content"]
@@ -730,6 +730,29 @@ def test_one_structural_schema_repair_can_recover_and_accumulates_usage() -> Non
     assert result.request_body_hashes[0] != result.request_body_hashes[1]
     assert result.execution_mode == "TEST_DOUBLE"
     assert result.credential_mode == "SYNTHETIC_INJECTED"
+
+
+def test_semantic_retry_can_disable_schema_repair_to_reserve_reviewer_budget() -> None:
+    incomplete = {"stories": _generator_result()["stories"]}
+    transport = SequenceTransport([_success_response(_canonical(incomplete).decode())])
+    budget = RequestBudget(limit=4)
+
+    result = DeepSeekShadowProvider(
+        credential_reader=lambda: bytearray(b"runtime-only-secret"),
+        transport=transport,
+    ).invoke(
+        ProviderRole.GENERATOR,
+        _generator_request(),
+        _object_schema(),
+        budget,
+        allow_schema_repair=False,
+    )
+
+    assert result.terminal_classification is TerminalClassification.SCHEMA_INVALID
+    assert result.request_count == 1
+    assert result.schema_repair_used is False
+    assert budget.used == 1
+    assert len(transport.calls) == 1
 
 
 def test_repair_failure_stops_after_exactly_two_requests() -> None:

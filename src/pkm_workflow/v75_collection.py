@@ -123,6 +123,7 @@ _PAYWALL_TERMS = (
     "subscribe to continue",
     "subscribe now",
     "paid subscribers",
+    "subscribers only",
     "members-only",
     "members only",
     "member-only",
@@ -531,12 +532,13 @@ def _is_public_fulltext(value: str) -> bool:
     if any(term in lowered for term in _PAYWALL_TERMS):
         return False
     access_pattern = (
-        r"\b(?:member(?:ship)?|subscrib(?:e|er|tion)|upgrade|premium|paywall|"
+        r"\b(?:member(?:s|ship)?|subscrib(?:e|ers?|tions?)|upgrade|premium|paywall|"
         r"sign in|log in)\b"
     )
     reading_pattern = (
         r"\b(?:read (?:the )?(?:full )?(?:rest|article|post|content)|"
-        r"continue reading|unlock(?: the)?(?: full)?(?: article| post| content)?|"
+        r"keep reading|continue reading|view (?:this |the )?(?:article|post|content)|"
+        r"unlock(?: the)?(?: full)?(?: article| post| content)?|"
         r"access (?:the )?(?:full )?(?:article|post|content)|"
         r"full (?:article|post|content))\b"
     )

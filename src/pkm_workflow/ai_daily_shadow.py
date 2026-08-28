@@ -612,6 +612,8 @@ def _validate_generator_draft(
             for claim in local_claims.values()
             for evidence_id in claim["evidence_ids"]
         }
+        if len(story_evidence_ids) != 1:
+            raise ValueError("GENERATOR_MULTIPLE_CANDIDATES_PER_STORY")
         story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
         if is_v75 and story_types == {"research"}:
             research_actions = [
@@ -768,6 +770,7 @@ def _review_requirements(stories: tuple[dict[str, Any], ...]) -> tuple[list[dict
 def _accepted_stories(
     stories: tuple[dict[str, Any], ...],
     decisions: object,
+    evidence: Mapping[str, Candidate],
 ) -> tuple[dict[str, Any], ...]:
     if not isinstance(decisions, dict) or set(decisions) != {"decisions"}:
         raise ValueError("Reviewer decision set is invalid")
@@ -797,6 +800,7 @@ def _accepted_stories(
             claim for claim in story["claims"] if verdicts.get(claim["claim_id"]) == "ACCEPT"
         ]
         kept_ids = {claim["claim_id"] for claim in kept_claims}
+        kept_by_id = {claim["claim_id"]: claim for claim in kept_claims}
         projected = dict(story)
         projected["claims"] = kept_claims
         for field in (
@@ -809,6 +813,26 @@ def _accepted_stories(
             "action_claim_ids",
         ):
             projected[field] = [claim_id for claim_id in story[field] if claim_id in kept_ids]
+        if len(projected["mechanism_claim_ids"]) < 2:
+            continue
+        story_evidence_ids = {
+            evidence_id
+            for claim in kept_claims
+            for evidence_id in claim["evidence_ids"]
+        }
+        if len(story_evidence_ids) != 1:
+            continue
+        story_type = evidence[next(iter(story_evidence_ids))].story_type
+        if story_type == "research":
+            accepted_research_actions = [
+                kept_by_id[claim_id]
+                for claim_id in projected["action_claim_ids"]
+                if claim_id in kept_by_id
+                and kept_by_id[claim_id]["action_type"]
+                in {"RESEARCH_QUESTION", "THIS_WEEK_EXPERIMENT"}
+            ]
+            if not accepted_research_actions:
+                continue
         accepted.append(projected)
     accepted.sort(key=lambda story: story["rank"])
     for index, story in enumerate(accepted, start=1):
@@ -1175,10 +1199,13 @@ def run_ai_daily_shadow(
             "GENERATOR_DETAIL_DEPTH_REQUIRED",
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
         }
-        if str(error) in retryable_semantic_errors and budget.remaining >= 2:
+        if str(error) in retryable_semantic_errors and budget.remaining >= 3:
             retry_candidates = _diversity_retry_candidates(
                 collected.candidates, diversity_evidence_id
             )
+            retry_evidence = {
+                candidate.evidence_id: candidate for candidate in retry_candidates
+            }
             retry_request = _generator_request_bytes(
                 candidates=retry_candidates,
                 coverage=collected.coverage,
@@ -1192,6 +1219,7 @@ def run_ai_daily_shadow(
                 mvp_generator_output_schema(),
                 budget,
                 contract_version=MVP_CONTRACT_VERSION,
+                allow_schema_repair=False,
             )
             generator_results.append(retry_generator)
             if (
@@ -1212,13 +1240,21 @@ def run_ai_daily_shadow(
                     exit_code=_provider_exit(retry_generator),
                     error_code=retry_generator.error_code,
                     model_metrics=_model_metrics(*generator_results),
-                    audit=collected.audit,
+                    audit={
+                        **collected.audit,
+                        "candidate_audit": _candidate_disposition_audit(
+                            collected,
+                            generator_evidence_ids=set(),
+                            final_evidence_ids=set(),
+                            failure_disposition="GENERATOR_FAILED",
+                        ),
+                    },
                 )
             generator = retry_generator
             try:
                 stories = _validate_generator_draft(
                     generator.validated_structured_result,
-                    evidence,
+                    retry_evidence,
                     context,
                     diversity_evidence_id=diversity_evidence_id,
                 )
@@ -1343,7 +1379,7 @@ def run_ai_daily_shadow(
                 "review_decisions": [],
             },
         )
-    accepted = _accepted_stories(stories, reviewer.validated_structured_result)
+    accepted = _accepted_stories(stories, reviewer.validated_structured_result, evidence)
     if not accepted:
         generator_evidence_ids = {
             evidence_id
