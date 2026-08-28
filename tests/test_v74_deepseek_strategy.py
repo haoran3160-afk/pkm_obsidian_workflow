@@ -80,7 +80,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:f4bc1dbec72c04be52ed722fea9ab458d2cf3790ba40a5c7971cfe75c0c68e17"
+        "sha256:1194d95e7dd5dc5c9b6e476fa2a226179a0944e60b5231b01a963a9ca0c9c704"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -93,8 +93,9 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
 
 def test_d018_hash_binds_provider_prompts_schemas_request_and_credentials() -> None:
     descriptor = deepseek_provider_contract_descriptor()
+    assert descriptor["request_limits"]["total_timeout_seconds"] == 60.0
     assert descriptor["descriptor_hash"] == (
-        "sha256:011148ee71e8245cc64e05323a77d9c84cdec6cdc03054cc0bf6e4764b190d09"
+        "sha256:280fa577df33ceea9735650326e8f1717e3b54e06733a3de42676e7d73f99647"
     )
     base = {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
     encoded = json.dumps(

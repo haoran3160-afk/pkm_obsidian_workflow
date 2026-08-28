@@ -1806,7 +1806,8 @@ def test_direct_transport_contract_rejects_invalid_arguments_before_network(
 def test_successful_eof_after_deadline_is_still_classified_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    times = iter((0.0, 0.0, 0.0, 0.0, 0.0, 31.0, 31.0))
+    after_deadline = provider_module.TOTAL_TIMEOUT_SECONDS + 1.0
+    times = iter((0.0, 0.0, 0.0, 0.0, 0.0, after_deadline, after_deadline))
 
     class FakeTimer:
         daemon = False
