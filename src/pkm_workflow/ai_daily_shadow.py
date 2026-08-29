@@ -386,7 +386,8 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "qualitatively instead."
         ),
         "GENERATOR_MINIMUM_ITEMS_REQUIRED": (
-            "Regenerate four or five stories from the full candidate set: ranks 1-2 "
+            "Regenerate five stories when the full candidate set spans all three reader "
+            "task groups; otherwise regenerate at least four. Ranks 1-2 "
             "are deep reads and ranks 3-5 are concise layer radar items. Keep total "
             "claims at or below 24."
         ),
@@ -915,11 +916,15 @@ def _validate_generator_draft(
         ]
         action_bounded.append(projected)
 
-    if (
-        len(evidence) >= 4
-        and len(_reader_task_groups(evidence)) >= 2
-        and len(action_bounded) < 4
-    ):
+    task_group_count = len(_reader_task_groups(evidence))
+    minimum_items = (
+        5
+        if len(evidence) >= 5 and task_group_count >= 3
+        else 4
+        if len(evidence) >= 4 and task_group_count >= 2
+        else 0
+    )
+    if len(action_bounded) < minimum_items:
         raise ValueError("GENERATOR_MINIMUM_ITEMS_REQUIRED")
 
     if len(action_bounded) >= 2 and diversity_evidence_id is not None:
