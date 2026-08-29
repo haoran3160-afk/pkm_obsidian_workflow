@@ -917,14 +917,24 @@ def _claim_texts(story: Mapping[str, Any], field: str) -> list[str]:
         claim = claims.get(claim_id)
         if claim is None:
             continue
-        text = claim["statement"]
-        if claim.get("claim_kind") == "action":
-            text = (
-                f"{text}（对象：{claim['action_object']}；"
-                f"判据：{claim['success_criterion']}）"
-            )
-        rendered.append(text)
+        rendered.append(claim["statement"])
     return rendered
+
+
+def _brief_sentences(texts: list[str], *, skip: str | None = None) -> str:
+    skip_key = re.sub(r"[\W_]+", "", skip or "").casefold()
+    seen: set[str] = set()
+    sentences: list[str] = []
+    for value in texts:
+        text = value.strip()
+        key = re.sub(r"[\W_]+", "", text).casefold()
+        if not text or key == skip_key or key in seen:
+            continue
+        seen.add(key)
+        if text[-1] not in "。！？.!?":
+            text += "。"
+        sentences.append(text)
+    return " ".join(sentences)
 
 
 def _render_markdown(
@@ -960,62 +970,21 @@ def _render_markdown(
         "",
         f"# AI Daily · {content_date.isoformat()}",
         "",
-        f"> 今日入选 {len(stories)} 条经证据与 Reviewer 双审的变化。",
-        f"> 本期入选证据日期：{evidence_start} 至 {evidence_end}。",
+        f"> 今天只保留 {len(stories)} 条真正值得你花时间的变化。",
+        f"> 信息范围：{evidence_start} 至 {evidence_end}。",
     ]
     if evidence_level is CoverageLevel.B:
-        lines.append("> Evidence B：部分 CORE 来源只有有限 assessment evidence。")
-    label_sets = {
-        "research": (
-            ("event_claim_ids", "研究发现"),
-            ("mechanism_claim_ids", "方法与证据"),
-            ("importance_claim_ids", "相对已有工作的增量"),
-            ("impact_claim_ids", "对你研究的启发"),
-            ("uncertainty_claim_ids", "证据边界"),
-            ("watch_claim_ids", "可验证问题与观察信号"),
-            ("action_claim_ids", "可做的复现或实验"),
-        ),
-        "ai_practice": (
-            ("event_claim_ids", "真实变化"),
-            ("mechanism_claim_ids", "方法与失败机制"),
-            ("importance_claim_ids", "为什么值得采用或警惕"),
-            ("impact_claim_ids", "如何迁移到你的工作流"),
-            ("uncertainty_claim_ids", "适用边界"),
-            ("watch_claim_ids", "验证信号"),
-            ("action_claim_ids", "建议实验"),
-        ),
-        "builder": (
-            ("event_claim_ids", "产品与用户"),
-            ("mechanism_claim_ids", "MVP、验证与分发"),
-            ("importance_claim_ids", "结果与可复制性"),
-            ("impact_claim_ids", "对你的产品启示"),
-            ("uncertainty_claim_ids", "商业边界"),
-            ("watch_claim_ids", "下一步商业信号"),
-            ("action_claim_ids", "可复用动作"),
-        ),
-        "vc": (
-            ("event_claim_ids", "资本在押注什么"),
-            ("mechanism_claim_ids", "为什么现在"),
-            ("importance_claim_ids", "Moat、经济性与风险"),
-            ("impact_claim_ids", "对 Builder 的启示"),
-            ("uncertainty_claim_ids", "反方证据"),
-            ("watch_claim_ids", "观察信号"),
-            ("action_claim_ids", "下一步判断"),
-        ),
-        "cognition": (
-            ("event_claim_ids", "被挑战的默认假设"),
-            ("mechanism_claim_ids", "新的解释框架"),
-            ("importance_claim_ids", "为什么这会改变判断"),
-            ("impact_claim_ids", "如何改变你的决策"),
-            ("uncertainty_claim_ids", "框架边界"),
-            ("watch_claim_ids", "需要继续检验什么"),
-            ("action_claim_ids", "思考实验"),
-        ),
+        lines.append("> 部分来源今天没有可确认的完整正文，以下只采用已核验内容。")
+    layer_labels = {
+        "research": "学术研究",
+        "ai_practice": "AI 实践",
+        "builder": "Builder 与超级个体",
+        "vc": "创投与产业",
+        "cognition": "认知与成长",
     }
     for story in stories:
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
         title = claims[story["title_claim_id"]]["statement"]
-        lines.extend(("", f"## Top {story['rank']}｜{title}"))
         story_evidence_ids = {
             evidence_id
             for claim in story["claims"]
@@ -1023,15 +992,29 @@ def _render_markdown(
         }
         story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
         story_type = next(iter(story_types)) if len(story_types) == 1 else "ai_practice"
-        labels = label_sets[story_type]
-        for field, label in labels:
-            texts = _claim_texts(story, field)
-            if texts:
-                if field == "mechanism_claim_ids" and len(texts) > 1:
-                    lines.append(f"- **{label}**：")
-                    lines.extend(f"  - {text}" for text in texts)
-                else:
-                    lines.append(f"- **{label}**：{'；'.join(texts)}")
+        lines.extend(
+            ("", f"## {story['rank']} · {layer_labels[story_type]}｜{title}", "")
+        )
+        context = _brief_sentences(
+            _claim_texts(story, "event_claim_ids")
+            + _claim_texts(story, "mechanism_claim_ids"),
+            skip=title,
+        )
+        if context:
+            lines.extend((context, ""))
+        takeaway = _brief_sentences(
+            _claim_texts(story, "importance_claim_ids")
+            + _claim_texts(story, "uncertainty_claim_ids")
+            + _claim_texts(story, "watch_claim_ids")
+        )
+        if takeaway:
+            lines.extend((f"**Takeaway**：{takeaway}", ""))
+        inspiration = _brief_sentences(_claim_texts(story, "impact_claim_ids"))
+        if inspiration:
+            lines.extend((f"**对你的启发**：{inspiration}", ""))
+        action = _brief_sentences(_claim_texts(story, "action_claim_ids"))
+        if action:
+            lines.extend((f"**现在可以做**：{action}", ""))
         evidence_ids = []
         for claim in story["claims"]:
             for evidence_id in claim["evidence_ids"]:
@@ -1040,11 +1023,8 @@ def _render_markdown(
         links = []
         for evidence_id in evidence_ids:
             item = evidence[evidence_id]
-            label = "原始页面" if item.fulltext_enriched else "公开摘要"
-            links.append(
-                f"[{label} · {item.source}]({item.link})（发布 {item.published}）"
-            )
-        lines.append(f"- **证据**：{'；'.join(links)}")
+            links.append(f"[{item.source}]({item.link}) · {item.published}")
+        lines.append(f"**原文**：{'；'.join(links)}")
     return "\n".join(lines).rstrip() + "\n"
 
 

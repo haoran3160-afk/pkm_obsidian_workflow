@@ -361,9 +361,9 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert "Example AI 发布了新的 Agent 工具" in markdown
     assert "该工具新增了可复用的浏览器操作能力" in markdown
     assert "所有网站都已完全兼容" not in markdown
-    assert "原始页面" in markdown
+    assert "**原文**：[Example AI](https://example.com/agent-release)" in markdown
     assert "evidence_date_start: 2026-08-25" in markdown
-    assert "发布 2026-08-25" in markdown
+    assert "· 2026-08-25" in markdown
     assert "https://example.com/agent-release" in markdown
     assert "无需行动" not in markdown
     assert "## Top 2" not in markdown
@@ -633,7 +633,7 @@ def test_v75_story_requires_two_distinct_evidence_details(tmp_path: Path) -> Non
     assert result.markdown_path is None
 
 
-def test_research_story_renders_type_specific_takeaway_and_detail_list(
+def test_research_story_renders_as_a_human_brief_not_a_claim_checklist(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -668,12 +668,20 @@ def test_research_story_renders_type_specific_takeaway_and_detail_list(
 
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "**方法与证据**" in markdown
-    assert "**相对已有工作的增量**" in markdown
-    assert "**对你研究的启发**" in markdown
-    assert "  - 浏览器操作被封装为可复用工具接口。" in markdown
-    assert "  - 工具接口保留了可验证的操作结果与失败状态。" in markdown
-    assert "**可做的复现或实验**" in markdown
+    assert "## 1 · 学术研究｜" in markdown
+    assert "**Takeaway**" in markdown
+    assert "浏览器操作被封装为可复用工具接口。" in markdown
+    assert "工具接口保留了可验证的操作结果与失败状态。" in markdown
+    assert "**对你的启发**" in markdown
+    assert "**现在可以做**" in markdown
+    assert "**原文**：[Research Lab](https://example.com/harness-study)" in markdown
+    for old_label in (
+        "**研究发现**",
+        "**方法与证据**",
+        "**相对已有工作的增量**",
+        "**证据**",
+    ):
+        assert old_label not in markdown
 
 
 def test_research_story_without_testable_question_keeps_other_deep_takeaways(
@@ -1105,7 +1113,7 @@ def test_renderer_keeps_supported_visible_roles_and_omits_excerpt_uncertainty(
     assert "无需行动" not in markdown
     assert "operational_coverage: A" in markdown
     assert "evidence_availability: B" in markdown
-    assert "部分 CORE 来源" in markdown
+    assert "部分来源今天没有可确认的完整正文" in markdown
     assert "evidence_date_start: 2026-08-25" in markdown
 
 
