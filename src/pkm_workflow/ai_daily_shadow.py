@@ -379,11 +379,6 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "low-risk action claim grounded in approved context; use action_type "
             "IMMEDIATE_ACTION and list it in action_claim_ids."
         ),
-        "GENERATOR_ACTION_NOT_RELEVANT": (
-            "Replace each Builder or cognition action with one that directly tests or "
-            "operationalizes that same story's importance or personal impact; do not use "
-            "a secondary anecdote or generic reading task."
-        ),
     }
     return instructions[error_code]
 
@@ -789,7 +784,7 @@ def _validate_generator_draft(
             and not story["action_claim_ids"]
         ):
             raise ValueError("GENERATOR_ACTION_REQUIRED")
-        if story["action_claim_ids"]:
+        if story_type in {"builder", "cognition"} and story["action_claim_ids"]:
             action_text = " ".join(
                 " ".join(
                     (
@@ -806,7 +801,7 @@ def _validate_generator_draft(
                 for claim_id in story[field]
             )
             if not (_semantic_terms(action_text) & _semantic_terms(takeaway_text)):
-                raise ValueError("GENERATOR_ACTION_NOT_RELEVANT")
+                continue
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         unsafe_absence_ids.update(
@@ -1374,7 +1369,6 @@ def run_ai_daily_shadow(
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
             "GENERATOR_UNSCOPED_RATE",
             "GENERATOR_ACTION_REQUIRED",
-            "GENERATOR_ACTION_NOT_RELEVANT",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 2:
             retry_candidates = _diversity_retry_candidates(

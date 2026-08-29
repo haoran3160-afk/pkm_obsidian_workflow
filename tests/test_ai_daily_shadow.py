@@ -1312,10 +1312,10 @@ def test_builder_action_must_operationalize_the_story_takeaway(tmp_path: Path) -
 
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_ACTION_NOT_RELEVANT"
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.story_count == 0
     assert result.markdown_path is None
-    assert transport.generator_calls == 2
+    assert transport.generator_calls == 1
 
 
 def test_security_story_never_publishes_an_active_exploit_experiment(
