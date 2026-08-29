@@ -53,6 +53,9 @@ class _GenerateReviewTransport:
         single_mechanism: bool = False,
         mixed_evidence_id: str | None = None,
         title_statement: str = "Example AI 发布了新的 Agent 工具。",
+        action_statement: str = "本周用一个浏览任务对比复用前后的脚本量。",
+        action_object: str = "一个真实浏览任务",
+        action_success_criterion: str = "复用后重复脚本行数下降",
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -70,6 +73,9 @@ class _GenerateReviewTransport:
         self.single_mechanism = single_mechanism
         self.mixed_evidence_id = mixed_evidence_id
         self.title_statement = title_statement
+        self.action_statement = action_statement
+        self.action_object = action_object
+        self.action_success_criterion = action_success_criterion
         self.generator_profile_refs: list[str] = []
         self.generator_rubric: dict[str, object] = {}
         self.generator_calls = 0
@@ -198,13 +204,13 @@ class _GenerateReviewTransport:
                         ),
                         claim(
                             "action-claim",
-                            "本周用一个浏览任务对比复用前后的脚本量。",
+                            self.action_statement,
                             "low",
                             kind="action",
                             context_refs=[context_ref] if context_ref else [],
                             action_type="THIS_WEEK_EXPERIMENT",
-                            action_object="一个真实浏览任务",
-                            success_criterion="复用后重复脚本行数下降",
+                            action_object=self.action_object,
+                            success_criterion=self.action_success_criterion,
                         ),
                     ]
                 )
@@ -1226,6 +1232,88 @@ def test_reviewer_rejecting_optional_research_action_keeps_research_story(
     assert result.story_count == 1
     assert result.markdown_path is not None
     assert "本周用一个浏览任务" not in result.markdown_path.read_text(encoding="utf-8")
+
+
+def test_reviewer_rejecting_required_builder_action_drops_builder_story(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Builder",
+        title="A builder ships an AI product",
+        link="https://example.com/builder-product",
+        published="2026-08-29",
+        summary="The builder reports 120 users and a repeatable launch channel.",
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS",),
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="action-claim", include_watch_and_action=True
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
+def test_builder_action_must_operationalize_the_story_takeaway(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Investment Essay",
+        title="Private market liquidity changes investor behavior",
+        link="https://example.com/private-markets",
+        published="2026-08-09",
+        summary="An essay about private-market liquidity, lockups, and investment risk.",
+        content_type="essay",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS", "VC"),
+    )
+    transport = _GenerateReviewTransport(
+        reject_claim="",
+        include_watch_and_action=True,
+        importance_statement="私人市场流动性错配会影响 AI 创业融资判断。",
+        action_statement="本周阅读一份非本地报纸并记录 AI 报道。",
+        action_object="一份非本地报纸",
+        action_success_criterion="记录三条 AI 报道",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_ACTION_NOT_RELEVANT"
+    assert result.markdown_path is None
+    assert transport.generator_calls == 2
 
 
 def test_security_story_never_publishes_an_active_exploit_experiment(

@@ -929,6 +929,11 @@ def _accepted_stories(
         }
         if len(story_evidence_ids) != 1:
             continue
+        story_type = evidence[next(iter(story_evidence_ids))].story_type
+        if story_type in {"builder", "cognition"} and not projected[
+            "action_claim_ids"
+        ]:
+            continue
         accepted.append(projected)
     accepted.sort(key=lambda story: story["rank"])
     for index, story in enumerate(accepted, start=1):
