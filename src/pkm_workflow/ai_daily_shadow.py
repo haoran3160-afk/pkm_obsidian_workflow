@@ -1278,7 +1278,7 @@ def run_ai_daily_shadow(
             "GENERATOR_UNSCOPED_RATE",
             "GENERATOR_ACTION_REQUIRED",
         }
-        if str(error) in retryable_semantic_errors and budget.remaining >= 3:
+        if str(error) in retryable_semantic_errors and budget.remaining >= 2:
             retry_candidates = _diversity_retry_candidates(
                 collected.candidates, diversity_evidence_id
             )

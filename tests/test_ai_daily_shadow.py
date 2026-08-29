@@ -560,6 +560,90 @@ def test_builder_brief_requires_one_concrete_action(tmp_path: Path) -> None:
     assert transport.generator_calls == 2
 
 
+def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
+    tmp_path: Path,
+) -> None:
+    class RepairThenActionTransport(_GenerateReviewTransport):
+        def __init__(self) -> None:
+            super().__init__(reject_claim="")
+            self.injected_structural_failure = False
+
+        def request(self, **kwargs: object) -> TransportResponse:
+            request = json.loads(bytes(kwargs["body"]))
+            sealed = json.loads(request["messages"][1]["content"])["sealed_request"]
+            if (
+                "approved_user_context" in sealed
+                and not self.injected_structural_failure
+            ):
+                self.injected_structural_failure = True
+                self.calls += 1
+                envelope = {
+                    "id": "response-structural-failure",
+                    "object": "chat.completion",
+                    "created": self.calls,
+                    "model": "deepseek-v4-flash",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": json.dumps({"stories": "invalid"}),
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 40,
+                        "total_tokens": 140,
+                    },
+                }
+                return TransportResponse(
+                    status=200,
+                    content_type="application/json",
+                    content_encoding="identity",
+                    body=json.dumps(envelope).encode(),
+                )
+            if sealed.get("rubric", {}).get("semantic_correction") is not None:
+                self.include_watch_and_action = True
+            return super().request(**kwargs)
+
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Builder",
+        title="A builder ships an AI product",
+        link="https://example.com/builder-product",
+        published="2026-08-29",
+        summary="The builder reports 120 users, 8 paid customers, and a launch channel.",
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS",),
+    )
+    transport = RepairThenActionTransport()
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.request_count == 4
+    assert result.markdown_path is not None
+    assert "**现在可以做**" in result.markdown_path.read_text(encoding="utf-8")
+
+
 def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
     tmp_path: Path,
 ) -> None:
