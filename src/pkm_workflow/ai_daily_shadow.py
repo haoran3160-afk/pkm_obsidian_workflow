@@ -354,6 +354,17 @@ def _diversity_retry_candidates(
     return tuple(retry_candidates)
 
 
+def _reader_task_groups(candidates: Mapping[str, Candidate]) -> set[str]:
+    groups = {
+        "research": "RESEARCH",
+        "ai_practice": "BUILD",
+        "builder": "BUILD",
+        "vc": "STRATEGY",
+        "cognition": "STRATEGY",
+    }
+    return {groups[candidate.story_type] for candidate in candidates.values()}
+
+
 def _semantic_correction_instruction(error_code: str) -> str:
     instructions = {
         "GENERATOR_REQUIRED_EXPOSURE_MISSING": (
@@ -373,6 +384,11 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "Remove every percentage or rate whose claim does not also state an exact "
             "sample scope such as 4/5 or 4 of 5 tests; summarize the finding "
             "qualitatively instead."
+        ),
+        "GENERATOR_MINIMUM_ITEMS_REQUIRED": (
+            "Regenerate four or five stories from the full candidate set: ranks 1-2 "
+            "are deep reads and ranks 3-5 are concise layer radar items. Keep total "
+            "claims at or below 24."
         ),
     }
     return instructions[error_code]
@@ -899,6 +915,13 @@ def _validate_generator_draft(
         ]
         action_bounded.append(projected)
 
+    if (
+        len(evidence) >= 4
+        and len(_reader_task_groups(evidence)) >= 2
+        and len(action_bounded) < 4
+    ):
+        raise ValueError("GENERATOR_MINIMUM_ITEMS_REQUIRED")
+
     if len(action_bounded) >= 2 and diversity_evidence_id is not None:
         selected_evidence_ids = {
             evidence_id
@@ -1422,10 +1445,15 @@ def run_ai_daily_shadow(
             "GENERATOR_DETAIL_DEPTH_REQUIRED",
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
             "GENERATOR_UNSCOPED_RATE",
+            "GENERATOR_MINIMUM_ITEMS_REQUIRED",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 2:
-            retry_candidates = _diversity_retry_candidates(
-                collected.candidates, diversity_evidence_id
+            retry_candidates = (
+                collected.candidates
+                if str(error) == "GENERATOR_MINIMUM_ITEMS_REQUIRED"
+                else _diversity_retry_candidates(
+                    collected.candidates, diversity_evidence_id
+                )
             )
             retry_evidence = {
                 candidate.evidence_id: candidate for candidate in retry_candidates
