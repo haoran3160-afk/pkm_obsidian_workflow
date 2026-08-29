@@ -523,6 +523,64 @@ def test_builder_without_observed_validation_is_not_forced_for_diversity(
     assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
+def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
+    tmp_path: Path,
+) -> None:
+    research = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="Agent harness evaluation release",
+        link="https://example.com/research",
+        published="2026-08-29",
+        summary="Agent harness benchmark method and evaluation results.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+        pillar_exposure=True,
+        metadata_score=9700,
+        editorial_score=12200,
+    )
+    cognition = Candidate(
+        evidence_id="evidence-cognition",
+        source="Long-form Essay",
+        title="A framework for institutional progress",
+        link="https://example.com/cognition",
+        published="2026-08-09",
+        summary="A deep framework challenges assumptions about incentives and progress.",
+        content_type="essay",
+        fulltext_enriched=True,
+        story_type="cognition",
+        pillars=("COGNITION",),
+        pillar_exposure=True,
+        metadata_score=6000,
+        editorial_score=8500,
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(research, cognition),
+            audit={"diversity_metadata_gap": 1500},
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert transport.generator_rubric["diversity_evidence_id"] == "evidence-cognition"
+
+
 def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",

@@ -245,7 +245,7 @@ def _diversity_evidence_id(
         for candidate in candidates
         if candidate.pillar_exposure
         and candidate.story_type != strongest.story_type
-        and candidate.metadata_score + max_metadata_gap >= strongest.metadata_score
+        and candidate.editorial_score + max_metadata_gap >= strongest.metadata_score
         and _has_type_evidence_for_diversity(candidate)
     ]
     if not alternatives:
