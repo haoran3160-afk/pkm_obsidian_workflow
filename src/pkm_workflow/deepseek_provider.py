@@ -94,6 +94,7 @@ _MVP_PROMPTS = {
         "Builder candidates: explain the user problem, MVP cut, validation or distribution evidence, observed result, and one transferable move without turning promotion into advice. "
         "VC candidates: identify the layer being funded, why now, delivery economics or moat, contrary evidence, and the implication for a builder. "
         "Cognition candidates: name the default assumption being challenged, the new explanatory frame, its boundary, and the decision it would change. "
+        "Builder and cognition stories must each include one concrete, low-risk action claim with action_type IMMEDIATE_ACTION, grounded in approved context and feasible to start now. "
         "Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),

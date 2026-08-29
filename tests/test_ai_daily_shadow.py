@@ -523,6 +523,43 @@ def test_builder_without_observed_validation_is_not_forced_for_diversity(
     assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
+def test_builder_brief_requires_one_concrete_action(tmp_path: Path) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Builder",
+        title="A builder ships an AI product",
+        link="https://example.com/builder-product",
+        published="2026-08-29",
+        summary="The builder reports 120 users, 8 paid customers, and a launch channel.",
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        pillars=("BUILDERS",),
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_ACTION_REQUIRED"
+    assert result.markdown_path is None
+    assert transport.generator_calls == 2
+
+
 def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
     tmp_path: Path,
 ) -> None:

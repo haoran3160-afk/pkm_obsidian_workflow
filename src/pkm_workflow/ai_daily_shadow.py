@@ -318,6 +318,11 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "sample scope such as 4/5 or 4 of 5 tests; summarize the finding "
             "qualitatively instead."
         ),
+        "GENERATOR_ACTION_REQUIRED": (
+            "For every emitted Builder or cognition story, add exactly one concrete, "
+            "low-risk action claim grounded in approved context; use action_type "
+            "IMMEDIATE_ACTION and list it in action_claim_ids."
+        ),
     }
     return instructions[error_code]
 
@@ -698,12 +703,13 @@ def _validate_generator_draft(
             f"{evidence[evidence_id].title}\n{evidence[evidence_id].summary}"
             for evidence_id in story_evidence_ids
         )
-        if re.search(
+        security_story = re.search(
             r"\b(?:vulnerabilit(?:y|ies)|exploit|malware|path traversal|"
             r"prompt injection|cve-\d+)\b|漏洞|恶意代码|路径遍历|提示注入",
             security_evidence,
             re.IGNORECASE,
-        ):
+        ) is not None
+        if security_story:
             removed_security_actions = set(story["action_claim_ids"])
             if removed_security_actions:
                 projected = dict(story)
@@ -714,6 +720,14 @@ def _validate_generator_draft(
                     if claim["claim_id"] not in removed_security_actions
                 ]
                 story = projected
+        story_type = evidence[next(iter(story_evidence_ids))].story_type
+        if (
+            is_v75
+            and story_type in {"builder", "cognition"}
+            and not security_story
+            and not story["action_claim_ids"]
+        ):
+            raise ValueError("GENERATOR_ACTION_REQUIRED")
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         unsafe_absence_ids.update(
@@ -1262,6 +1276,7 @@ def run_ai_daily_shadow(
             "GENERATOR_DETAIL_DEPTH_REQUIRED",
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
             "GENERATOR_UNSCOPED_RATE",
+            "GENERATOR_ACTION_REQUIRED",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 3:
             retry_candidates = _diversity_retry_candidates(
