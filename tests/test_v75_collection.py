@@ -759,6 +759,95 @@ def test_product_strategy_interview_is_classified_as_builder_story() -> None:
     assert result.candidates[0].story_type == "builder"
 
 
+def test_model_supplier_contract_event_is_ai_practice_story() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_openai_news":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="cursor-supplier-contract",
+                    title="Model supplier terminates Cursor contract after acquisition",
+                    canonical_url="https://example.com/cursor-contract",
+                    published_at="2026-08-29",
+                    summary=(
+                        "A model provider will terminate API service to a developer tool "
+                        "after an acquisition, citing contract terms and supplier risk. " * 6
+                    ),
+                    content_type="news",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "The model provider terminated an API supplier contract for a developer "
+                "tool after its acquisition. The service terms create toolchain risk. "
+            )
+            * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].story_type == "ai_practice"
+
+
+def test_research_evaluation_with_commercial_terms_stays_research() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_huggingface_blog":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="commercial-benchmark",
+                    title="Benchmarking product platforms for enterprise users",
+                    canonical_url="https://example.com/commercial-benchmark",
+                    published_at="2026-08-29",
+                    summary=(
+                        "A research paper evaluates product platforms, customer pricing, "
+                        "and user outcomes with a benchmark dataset and controlled experiment. "
+                        * 6
+                    ),
+                    content_type="research",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "This study reports a benchmark evaluation, dataset, controlled experiment, "
+                "method, ablation, and model results for product platform users and pricing. "
+            )
+            * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].story_type == "research"
+
+
 def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None:
     catalog = load_source_catalog(MANIFEST)
     target_ids = {"rss_openai_news", "rss_google_ai"}

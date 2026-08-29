@@ -555,6 +555,93 @@ def _is_public_fulltext(value: str) -> bool:
     return restricted_access is None
 
 
+def _infer_story_type(
+    source: SourceDefinition, item: MetadataItem, evidence_text: str
+) -> str:
+    story_type = {
+        "AGENTIC_RESEARCH": "research",
+        "AI_MASTERY": "ai_practice",
+        "BUILDERS": "builder",
+        "VC": "vc",
+        "COGNITION": "cognition",
+    }[source.pillars[0]]
+    if story_type not in {"research", "ai_practice"}:
+        return story_type
+    normalized = f"{item.title}\n{evidence_text}".casefold()
+    toolchain_markers = (
+        "model provider",
+        "supplier",
+        "api service",
+        "developer tool",
+        "toolchain",
+        "contract",
+        "service terms",
+        "terminate",
+        "acquisition",
+        "模型供应商",
+        "工具链",
+        "合同",
+        "服务条款",
+        "终止服务",
+        "收购",
+    )
+    if sum(marker in normalized for marker in toolchain_markers) >= 3:
+        return "ai_practice"
+    research_markers = (
+        "research paper",
+        "study",
+        "benchmark",
+        "evaluation",
+        "dataset",
+        "controlled experiment",
+        "ablation",
+        "method",
+        "model results",
+        "研究",
+        "论文",
+        "基准",
+        "评估",
+        "数据集",
+        "实验",
+    )
+    if sum(marker in normalized for marker in research_markers) >= 3:
+        return "research"
+    product_markers = (
+        "product",
+        "platform",
+        " app ",
+        "saas",
+        "mcp",
+        "产品",
+        "平台",
+    )
+    business_markers = (
+        "founder",
+        " cto ",
+        "startup",
+        "saas",
+        "customers",
+        "users",
+        "revenue",
+        "funding",
+        "valuation",
+        "distribution",
+        "pricing",
+        "创始人",
+        "客户",
+        "用户",
+        "营收",
+        "融资",
+        "估值",
+        "分发",
+    )
+    if any(marker in normalized for marker in product_markers) and sum(
+        marker in normalized for marker in business_markers
+    ) >= 3:
+        return "builder"
+    return story_type
+
+
 def _candidate(
     row: _RankedItem,
     evidence_text: str,
@@ -567,48 +654,7 @@ def _candidate(
     evidence_id = "evidence-" + hashlib.sha256(
         f"{source.source_id}\n{item.item_native_id}\n{_normalize_url(item.canonical_url)}".encode()
     ).hexdigest()[:24]
-    story_type = {
-        "AGENTIC_RESEARCH": "research",
-        "AI_MASTERY": "ai_practice",
-        "BUILDERS": "builder",
-        "VC": "vc",
-        "COGNITION": "cognition",
-    }[source.pillars[0]]
-    if story_type in {"research", "ai_practice"}:
-        normalized = f"{item.title}\n{evidence_text}".casefold()
-        product_markers = (
-            "product",
-            "platform",
-            " app ",
-            "saas",
-            "mcp",
-            "产品",
-            "平台",
-        )
-        business_markers = (
-            "founder",
-            " cto ",
-            "startup",
-            "saas",
-            "customers",
-            "users",
-            "revenue",
-            "funding",
-            "valuation",
-            "distribution",
-            "pricing",
-            "创始人",
-            "客户",
-            "用户",
-            "营收",
-            "融资",
-            "估值",
-            "分发",
-        )
-        if any(marker in normalized for marker in product_markers) and sum(
-            marker in normalized for marker in business_markers
-        ) >= 3:
-            story_type = "builder"
+    story_type = _infer_story_type(source, item, evidence_text)
     return Candidate(
         evidence_id=evidence_id,
         source=source.name,
