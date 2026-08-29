@@ -585,7 +585,30 @@ def _infer_story_type(
         "终止服务",
         "收购",
     )
-    if sum(marker in normalized for marker in toolchain_markers) >= 3:
+    model_service_change = (
+        "model" in normalized
+        and any(
+            marker in normalized
+            for marker in ("access", "provider", "service", "api", "模型")
+        )
+        and any(
+            marker in normalized
+            for marker in (
+                "acquisition",
+                "acquired",
+                "shut off",
+                "terminate",
+                "contract",
+                "terms of service",
+                "收购",
+                "终止",
+                "合同",
+            )
+        )
+    )
+    if model_service_change or sum(
+        marker in normalized for marker in toolchain_markers
+    ) >= 3:
         return "ai_practice"
     research_markers = (
         "research paper",

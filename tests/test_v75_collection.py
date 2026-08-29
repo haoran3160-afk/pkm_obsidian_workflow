@@ -772,12 +772,12 @@ def test_model_supplier_contract_event_is_ai_practice_story() -> None:
             (
                 MetadataItem(
                     item_native_id="cursor-supplier-contract",
-                    title="Model supplier terminates Cursor contract after acquisition",
+                    title="Our decision on Cursor following its acquisition by SpaceX",
                     canonical_url="https://example.com/cursor-contract",
                     published_at="2026-08-29",
                     summary=(
-                        "A model provider will terminate API service to a developer tool "
-                        "after an acquisition, citing contract terms and supplier risk. " * 6
+                        "OpenAI will shut off model access for Cursor after its acquisition "
+                        "by SpaceX, citing terms of service concerns. " * 6
                     ),
                     content_type="news",
                 ),
@@ -792,8 +792,8 @@ def test_model_supplier_contract_event_is_ai_practice_story() -> None:
         ports=CollectionPorts(
             fetch_metadata=fetch_metadata,
             fetch_fulltext=lambda _url: (
-                "The model provider terminated an API supplier contract for a developer "
-                "tool after its acquisition. The service terms create toolchain risk. "
+                "OpenAI will shut off its models for Cursor after the SpaceX acquisition. "
+                "The terms of service dispute creates dependency risk for developers. "
             )
             * 30,
         ),
