@@ -1006,7 +1006,7 @@ def _render_markdown(
         "ai_practice": "AI 实践",
         "builder": "Builder 与超级个体",
         "vc": "创投与产业",
-        "cognition": "认知与成长",
+        "cognition": "认知与个人成长",
     }
     for story in stories:
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
@@ -1018,8 +1018,14 @@ def _render_markdown(
         }
         story_types = {evidence[evidence_id].story_type for evidence_id in story_evidence_ids}
         story_type = next(iter(story_types)) if len(story_types) == 1 else "ai_practice"
+        layer_label = layer_labels[story_type]
+        if story_type == "cognition" and any(
+            "VC" in evidence[evidence_id].pillars
+            for evidence_id in story_evidence_ids
+        ):
+            layer_label += " × 创投投资"
         lines.extend(
-            ("", f"## {story['rank']} · {layer_labels[story_type]}｜{title}", "")
+            ("", f"## {story['rank']} · {layer_label}｜{title}", "")
         )
         context = _brief_sentences(
             _claim_texts(story, "event_claim_ids")

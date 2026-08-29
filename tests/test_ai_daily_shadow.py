@@ -904,6 +904,46 @@ def test_research_story_renders_as_a_human_brief_not_a_claim_checklist(
         assert old_label not in markdown
 
 
+def test_cognition_investment_story_displays_both_reader_layers(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Investment Essay",
+        title="Private market liquidity changes investor behavior",
+        link="https://example.com/private-markets",
+        published="2026-08-09",
+        summary="A cognition framework about private markets, liquidity, and incentives.",
+        content_type="essay",
+        fulltext_enriched=True,
+        story_type="cognition",
+        pillars=("COGNITION", "VC"),
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="", include_watch_and_action=True
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "## 1 · 认知与个人成长 × 创投投资｜" in markdown
+
+
 def test_research_story_without_testable_question_keeps_other_deep_takeaways(
     tmp_path: Path,
 ) -> None:
