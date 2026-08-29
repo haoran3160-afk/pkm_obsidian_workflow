@@ -659,6 +659,106 @@ def test_mixed_freemium_source_stays_discovery_only_without_public_proof_adapter
     ]
 
 
+def test_public_same_pillar_candidate_inherits_exposure_after_discovery_only_drop() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id == "rss_stratechery":
+            return MetadataObservation(
+                True,
+                False,
+                "OK",
+                (
+                    MetadataItem(
+                        item_native_id="paid-cognition",
+                        title="Autonomy innovation institutional framework",
+                        canonical_url="https://example.com/paid-cognition",
+                        published_at="2026-08-28",
+                        summary="Mental model incentives autonomy innovation framework. " * 8,
+                        content_type="essay",
+                    ),
+                ),
+            )
+        if source.source_id == "rss_works_in_progress":
+            return MetadataObservation(
+                True,
+                False,
+                "OK",
+                (
+                    MetadataItem(
+                        item_native_id="public-cognition",
+                        title="A public framework for institutional innovation",
+                        canonical_url="https://example.com/public-cognition",
+                        published_at="2026-08-27",
+                        summary="Assumption incentive institution mental model innovation. " * 8,
+                        content_type="essay",
+                    ),
+                ),
+            )
+        return MetadataObservation(True, True, "ZERO_YIELD", ())
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Verified public cognition essay body. " * 40,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    candidate = result.candidates[0]
+    assert candidate.source_id == "rss_works_in_progress"
+    assert candidate.pillar_exposure is True
+    assert candidate.editorial_score == candidate.metadata_score + 2500
+
+
+def test_product_strategy_interview_is_classified_as_builder_story() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_latent_space":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="lovable-capabilities",
+                    title="Lovable CTO: SaaS apps become capabilities for agents",
+                    canonical_url="https://example.com/lovable-capabilities",
+                    published_at="2026-08-28",
+                    summary=(
+                        "The CTO explains a SaaS product, MCP platform, customers, funding, "
+                        "distribution, and product strategy for agent users. " * 6
+                    ),
+                    content_type="interview",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "The founder and CTO launched a SaaS product and MCP platform for customers. "
+                "The company reports users, revenue, funding, distribution, and product adoption. "
+            )
+            * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].story_type == "builder"
+
+
 def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None:
     catalog = load_source_catalog(MANIFEST)
     target_ids = {"rss_openai_news", "rss_google_ai"}

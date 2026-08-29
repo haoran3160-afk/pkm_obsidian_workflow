@@ -574,6 +574,41 @@ def _candidate(
         "VC": "vc",
         "COGNITION": "cognition",
     }[source.pillars[0]]
+    if story_type in {"research", "ai_practice"}:
+        normalized = f"{item.title}\n{evidence_text}".casefold()
+        product_markers = (
+            "product",
+            "platform",
+            " app ",
+            "saas",
+            "mcp",
+            "产品",
+            "平台",
+        )
+        business_markers = (
+            "founder",
+            " cto ",
+            "startup",
+            "saas",
+            "customers",
+            "users",
+            "revenue",
+            "funding",
+            "valuation",
+            "distribution",
+            "pricing",
+            "创始人",
+            "客户",
+            "用户",
+            "营收",
+            "融资",
+            "估值",
+            "分发",
+        )
+        if any(marker in normalized for marker in product_markers) and sum(
+            marker in normalized for marker in business_markers
+        ) >= 3:
+            story_type = "builder"
     return Candidate(
         evidence_id=evidence_id,
         source=source.name,
@@ -597,6 +632,41 @@ def _candidate(
         )
         + (2500 if row.pillar_exposure else 0),
     )
+
+
+def _reapply_pillar_exposure(candidates: list[Candidate]) -> list[Candidate]:
+    pillar_order = ("AGENTIC_RESEARCH", "AI_MASTERY", "BUILDERS", "VC", "COGNITION")
+    exposed_ids: set[str] = set()
+    ordered: list[Candidate] = []
+    for pillar in pillar_order:
+        match = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.pillars[0] == pillar
+                and candidate.evidence_id not in exposed_ids
+            ),
+            None,
+        )
+        if match is not None:
+            exposed_ids.add(match.evidence_id)
+            ordered.append(
+                replace(
+                    match,
+                    pillar_exposure=True,
+                    editorial_score=match.metadata_score + 2500,
+                )
+            )
+    ordered.extend(
+        replace(
+            candidate,
+            pillar_exposure=False,
+            editorial_score=candidate.metadata_score,
+        )
+        for candidate in candidates
+        if candidate.evidence_id not in exposed_ids
+    )
+    return ordered
 
 
 def collect_v75_candidates(
@@ -723,6 +793,7 @@ def collect_v75_candidates(
             )
         )
         source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
+    candidates = _reapply_pillar_exposure(candidates)
     assessment_source_ids.update(
         candidate.source_id
         for candidate in candidates

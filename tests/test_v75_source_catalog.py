@@ -39,10 +39,17 @@ def test_approved_manifest_exposes_complete_unique_catalog_and_true_coverage_set
     assert hacker_news.selection_role == "RESEARCH_WATCH"
     assert hacker_news.coverage_member is False
     assert hacker_news.evidence_role == "DISCOVERY_PROVENANCE"
-    assert (
-        catalog.source("rss_pragmatic_engineer").access_policy
-        == "MIXED_FREEMIUM_DISCOVERY_ONLY"
-    )
+    discovery_only = {
+        source.source_id
+        for source in catalog.sources
+        if source.access_policy == "MIXED_FREEMIUM_DISCOVERY_ONLY"
+    }
+    assert discovery_only == {
+        "rss_pragmatic_engineer",
+        "rss_interconnects",
+        "rss_stratechery",
+        "rss_not_boring",
+    }
 
 
 def test_manifest_inheritance_produces_effective_required_fields(tmp_path: Path) -> None:
