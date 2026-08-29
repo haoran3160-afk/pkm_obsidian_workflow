@@ -8,7 +8,7 @@ import re
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -1095,6 +1095,13 @@ def _render_markdown(
             for evidence_id in story_evidence_ids
         ):
             layer_label += " × 创投投资"
+        story_dates = [
+            date.fromisoformat(evidence[evidence_id].published[:10])
+            for evidence_id in story_evidence_ids
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", evidence[evidence_id].published[:10])
+        ]
+        if story_dates and max(story_dates) < content_date - timedelta(days=7):
+            layer_label = f"慢层回顾 · {layer_label}"
         lines.extend(
             ("", f"## {story['rank']} · {layer_label}｜{title}", "")
         )

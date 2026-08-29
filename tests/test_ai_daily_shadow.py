@@ -947,7 +947,7 @@ def test_cognition_investment_story_displays_both_reader_layers(
     assert result.status == "PUBLISHED"
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "## 1 · 认知与个人成长 × 创投投资｜" in markdown
+    assert "## 1 · 慢层回顾 · 认知与个人成长 × 创投投资｜" in markdown
 
 
 def test_research_story_without_testable_question_keeps_other_deep_takeaways(
