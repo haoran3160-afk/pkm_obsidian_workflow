@@ -683,7 +683,7 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
     assert result.status == "PUBLISHED"
     assert result.request_count == 4
     assert result.markdown_path is not None
-    assert "**现在可以做**" in result.markdown_path.read_text(encoding="utf-8")
+    assert "## 今天可以做" in result.markdown_path.read_text(encoding="utf-8")
     assert transport.generator_candidate_ids[-1] == [
         "evidence-1",
         "evidence-cognition",
@@ -894,12 +894,13 @@ def test_research_story_renders_as_a_human_brief_not_a_claim_checklist(
 
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "## 1 · 学术研究｜" in markdown
+    assert "## 今日深读" in markdown
+    assert "### 1 · 学术研究｜" in markdown
     assert "**Takeaway**" in markdown
     assert "浏览器操作被封装为可复用工具接口。" in markdown
     assert "工具接口保留了可验证的操作结果与失败状态。" in markdown
     assert "**对你的启发**" in markdown
-    assert "**现在可以做**" in markdown
+    assert "## 今天可以做" in markdown
     assert "**原文**：[Research Lab](https://example.com/harness-study)" in markdown
     for old_label in (
         "**研究发现**",
@@ -947,7 +948,7 @@ def test_cognition_investment_story_displays_both_reader_layers(
     assert result.status == "PUBLISHED"
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "## 1 · 慢层回顾 · 认知与个人成长 × 创投投资｜" in markdown
+    assert "### 1 · 慢层回顾 · 认知与个人成长 × 创投投资｜" in markdown
 
 
 def test_research_story_without_testable_question_keeps_other_deep_takeaways(

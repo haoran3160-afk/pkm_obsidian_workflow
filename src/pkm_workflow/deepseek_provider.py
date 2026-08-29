@@ -74,8 +74,7 @@ _MVP_PROMPTS = {
         "claim to evidence IDs. Each evidence_id may support at most one story; do not split a roundup or candidate into multiple stories. "
         "For editorial or action claims, copy context_refs only from candidate profile_refs or exact approved context paths; never prefix a copied path with fields and never invent a path. Every story must include an impact claim using a semantic purpose, selection question, prior knowledge, project, or approved anchor reference; pillar_id alone is not a semantic personalization reference. Keep event, mechanism, importance, impact, uncertainty, watch "
         "signal, and action claim roles explicit. Do not emit URLs, Markdown, HTML, file paths, "
-        "tools, or prose outside the JSON object. Use six to ten substantive claims per "
-        "story, emit exactly two distinct mechanism/detail claims, and keep each statement under 220 Chinese characters. Story IDs and claim IDs "
+        "tools, or prose outside the JSON object. Emit four or five stories when at least four qualified candidates span two reader-task groups. Ranks 1-2 are deep reads with six to eight substantive claims and exactly two mechanism/detail claims. Ranks 3-5 are layer radar items with three or four claims, at least one mechanism/detail claim, and no action. Keep each statement under 220 Chinese characters. Story IDs and claim IDs "
         "must be globally unique across the entire response. Every numeric claim must retain its exact sample size or denominator when the evidence provides one; never generalize a bounded test rate. A first-party Builder claim about third-party conduct, user demand, product effectiveness, adoption, or business results must be explicitly attributed to the author or product page unless that same evidence contains observed metrics. Describe a proposed mechanism as a design goal, not a validated outcome. Rank stories by approved user priorities and material impact. candidate order encodes deterministic pillar exposure after the quality gate; pillar_exposure and editorial_score are deterministic tie-break signals. Select the strongest story first, then prefer an exposed different story_type before another same-type story unless its evidence is materially weaker. "
         "If rubric diversity_evidence_id is non-null and you emit two or three stories, one story must use that exact evidence_id; emitting zero or one story does not force it. "
         "If rubric semantic_correction is non-null, correct that exact contract failure while regenerating from the same evidence; do not repeat the invalid structure. "
@@ -84,7 +83,7 @@ _MVP_PROMPTS = {
         "a non-NONE action_type, a concrete action_object, and a measurable success_criterion. "
         "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
         "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
-        "Across the whole response emit at most two action claims; omit actions from lower-ranked stories rather than exceeding this limit. "
+        "Across the whole response emit at most two action claims, only on ranks 1-2. "
         "Across all stories emit at most 24 claims; omit optional uncertainty or watch claims from lower-ranked stories before exceeding this total. "
         "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
         "Use only source-scoped superlatives: first results never means the world's first product, and an organization's first product must remain explicitly scoped to that organization. existing revenue or valuation cannot validate a newly announced direction; never say existing scale reflects or supports the new trend. without adoption or result evidence, say only that company scale makes the direction worth observing. "
@@ -391,7 +390,7 @@ _MVP_CLAIM_SCHEMA = _closed_object(
 _MVP_STORY_SCHEMA = _closed_object(
     {
         "story_id": _STRING_ID,
-        "rank": {"type": "integer", "minimum": 1, "maximum": 3},
+        "rank": {"type": "integer", "minimum": 1, "maximum": 5},
         "title_claim_id": _STRING_ID,
         "event_claim_ids": {**_MVP_ID_LIST, "minItems": 1},
         "mechanism_claim_ids": {**_MVP_ID_LIST, "maxItems": 2},
@@ -403,7 +402,7 @@ _MVP_STORY_SCHEMA = _closed_object(
         "claims": {
             "type": "array",
             "minItems": 3,
-            "maxItems": 10,
+            "maxItems": 8,
             "items": _MVP_CLAIM_SCHEMA,
         },
     },
@@ -426,7 +425,7 @@ _MVP_GENERATOR_OUTPUT_SCHEMA = _closed_object(
         "stories": {
             "type": "array",
             "minItems": 0,
-            "maxItems": 3,
+            "maxItems": 5,
             "items": _MVP_STORY_SCHEMA,
         }
     },
@@ -1665,8 +1664,8 @@ class DeepSeekShadowProvider:
                     "semantic_correction",
                 }
                 or rubric.get("contract_version") != MVP_CONTRACT_VERSION
-                or rubric.get("max_stories") != 3
-                or rubric.get("top_cap") != 3
+                or rubric.get("max_stories") != 5
+                or rubric.get("top_cap") != 2
                 or (
                     rubric.get("diversity_evidence_id") is not None
                     and not isinstance(rubric.get("diversity_evidence_id"), str)
@@ -1678,8 +1677,8 @@ class DeepSeekShadowProvider:
             ):
                 raise ValueError("AI Daily Generator input is invalid")
             candidates = sealed.get("candidates")
-            if not isinstance(candidates, list) or not 1 <= len(candidates) <= 8:
-                raise ValueError("AI Daily candidates must contain 1 through 8 items")
+            if not isinstance(candidates, list) or not 1 <= len(candidates) <= 10:
+                raise ValueError("AI Daily candidates must contain 1 through 10 items")
             ids = [cls._validate_mvp_evidence_item(item) for item in candidates]
             if len(ids) != len(set(ids)):
                 raise ValueError("AI Daily evidence IDs must be unique")

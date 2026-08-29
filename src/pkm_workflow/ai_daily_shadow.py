@@ -311,8 +311,8 @@ def _generator_request_bytes(
             "approved_user_context": context,
             "rubric": {
                 "contract_version": MVP_CONTRACT_VERSION,
-                "max_stories": 3,
-                "top_cap": 3,
+                "max_stories": 5,
+                "top_cap": 2,
                 "diversity_evidence_id": diversity_evidence_id,
                 "semantic_correction": semantic_correction,
             },
@@ -583,7 +583,7 @@ def _validate_generator_draft(
     if not isinstance(draft, dict) or set(draft) != {"stories"}:
         raise ValueError("GENERATOR_DRAFT_INVALID")
     stories = draft.get("stories")
-    if not isinstance(stories, list) or len(stories) > 3:
+    if not isinstance(stories, list) or len(stories) > 5:
         raise ValueError("GENERATOR_STORIES_INVALID")
     story_ids: set[str] = set()
     claim_ids: set[str] = set()
@@ -610,7 +610,7 @@ def _validate_generator_draft(
             not isinstance(story_id, str)
             or story_id in story_ids
             or type(rank) is not int
-            or not 1 <= rank <= 3
+            or not 1 <= rank <= 5
             or rank in ranks
             or not isinstance(claims, list)
         ):
@@ -724,9 +724,11 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_PER_STORY_ACTION_LIMIT_EXCEEDED")
         fields = context.get("fields")
         is_v75 = isinstance(fields, dict) and fields.get("schema_version") == "7.5"
-        if is_v75 and len(story["mechanism_claim_ids"]) < 2:
+        is_deep_read = rank <= 2
+        required_mechanisms = 2 if is_deep_read else 1
+        if is_v75 and len(story["mechanism_claim_ids"]) < required_mechanisms:
             raise ValueError("GENERATOR_DETAIL_DEPTH_REQUIRED")
-        if is_v75 and not story["impact_claim_ids"]:
+        if is_v75 and is_deep_read and not story["impact_claim_ids"]:
             raise ValueError("GENERATOR_PERSONAL_IMPACT_REQUIRED")
         if any(
             local_claims[claim_id]["claim_kind"] != "editorial_inference"
@@ -784,6 +786,7 @@ def _validate_generator_draft(
         story_type = evidence[next(iter(story_evidence_ids))].story_type
         if (
             is_v75
+            and is_deep_read
             and story_type in {"builder", "cognition"}
             and not security_story
             and not story["action_claim_ids"]
@@ -791,7 +794,21 @@ def _validate_generator_draft(
             if diversity_evidence_id in story_evidence_ids:
                 diversity_evidence_id = None
             continue
-        if story_type in {"builder", "cognition"} and story["action_claim_ids"]:
+        if not is_deep_read and story["action_claim_ids"]:
+            projected = dict(story)
+            removed_radar_actions = set(story["action_claim_ids"])
+            projected["action_claim_ids"] = []
+            projected["claims"] = [
+                claim
+                for claim in story["claims"]
+                if claim["claim_id"] not in removed_radar_actions
+            ]
+            story = projected
+        if (
+            is_deep_read
+            and story_type in {"builder", "cognition"}
+            and story["action_claim_ids"]
+        ):
             action_text = " ".join(
                 " ".join(
                     (
@@ -991,7 +1008,8 @@ def _accepted_stories(
             "action_claim_ids",
         ):
             projected[field] = [claim_id for claim_id in story[field] if claim_id in kept_ids]
-        if len(projected["mechanism_claim_ids"]) < 2:
+        required_mechanisms = 2 if story["rank"] <= 2 else 1
+        if len(projected["mechanism_claim_ids"]) < required_mechanisms:
             continue
         story_evidence_ids = {
             evidence_id
@@ -1001,7 +1019,7 @@ def _accepted_stories(
         if len(story_evidence_ids) != 1:
             continue
         story_type = evidence[next(iter(story_evidence_ids))].story_type
-        if story_type in {"builder", "cognition"} and not projected[
+        if story["rank"] <= 2 and story_type in {"builder", "cognition"} and not projected[
             "action_claim_ids"
         ]:
             continue
@@ -1059,6 +1077,19 @@ def _render_markdown(
     )
     evidence_start = evidence_dates[0] if evidence_dates else content_date.isoformat()
     evidence_end = evidence_dates[-1] if evidence_dates else content_date.isoformat()
+    reader_group_labels = {
+        "research": "前沿研究",
+        "ai_practice": "构建与杠杆",
+        "builder": "构建与杠杆",
+        "vc": "战略与认知",
+        "cognition": "战略与认知",
+    }
+    covered_groups = {
+        reader_group_labels[evidence[evidence_id].story_type]
+        for evidence_id in referenced_evidence_ids
+    }
+    all_groups = ("前沿研究", "构建与杠杆", "战略与认知")
+    missing_groups = [group for group in all_groups if group not in covered_groups]
     lines = [
         "---",
         f"date: {content_date.isoformat()}",
@@ -1074,7 +1105,10 @@ def _render_markdown(
         "",
         f"> 今天只保留 {len(stories)} 条真正值得你花时间的变化。",
         f"> 信息范围：{evidence_start} 至 {evidence_end}。",
+        f"> 今日覆盖：{'、'.join(group for group in all_groups if group in covered_groups)}。",
     ]
+    if missing_groups:
+        lines.append(f"> 已检查但未达质量门：{'、'.join(missing_groups)}。")
     if evidence_level is CoverageLevel.B:
         lines.append("> 部分来源今天没有可确认的完整正文，以下只采用已核验内容。")
     layer_labels = {
@@ -1084,6 +1118,9 @@ def _render_markdown(
         "vc": "创投与产业",
         "cognition": "认知与个人成长",
     }
+    deep_heading_written = False
+    radar_heading_written = False
+    accepted_actions: list[str] = []
     for story in stories:
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
         title = claims[story["title_claim_id"]]["statement"]
@@ -1107,9 +1144,14 @@ def _render_markdown(
         ]
         if story_dates and max(story_dates) < content_date - timedelta(days=7):
             layer_label = f"慢层回顾 · {layer_label}"
-        lines.extend(
-            ("", f"## {story['rank']} · {layer_label}｜{title}", "")
-        )
+        is_deep_read = story["rank"] <= 2
+        if is_deep_read and not deep_heading_written:
+            lines.extend(("", "## 今日深读"))
+            deep_heading_written = True
+        if not is_deep_read and not radar_heading_written:
+            lines.extend(("", "## 分层情报雷达"))
+            radar_heading_written = True
+        lines.extend(("", f"### {story['rank']} · {layer_label}｜{title}", ""))
         context = _brief_sentences(
             _claim_texts(story, "event_claim_ids")
             + _claim_texts(story, "mechanism_claim_ids"),
@@ -1125,11 +1167,11 @@ def _render_markdown(
         if takeaway:
             lines.extend((f"**Takeaway**：{takeaway}", ""))
         inspiration = _brief_sentences(_claim_texts(story, "impact_claim_ids"))
-        if inspiration:
+        if is_deep_read and inspiration:
             lines.extend((f"**对你的启发**：{inspiration}", ""))
         action = _brief_sentences(_claim_texts(story, "action_claim_ids"))
-        if action:
-            lines.extend((f"**现在可以做**：{action}", ""))
+        if is_deep_read and action:
+            accepted_actions.append(action)
         evidence_ids = []
         for claim in story["claims"]:
             for evidence_id in claim["evidence_ids"]:
@@ -1140,6 +1182,9 @@ def _render_markdown(
             item = evidence[evidence_id]
             links.append(f"[{item.source}]({item.link}) · {item.published}")
         lines.append(f"**原文**：{'；'.join(links)}")
+    if accepted_actions:
+        lines.extend(("", "## 今天可以做", ""))
+        lines.extend(f"- {action}" for action in accepted_actions[:2])
     return "\n".join(lines).rstrip() + "\n"
 
 

@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:ccb1cc972258fc9b94d6e8a73c279f63ea9217334452495f989644a58a472277"
+        "sha256:aeb0aacc3b998a04c10eb1f5c61524aa06edbfaaf87767ba75f48e231c4775d8"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -136,7 +136,8 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Across the whole response emit at most two action claims" in MVP_GENERATOR_PROMPT
     assert "an editorial_inference need not appear verbatim in the source" in MVP_REVIEWER_PROMPT
     assert "evidence supports its factual premise" in MVP_REVIEWER_PROMPT
-    assert "emit exactly two distinct mechanism/detail claims" in MVP_GENERATOR_PROMPT
+    assert "Ranks 1-2 are deep reads" in MVP_GENERATOR_PROMPT
+    assert "Ranks 3-5 are layer radar items" in MVP_GENERATOR_PROMPT
     assert "Research candidates: identify the research problem" in MVP_GENERATOR_PROMPT
     assert "Builder candidates: explain the user problem" in MVP_GENERATOR_PROMPT
     assert "Builder and cognition stories must each include one concrete" in MVP_GENERATOR_PROMPT
@@ -175,11 +176,11 @@ def test_d018_strategy_binding_returns_an_unshared_nested_copy() -> None:
     assert second["mvp_request_limits"]["pipeline_timeout_seconds"] == 180.0
 
 
-def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories() -> None:
+def test_ai_daily_generator_contract_allows_abstention_and_at_most_five_stories() -> None:
     schema = json.loads(mvp_generator_output_schema())
     stories = schema["properties"]["stories"]
     assert stories["minItems"] == 0
-    assert stories["maxItems"] == 3
+    assert stories["maxItems"] == 5
     story = stories["items"]
     assert set(story["required"]) == {
         "story_id",
@@ -195,7 +196,7 @@ def test_ai_daily_generator_contract_allows_abstention_and_at_most_three_stories
         "claims",
     }
     assert story["additionalProperties"] is False
-    assert story["properties"]["claims"]["maxItems"] == 10
+    assert story["properties"]["claims"]["maxItems"] == 8
     assert (
         story["properties"]["claims"]["items"]["properties"]["statement"]["maxLength"]
         == 600
@@ -219,8 +220,8 @@ def test_qualified_transport_accepts_ai_daily_abstention_without_repair() -> Non
             },
             "rubric": {
                 "contract_version": MVP_CONTRACT_VERSION,
-                "max_stories": 3,
-                "top_cap": 3,
+                "max_stories": 5,
+                "top_cap": 2,
                 "diversity_evidence_id": None,
                 "semantic_correction": None,
             },
