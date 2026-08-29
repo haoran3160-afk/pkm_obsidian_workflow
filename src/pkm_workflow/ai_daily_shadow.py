@@ -1451,13 +1451,7 @@ def run_ai_daily_shadow(
             "GENERATOR_MINIMUM_ITEMS_REQUIRED",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 2:
-            retry_candidates = (
-                collected.candidates
-                if str(error) == "GENERATOR_MINIMUM_ITEMS_REQUIRED"
-                else _diversity_retry_candidates(
-                    collected.candidates, diversity_evidence_id
-                )
-            )
+            retry_candidates = collected.candidates
             retry_evidence = {
                 candidate.evidence_id: candidate for candidate in retry_candidates
             }
