@@ -506,7 +506,15 @@ def _ranked_metadata(
     exposed: list[_RankedItem] = []
     selected_ids: set[tuple[str, str]] = set()
     for pillar in ("AGENTIC_RESEARCH", "AI_MASTERY", "BUILDERS", "VC", "COGNITION"):
-        match = next((row for row in deduped_ranked if row.source.pillars[0] == pillar), None)
+        match = next(
+            (
+                row
+                for row in deduped_ranked
+                if row.source.pillars[0] == pillar
+                and row.source.access_policy == "FREE_ENTRY_REQUIRED"
+            ),
+            None,
+        )
         if match is not None:
             exposed.append(replace(match, pillar_exposure=True))
             selected_ids.add((match.source.source_id, match.item.item_native_id))

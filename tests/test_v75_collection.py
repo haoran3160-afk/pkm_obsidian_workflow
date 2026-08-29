@@ -715,6 +715,110 @@ def test_public_same_pillar_candidate_inherits_exposure_after_discovery_only_dro
     assert candidate.editorial_score == candidate.metadata_score + 2500
 
 
+def test_public_slow_layer_reaches_top8_before_research_pool_fills_it() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    research_ids = {
+        "rss_simon_willison",
+        "rss_openai_news",
+        "rss_huggingface_blog",
+        "rss_latent_space",
+    }
+    research_titles = {
+        "rss_simon_willison": (
+            "Atlas memory harness evaluation",
+            "Beacon sandbox trajectory study",
+        ),
+        "rss_openai_news": (
+            "Cinder tool-use benchmark report",
+            "Delta coding agent reliability analysis",
+        ),
+        "rss_huggingface_blog": (
+            "Ember long-horizon agent method",
+            "Fjord context evaluation results",
+        ),
+        "rss_latent_space": (
+            "Grove computer-use architecture",
+            "Harbor agent permission benchmark",
+        ),
+    }
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id == "rss_stratechery":
+            return MetadataObservation(
+                True,
+                False,
+                "OK",
+                (
+                    MetadataItem(
+                        item_native_id="mixed-cognition",
+                        title="Autonomy incentives and institutional innovation",
+                        canonical_url="https://example.com/mixed-cognition",
+                        published_at="2026-08-29",
+                        summary="Mental model assumption incentive framework innovation. " * 8,
+                        content_type="essay",
+                    ),
+                ),
+            )
+        if source.source_id == "rss_works_in_progress":
+            return MetadataObservation(
+                True,
+                False,
+                "OK",
+                (
+                    MetadataItem(
+                        item_native_id="public-cognition",
+                        title="A public framework for institutional progress",
+                        canonical_url="https://example.com/public-cognition",
+                        published_at="2026-08-27",
+                        summary="Assumption incentive institution mental model progress. " * 8,
+                        content_type="essay",
+                    ),
+                ),
+            )
+        if source.source_id in research_ids:
+            return MetadataObservation(
+                True,
+                False,
+                "OK",
+                tuple(
+                    MetadataItem(
+                        item_native_id=f"{source.source_id}-research-{index}",
+                        title=research_titles[source.source_id][index],
+                        canonical_url=(
+                            f"https://example.com/{source.source_id}/research-{index}"
+                        ),
+                        published_at="2026-08-29",
+                        summary=(
+                            "Agent harness benchmark evaluation method results and evidence. "
+                            * 8
+                        ),
+                        content_type="research",
+                    )
+                    for index in range(2)
+                ),
+            )
+        return MetadataObservation(True, True, "ZERO_YIELD", ())
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Verified public full article body. " * 40,
+        ),
+    )
+
+    assert len(result.candidates) == 8
+    assert "rss_works_in_progress" in {
+        candidate.source_id for candidate in result.candidates
+    }
+    assert "rss_stratechery" not in {
+        candidate.source_id for candidate in result.candidates
+    }
+
+
 def test_product_strategy_interview_is_classified_as_builder_story() -> None:
     catalog = load_source_catalog(MANIFEST)
 
