@@ -95,6 +95,7 @@ _MVP_PROMPTS = {
         "VC candidates: identify the layer being funded, why now, delivery economics or moat, contrary evidence, and the implication for a builder. "
         "Cognition candidates: name the default assumption being challenged, the new explanatory frame, its boundary, and the decision it would change. "
         "Builder and cognition stories must each include one concrete, low-risk action claim with action_type IMMEDIATE_ACTION, grounded in approved context and feasible to start now. "
+        "That action must directly operationalize the same story's importance or impact; never choose a secondary anecdote or generic reading task merely because it appears in the source. "
         "Uncertainty and watch claims must name an evidence-specific unknown or "
         "signal; never fill them with generic stability or community-feedback advice."
     ),
@@ -110,6 +111,7 @@ _MVP_PROMPTS = {
         "REJECT a numeric claim that drops an available sample size or denominator, a first-party Builder claim that states third-party conduct or product effectiveness without attribution, and any claim that upgrades a design goal into a validated outcome. ABSTAIN from adoption, demand, revenue, conversion, or validation claims when the evidence contains no observed result. "
         "an editorial_inference need not appear verbatim in the source: ACCEPT it when evidence supports its factual premise, an exact approved context_ref supports personal relevance, and the wording is cautious and non-causal. Continue to require direct evidence for every fact claim. "
         "ABSTAIN when mechanism/detail claims merely repeat the event, or when personal impact only says a topic is relevant without naming a concrete research, workflow, product, investment, or decision consequence. "
+        "ABSTAIN from an action that follows a secondary anecdote or generic reading task instead of directly operationalizing the same story's importance or personal impact. "
         "REJECT unscoped first/only/world-leading claims unless the source explicitly supports that exact scope. REJECT claims that use pre-existing revenue, valuation, or scale to prove a newly announced product direction without adoption or outcome evidence. "
         "ABSTAIN when a context reference does not support the inference or action. Return exactly "
         "one JSON object matching output_schema."
