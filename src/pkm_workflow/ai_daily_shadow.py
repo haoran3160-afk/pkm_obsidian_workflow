@@ -619,6 +619,7 @@ def _validate_generator_draft(
         ranks.add(rank)
         local_claims: dict[str, dict[str, Any]] = {}
         unsafe_absence_ids: set[str] = set()
+        context_ref_unknown = False
         for claim in claims:
             if not isinstance(claim, dict):
                 raise ValueError("GENERATOR_CLAIM_INVALID")
@@ -647,7 +648,7 @@ def _validate_generator_draft(
             ):
                 raise ValueError("GENERATOR_CONTEXT_REFS_INVALID")
             if any(item not in allowed_context_refs for item in context_refs):
-                raise ValueError("GENERATOR_CONTEXT_REF_UNKNOWN")
+                context_ref_unknown = True
             statement = str(claim["statement"]).casefold()
             chinese_absence = re.search(
                 r"(?:报告|文档|来源|证据).{0,10}"
@@ -703,6 +704,15 @@ def _validate_generator_draft(
                 raise ValueError("GENERATOR_UNSCOPED_RATE")
             claim_ids.add(claim_id)
             local_claims[claim_id] = claim
+        if context_ref_unknown:
+            invalid_story_evidence_ids = {
+                evidence_id
+                for claim in local_claims.values()
+                for evidence_id in claim["evidence_ids"]
+            }
+            if diversity_evidence_id in invalid_story_evidence_ids:
+                diversity_evidence_id = None
+            continue
         title_claim_id = story.get("title_claim_id")
         if title_claim_id not in local_claims:
             raise ValueError("GENERATOR_TITLE_CLAIM_INVALID")
