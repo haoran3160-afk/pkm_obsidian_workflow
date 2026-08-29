@@ -801,6 +801,8 @@ def _validate_generator_draft(
                 for claim_id in story[field]
             )
             if not (_semantic_terms(action_text) & _semantic_terms(takeaway_text)):
+                if diversity_evidence_id in story_evidence_ids:
+                    diversity_evidence_id = None
                 continue
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
