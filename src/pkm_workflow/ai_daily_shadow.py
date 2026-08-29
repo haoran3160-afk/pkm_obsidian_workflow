@@ -295,7 +295,19 @@ def _diversity_retry_candidates(
     )
     if strongest.evidence_id == target.evidence_id:
         return (target,)
-    return (strongest, target)
+    retry_candidates = [strongest, target]
+    remaining = sorted(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.evidence_id
+            not in {strongest.evidence_id, target.evidence_id}
+        ),
+        key=lambda candidate: -candidate.editorial_score,
+    )
+    if remaining:
+        retry_candidates.append(remaining[0])
+    return tuple(retry_candidates)
 
 
 def _semantic_correction_instruction(error_code: str) -> str:

@@ -567,6 +567,7 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
         def __init__(self) -> None:
             super().__init__(reject_claim="")
             self.injected_structural_failure = False
+            self.single_mechanism = True
 
         def request(self, **kwargs: object) -> TransportResponse:
             request = json.loads(bytes(kwargs["body"]))
@@ -605,11 +606,42 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
                     body=json.dumps(envelope).encode(),
                 )
             if sealed.get("rubric", {}).get("semantic_correction") is not None:
+                self.single_mechanism = False
                 self.include_watch_and_action = True
             return super().request(**kwargs)
 
-    candidate = Candidate(
+    research = Candidate(
         evidence_id="evidence-1",
+        source="Research Lab",
+        title="Agent harness evaluation release",
+        link="https://example.com/research",
+        published="2026-08-29",
+        summary="Agent harness benchmark method and evaluation results.",
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+        pillars=("AGENTIC_RESEARCH",),
+        pillar_exposure=True,
+        metadata_score=9700,
+        editorial_score=12200,
+    )
+    cognition = Candidate(
+        evidence_id="evidence-cognition",
+        source="Long-form Essay",
+        title="A framework for institutional progress",
+        link="https://example.com/cognition",
+        published="2026-08-09",
+        summary="A deep framework challenges assumptions about incentives and progress.",
+        content_type="essay",
+        fulltext_enriched=True,
+        story_type="cognition",
+        pillars=("COGNITION",),
+        pillar_exposure=True,
+        metadata_score=6000,
+        editorial_score=8500,
+    )
+    builder = Candidate(
+        evidence_id="evidence-builder",
         source="Builder",
         title="A builder ships an AI product",
         link="https://example.com/builder-product",
@@ -619,6 +651,9 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
         fulltext_enriched=True,
         story_type="builder",
         pillars=("BUILDERS",),
+        pillar_exposure=False,
+        metadata_score=7500,
+        editorial_score=8000,
     )
     transport = RepairThenActionTransport()
     ports = ShadowPorts(
@@ -626,7 +661,8 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
             coverage=CoverageLevel.A,
             configured_sources=14,
             healthy_sources=14,
-            candidates=(candidate,),
+            candidates=(research, cognition, builder),
+            audit={"diversity_metadata_gap": 1500},
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
@@ -642,6 +678,11 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
     assert result.request_count == 4
     assert result.markdown_path is not None
     assert "**现在可以做**" in result.markdown_path.read_text(encoding="utf-8")
+    assert transport.generator_candidate_ids[-1] == [
+        "evidence-1",
+        "evidence-cognition",
+        "evidence-builder",
+    ]
 
 
 def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
