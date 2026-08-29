@@ -1003,6 +1003,50 @@ def test_research_evaluation_with_commercial_terms_stays_research() -> None:
     assert result.candidates[0].story_type == "research"
 
 
+def test_engineering_security_commentary_is_ai_practice_not_academic_research() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_simon_willison":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="security-commentary",
+                    title="A patch discussion was followed by an exploit attempt",
+                    canonical_url="https://example.com/security-commentary",
+                    published_at="2026-08-29",
+                    summary=(
+                        "Engineering commentary about coding agents, vulnerability disclosure, "
+                        "CVE delays, and open-source security operations. " * 6
+                    ),
+                    content_type="news",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "A maintainer describes an exploit attempt after a public patch discussion. "
+                "The article comments on disclosure operations and CVE coordination delays. "
+            )
+            * 30,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].story_type == "ai_practice"
+
+
 def test_shared_generic_launch_phrase_does_not_merge_distinct_products() -> None:
     catalog = load_source_catalog(MANIFEST)
     target_ids = {"rss_openai_news", "rss_google_ai"}

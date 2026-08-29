@@ -683,6 +683,12 @@ def _infer_story_type(
         marker in normalized for marker in business_markers
     ) >= 3:
         return "builder"
+    if (
+        story_type == "research"
+        and source.evidence_role != "RESEARCH_PRIMARY"
+        and item.content_type.casefold() not in {"paper", "research"}
+    ):
+        return "ai_practice"
     return story_type
 
 
