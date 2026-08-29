@@ -819,6 +819,57 @@ def test_public_slow_layer_reaches_top8_before_research_pool_fills_it() -> None:
     }
 
 
+def test_weekly_slow_layers_use_30_day_window_while_core_stays_fresh() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    target_text = {
+        "rss_air_street_press": (
+            "Venture investment capital market moat economics AI infrastructure thesis"
+        ),
+        "rss_works_in_progress": (
+            "Mental model assumption institution incentive progress innovation framework"
+        ),
+        "rss_simon_willison": (
+            "Agent harness benchmark evaluation security method results"
+        ),
+    }
+
+    def fetch_metadata(source, _content_date):
+        text = target_text.get(source.source_id)
+        if text is None:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id=f"{source.source_id}-slow-layer",
+                    title=text,
+                    canonical_url=f"https://example.com/{source.source_id}/slow-layer",
+                    published_at="2026-08-09",
+                    summary=(text + " with direct analysis and primary evidence. ") * 8,
+                    content_type="essay",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 29),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: "Verified public long-form article body. " * 40,
+        ),
+    )
+
+    source_ids = {candidate.source_id for candidate in result.candidates}
+    assert "rss_air_street_press" in source_ids
+    assert "rss_works_in_progress" in source_ids
+    assert "rss_simon_willison" not in source_ids
+
+
 def test_product_strategy_interview_is_classified_as_builder_story() -> None:
     catalog = load_source_catalog(MANIFEST)
 

@@ -373,6 +373,14 @@ def _freshness_score(value: str, content_date: date) -> int:
     return 0
 
 
+def _lookback_days(source: SourceDefinition) -> int:
+    if source.selection_role in {"VC_WEEKLY", "COGNITIVE_WEEKLY"}:
+        return 30
+    if source.selection_role in {"RESEARCH_WATCH", "BUILDER_DISCOVERY"}:
+        return 14
+    return 7
+
+
 def _metadata_score(
     source: SourceDefinition,
     item: MetadataItem,
@@ -453,7 +461,12 @@ def _ranked_metadata(
             if not url or url in used_urls:
                 continue
             published = _published_date(item.published_at)
-            if published is None or not content_date - timedelta(days=7) <= published <= content_date:
+            if (
+                published is None
+                or not content_date - timedelta(days=_lookback_days(source))
+                <= published
+                <= content_date
+            ):
                 continue
             score = _metadata_score(
                 source,
