@@ -560,10 +560,10 @@ def test_builder_brief_requires_one_concrete_action(tmp_path: Path) -> None:
 
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_ACTION_REQUIRED"
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.story_count == 0
     assert result.markdown_path is None
-    assert transport.generator_calls == 2
+    assert transport.generator_calls == 1
 
 
 def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(

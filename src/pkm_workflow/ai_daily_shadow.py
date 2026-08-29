@@ -374,11 +374,6 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "sample scope such as 4/5 or 4 of 5 tests; summarize the finding "
             "qualitatively instead."
         ),
-        "GENERATOR_ACTION_REQUIRED": (
-            "For every emitted Builder or cognition story, add exactly one concrete, "
-            "low-risk action claim grounded in approved context; use action_type "
-            "IMMEDIATE_ACTION and list it in action_claim_ids."
-        ),
     }
     return instructions[error_code]
 
@@ -783,7 +778,9 @@ def _validate_generator_draft(
             and not security_story
             and not story["action_claim_ids"]
         ):
-            raise ValueError("GENERATOR_ACTION_REQUIRED")
+            if diversity_evidence_id in story_evidence_ids:
+                diversity_evidence_id = None
+            continue
         if story_type in {"builder", "cognition"} and story["action_claim_ids"]:
             action_text = " ".join(
                 " ".join(
@@ -1370,7 +1367,6 @@ def run_ai_daily_shadow(
             "GENERATOR_DETAIL_DEPTH_REQUIRED",
             "GENERATOR_PERSONAL_IMPACT_REQUIRED",
             "GENERATOR_UNSCOPED_RATE",
-            "GENERATOR_ACTION_REQUIRED",
         }
         if str(error) in retryable_semantic_errors and budget.remaining >= 2:
             retry_candidates = _diversity_retry_candidates(
