@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:7d2313e3d7ebcb8610800f5a6b18696d86e85348ce39059b1ddd38a058c6a1b6"
+        "sha256:1d1026eeb2800b491eb875ca5d9ff13e9977a95b5c41667a27dc027fca103eed"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -196,7 +196,7 @@ def test_ai_daily_generator_contract_allows_abstention_and_at_most_five_stories(
         "claims",
     }
     assert story["additionalProperties"] is False
-    assert story["properties"]["claims"]["maxItems"] == 8
+    assert story["properties"]["claims"]["maxItems"] == 10
     assert (
         story["properties"]["claims"]["items"]["properties"]["statement"]["maxLength"]
         == 600

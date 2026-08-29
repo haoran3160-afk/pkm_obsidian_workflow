@@ -402,7 +402,7 @@ _MVP_STORY_SCHEMA = _closed_object(
         "claims": {
             "type": "array",
             "minItems": 3,
-            "maxItems": 8,
+            "maxItems": 10,
             "items": _MVP_CLAIM_SCHEMA,
         },
     },
