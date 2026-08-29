@@ -26,7 +26,6 @@ from .deepseek_provider import (
     mvp_generator_output_schema,
     mvp_prompt_schedule_hash,
     mvp_reviewer_output_schema,
-    reviewer_output_schema,
 )
 
 MVP_PIPELINE_TIMEOUT_SECONDS = 180.0
@@ -70,7 +69,7 @@ _D018_BASE: dict[str, object] = {
     "generator_prompt_hash": mvp_prompt_schedule_hash(ProviderRole.GENERATOR),
     "reviewer_prompt_hash": mvp_prompt_schedule_hash(ProviderRole.REVIEWER),
     "generator_schema_hash": _hash(json.loads(mvp_generator_output_schema())),
-    "reviewer_schema_hash": _hash(json.loads(reviewer_output_schema())),
+    "reviewer_schema_hash": _hash(json.loads(mvp_reviewer_output_schema())),
 }
 _D018_BINDING = {**_D018_BASE, "strategy_hash": _hash(_D018_BASE)}
 

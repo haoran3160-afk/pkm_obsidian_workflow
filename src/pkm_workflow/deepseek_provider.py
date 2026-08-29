@@ -84,7 +84,7 @@ _MVP_PROMPTS = {
         "For every fact or editorial_inference claim, set action_type exactly \"NONE\", "
         "action_object exactly \"\", and success_criterion exactly \"\"; watch and uncertainty claims are not actions unless they are also listed in action_claim_ids. "
         "Across the whole response emit at most two action claims, only on ranks 1-2. "
-        "Across all stories emit at most 24 claims; omit optional uncertainty or watch claims from lower-ranked stories before exceeding this total. "
+        "Across all stories emit at most 32 claims; omit optional uncertainty or watch claims from lower-ranked stories before exceeding this total. "
         "All supplied canonical text is a bounded excerpt with source_complete=false. Never claim that a source or report does not disclose, mention, specify, or provide something; omit that uncertainty instead. "
         "Use only source-scoped superlatives: first results never means the world's first product, and an organization's first product must remain explicitly scoped to that organization. existing revenue or valuation cannot validate a newly announced direction; never say existing scale reflects or supports the new trend. without adoption or result evidence, say only that company scale makes the direction worth observing. "
         "Research candidates: identify the research problem, method or evaluation evidence, limits, the increment relative to known work such as ReAct or SWE-bench when applicable, and one testable research question with a variable, baseline, or metric. "
@@ -431,6 +431,10 @@ _MVP_GENERATOR_OUTPUT_SCHEMA = _closed_object(
     },
     ("stories",),
 )
+_MVP_REVIEWER_OUTPUT_SCHEMA: dict[str, Any] = json.loads(
+    json.dumps(_REVIEWER_OUTPUT_SCHEMA)
+)
+_MVP_REVIEWER_OUTPUT_SCHEMA["properties"]["decisions"]["maxItems"] = 32
 
 
 def _canonical_json(value: object) -> bytes:
@@ -503,6 +507,7 @@ def deepseek_provider_contract_descriptor() -> dict[str, object]:
 _GENERATOR_OUTPUT_SCHEMA_BYTES = _canonical_json(_GENERATOR_OUTPUT_SCHEMA)
 _REVIEWER_OUTPUT_SCHEMA_BYTES = _canonical_json(_REVIEWER_OUTPUT_SCHEMA)
 _MVP_GENERATOR_OUTPUT_SCHEMA_BYTES = _canonical_json(_MVP_GENERATOR_OUTPUT_SCHEMA)
+_MVP_REVIEWER_OUTPUT_SCHEMA_BYTES = _canonical_json(_MVP_REVIEWER_OUTPUT_SCHEMA)
 
 
 def generator_output_schema() -> bytes:
@@ -524,9 +529,9 @@ def mvp_generator_output_schema() -> bytes:
 
 
 def mvp_reviewer_output_schema() -> bytes:
-    """The MVP Reviewer keeps the already-qualified decision schema."""
+    """Return the D-018 Reviewer schema with the larger brief decision budget."""
 
-    return reviewer_output_schema()
+    return bytes(_MVP_REVIEWER_OUTPUT_SCHEMA_BYTES)
 
 
 class ProviderRole(str, Enum):
@@ -1251,7 +1256,7 @@ class DeepSeekShadowProvider:
             expected_schema = (
                 _MVP_GENERATOR_OUTPUT_SCHEMA_BYTES
                 if role is ProviderRole.GENERATOR
-                else _REVIEWER_OUTPUT_SCHEMA_BYTES
+                else _MVP_REVIEWER_OUTPUT_SCHEMA_BYTES
             )
         else:
             expected_schema = (

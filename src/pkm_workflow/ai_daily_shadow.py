@@ -933,17 +933,17 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_REQUIRED_EXPOSURE_MISSING")
 
     total_claims = sum(len(story["claims"]) for story in action_bounded)
-    if total_claims <= 24:
+    if total_claims <= 32:
         return tuple(action_bounded)
     claim_bounded = [dict(story) for story in action_bounded]
     for story in reversed(claim_bounded):
-        if total_claims <= 24:
+        if total_claims <= 32:
             break
         optional_ids = [
             *story["uncertainty_claim_ids"],
             *story["watch_claim_ids"],
         ]
-        remove_count = min(len(optional_ids), total_claims - 24)
+        remove_count = min(len(optional_ids), total_claims - 32)
         removed_ids = set(optional_ids[-remove_count:]) if remove_count else set()
         story["uncertainty_claim_ids"] = [
             claim_id
@@ -957,7 +957,7 @@ def _validate_generator_draft(
             claim for claim in story["claims"] if claim["claim_id"] not in removed_ids
         ]
         total_claims -= len(removed_ids)
-    if total_claims > 24:
+    if total_claims > 32:
         raise ValueError("GENERATOR_TOTAL_CLAIM_LIMIT_EXCEEDED")
     return tuple(claim_bounded)
 
