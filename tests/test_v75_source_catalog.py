@@ -89,7 +89,7 @@ def test_manifest_inheritance_produces_effective_required_fields(tmp_path: Path)
         ],
         "policies": {
             "source_quality_scores": {"PRIMARY_OFFICIAL": 2000},
-            "max_admissible_candidates": 8,
+            "max_admissible_candidates": 10,
             "max_fulltext_attempts": 16,
             "daily_final_top_max": 3,
             "daily_action_max": 2,

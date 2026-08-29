@@ -148,7 +148,7 @@ def test_rolling_candidate_observation_can_expose_all_five_pillars() -> None:
     )
 
 
-def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
+def test_metadata_rank_refills_with_two_candidates_per_reader_lane() -> None:
     catalog = load_source_catalog(MANIFEST)
     core_ids = {source.source_id for source in catalog.operational_coverage_sources}
     attempts: list[str] = []
@@ -176,8 +176,8 @@ def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
         ),
     )
 
-    assert len(attempts) == 12
-    assert len(result.candidates) == 8
+    assert len(attempts) == 16
+    assert len(result.candidates) <= 10
     assert all(candidate.access_state is AccessState.FULL_FREE for candidate in result.candidates)
     assert all(candidate.fulltext_enriched for candidate in result.candidates)
     assert all(candidate.metadata_score >= 5000 for candidate in result.candidates)
@@ -185,8 +185,12 @@ def test_metadata_rank_refills_failed_fulltext_up_to_eight_candidates() -> None:
         sum(candidate.source_id == source_id for candidate in result.candidates)
         for source_id in {candidate.source_id for candidate in result.candidates}
     ) <= 2
+    assert max(
+        sum(candidate.story_type == story_type for candidate in result.candidates)
+        for story_type in {candidate.story_type for candidate in result.candidates}
+    ) <= 2
     candidate_audit = result.audit["candidate_audit"]
-    assert len(candidate_audit) == 8
+    assert len(candidate_audit) == len(result.candidates)
     assert all("summary" not in row and row["canonical_url"] for row in candidate_audit)
 
 
@@ -319,8 +323,8 @@ def test_verified_fulltext_upgrades_evidence_availability(tmp_path: Path) -> Non
         ),
     )
 
-    assert result.evidence_level is CoverageLevel.B
-    assert result.evidence_healthy_sources == 8
+    assert result.evidence_level is CoverageLevel.A
+    assert result.evidence_healthy_sources == 13
 
 
 def test_members_only_preview_never_becomes_claim_evidence() -> None:
@@ -810,7 +814,6 @@ def test_public_slow_layer_reaches_top8_before_research_pool_fills_it() -> None:
         ),
     )
 
-    assert len(result.candidates) == 8
     assert "rss_works_in_progress" in {
         candidate.source_id for candidate in result.candidates
     }

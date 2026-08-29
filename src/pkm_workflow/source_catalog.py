@@ -214,7 +214,7 @@ def load_source_catalog(path: Path) -> SourceCatalog:
     ):
         raise ValueError("INVALID_COVERAGE_THRESHOLDS")
     if (
-        policies.get("max_admissible_candidates") != 8
+        policies.get("max_admissible_candidates") != 10
         or policies.get("max_fulltext_attempts") != 16
         or policies.get("daily_final_top_max") != 3
         or policies.get("daily_action_max") != 2

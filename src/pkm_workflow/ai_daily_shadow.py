@@ -1297,8 +1297,8 @@ def run_ai_daily_shadow(
             error_code=no_story_error,
             audit=collected.audit,
         )
-    if len(collected.candidates) > 8:
-        raise ValueError("curation must provide no more than eight candidates")
+    if len(collected.candidates) > 10:
+        raise ValueError("curation must provide no more than ten candidates")
     context = _validate_user_context(ports.load_user_context())
     collected = replace(
         collected,

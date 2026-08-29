@@ -785,6 +785,7 @@ def collect_v75_candidates(
         for source in due_sources
         if source.selection_role == "CORE_DAILY" and source.coverage_member
     )
+    coverage_source_ids = {source.source_id for source in coverage_sources}
     healthy_sources = sum(
         observations[source.source_id].healthy for source in coverage_sources
     )
@@ -822,6 +823,7 @@ def collect_v75_candidates(
     max_attempts = _policy_int(policies, "max_fulltext_attempts")
     attempts = 0
     candidates: list[Candidate] = []
+    lane_candidates: dict[str, int] = {}
     source_attempts: dict[str, int] = {}
     source_candidates: dict[str, int] = {}
     exclusions: list[dict[str, str]] = []
@@ -842,7 +844,15 @@ def collect_v75_candidates(
             source_attempts[source_id] = 2
             continue
         if row.item.content_type == "paper" and len(row.item.summary.strip()) >= 200:
-            candidates.append(_candidate(row, row.item.summary, "PUBLIC_ABSTRACT"))
+            candidate = _candidate(row, row.item.summary, "PUBLIC_ABSTRACT")
+            if source_id in coverage_source_ids:
+                assessment_source_ids.add(source_id)
+            if lane_candidates.get(candidate.story_type, 0) >= 2:
+                continue
+            candidates.append(candidate)
+            lane_candidates[candidate.story_type] = (
+                lane_candidates.get(candidate.story_type, 0) + 1
+            )
             source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
             continue
         attempts += 1
@@ -880,21 +890,26 @@ def collect_v75_candidates(
                 }
             )
             continue
-        candidates.append(
-            _candidate(
-                row,
-                fulltext,
-                "CANONICAL_EXCERPT",
-                metadata_score=final_metadata_score,
-            )
+        if source_id in coverage_source_ids:
+            assessment_source_ids.add(source_id)
+        candidate = _candidate(
+            row,
+            fulltext,
+            "CANONICAL_EXCERPT",
+            metadata_score=final_metadata_score,
+        )
+        if lane_candidates.get(candidate.story_type, 0) >= 2:
+            continue
+        candidates.append(candidate)
+        lane_candidates[candidate.story_type] = (
+            lane_candidates.get(candidate.story_type, 0) + 1
         )
         source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
     candidates = _reapply_pillar_exposure(candidates)
     assessment_source_ids.update(
         candidate.source_id
         for candidate in candidates
-        if candidate.source_id
-        in {source.source_id for source in coverage_sources}
+        if candidate.source_id in coverage_source_ids
     )
     evidence_level = _coverage_level(
         len(assessment_source_ids),
