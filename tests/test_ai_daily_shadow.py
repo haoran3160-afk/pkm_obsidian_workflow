@@ -1288,8 +1288,10 @@ def test_builder_action_must_operationalize_the_story_takeaway(tmp_path: Path) -
     transport = _GenerateReviewTransport(
         reject_claim="",
         include_watch_and_action=True,
-        importance_statement="私人市场流动性错配会影响 AI 创业融资判断。",
-        action_statement="本周阅读一份非本地报纸并记录 AI 报道。",
+        importance_statement=(
+            "私人市场依赖信息不对称，流动性错配会影响 AI 创业融资判断。"
+        ),
+        action_statement="本周阅读一份非本地报纸并记录 AI 报道，避免信息茧房。",
         action_object="一份非本地报纸",
         action_success_criterion="记录三条 AI 报道",
     )
