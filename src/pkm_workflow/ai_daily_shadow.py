@@ -694,6 +694,26 @@ def _validate_generator_draft(
         }
         if len(story_evidence_ids) != 1:
             raise ValueError("GENERATOR_MULTIPLE_CANDIDATES_PER_STORY")
+        security_evidence = "\n".join(
+            f"{evidence[evidence_id].title}\n{evidence[evidence_id].summary}"
+            for evidence_id in story_evidence_ids
+        )
+        if re.search(
+            r"\b(?:vulnerabilit(?:y|ies)|exploit|malware|path traversal|"
+            r"prompt injection|cve-\d+)\b|漏洞|恶意代码|路径遍历|提示注入",
+            security_evidence,
+            re.IGNORECASE,
+        ):
+            removed_security_actions = set(story["action_claim_ids"])
+            if removed_security_actions:
+                projected = dict(story)
+                projected["action_claim_ids"] = []
+                projected["claims"] = [
+                    claim
+                    for claim in story["claims"]
+                    if claim["claim_id"] not in removed_security_actions
+                ]
+                story = projected
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
         unsafe_absence_ids.update(

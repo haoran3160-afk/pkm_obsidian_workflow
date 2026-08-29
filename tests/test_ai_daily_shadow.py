@@ -960,6 +960,52 @@ def test_reviewer_rejecting_optional_research_action_keeps_research_story(
     assert "本周用一个浏览任务" not in result.markdown_path.read_text(encoding="utf-8")
 
 
+def test_security_story_never_publishes_an_active_exploit_experiment(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Security Researcher",
+        title="Coding agent turns a vulnerability hint into an exploit",
+        link="https://example.com/security-research",
+        published="2026-08-29",
+        summary=(
+            "A coding agent found a path traversal vulnerability and generated exploit "
+            "code after reading a public patch discussion."
+        ),
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    transport = _GenerateReviewTransport(
+        reject_claim="",
+        include_watch_and_action=True,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "**可做的复现或实验**" not in markdown
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert "action-claim" not in report["audit"]["accepted_claim_ids"]
+
+
 def test_one_story_cannot_mix_multiple_candidate_evidence_packages(
     tmp_path: Path,
 ) -> None:
