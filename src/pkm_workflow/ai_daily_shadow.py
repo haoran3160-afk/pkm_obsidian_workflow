@@ -389,7 +389,7 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "Regenerate five stories when the full candidate set spans all three reader "
             "task groups; otherwise regenerate at least four. Ranks 1-2 "
             "are deep reads and ranks 3-5 are concise layer radar items. Keep total "
-            "claims at or below 24."
+            "claims at or below 32."
         ),
     }
     return instructions[error_code]
@@ -1053,8 +1053,6 @@ def _accepted_stories(
             continue
         accepted.append(projected)
     accepted.sort(key=lambda story: story["rank"])
-    for index, story in enumerate(accepted, start=1):
-        story["rank"] = index
     return tuple(accepted)
 
 
@@ -1149,7 +1147,7 @@ def _render_markdown(
     deep_heading_written = False
     radar_heading_written = False
     accepted_actions: list[str] = []
-    for story in stories:
+    for display_index, story in enumerate(stories, start=1):
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
         title = claims[story["title_claim_id"]]["statement"]
         story_evidence_ids = {
@@ -1179,7 +1177,7 @@ def _render_markdown(
         if not is_deep_read and not radar_heading_written:
             lines.extend(("", "## 分层情报雷达"))
             radar_heading_written = True
-        lines.extend(("", f"### {story['rank']} · {layer_label}｜{title}", ""))
+        lines.extend(("", f"### {display_index} · {layer_label}｜{title}", ""))
         context = _brief_sentences(
             _claim_texts(story, "event_claim_ids")
             + _claim_texts(story, "mechanism_claim_ids"),
