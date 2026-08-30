@@ -7,6 +7,7 @@ import json
 import sys
 from collections.abc import Sequence
 
+from .ai_daily_production import run_ai_daily_production
 from .runtime_policy import (
     ExecutionResult,
     Mode,
@@ -22,6 +23,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--workflow", choices=tuple(item.value for item in Workflow), required=True)
     parser.add_argument("--mode", choices=tuple(item.value for item in Mode), required=True)
     parser.add_argument("--due-only", action="store_true")
+    parser.add_argument("--confirm-vault-write", action="store_true")
     return parser
 
 
@@ -37,6 +39,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         mode=Mode(args.mode),
         due_only=args.due_only,
     )
+    if args.confirm_vault_write:
+        if request.workflow is not Workflow.AI or request.mode is not Mode.PRODUCTION:
+            parser.error("--confirm-vault-write requires --workflow ai --mode production")
+        production = run_ai_daily_production()
+        _emit(
+            {
+                "schema_version": "7.5",
+                "engine": "ai-daily-production",
+                "workflow": "ai",
+                "mode": "production",
+                **production.payload(),
+            }
+        )
+        return production.exit_code
     try:
         result = execute_workflow(request, RuntimeEnvironment.production())
     except Exception:

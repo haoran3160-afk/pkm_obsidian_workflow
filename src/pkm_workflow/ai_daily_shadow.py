@@ -237,7 +237,7 @@ def _model_safe_summary(value: str) -> str:
 
 def _model_candidate_payload(candidate: Candidate) -> dict[str, object]:
     payload = candidate.model_payload()
-    payload["summary"] = _model_safe_summary(candidate.summary)
+    payload["summary"] = _model_safe_summary(candidate.summary)[:6000]
     return payload
 
 
