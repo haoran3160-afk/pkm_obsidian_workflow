@@ -134,6 +134,7 @@ def _collect_v75_sources(content_date: date) -> CollectionResult:
     root = _repository_root()
     used_urls = daily_curation.load_used_urls(_existing_state_path(root, "used_articles.json"))
     runtime_runs = Path(r"D:\personal\obsidian_workflow-runtime\scratch\runs")
+    successful_by_date: dict[date, tuple[str, set[str]]] = {}
     if runtime_runs.is_dir():
         for report_path in runtime_runs.glob("*/run-report.json"):
             try:
@@ -143,14 +144,39 @@ def _collect_v75_sources(content_date: date) -> CollectionResult:
                 continue
             if not content_date - timedelta(days=7) <= report_date < content_date:
                 continue
-            if report.get("markdown_expected") is not True:
+            if (
+                report.get("schema") != "pkm.ai-daily-shadow.run.v1"
+                or report.get("status") != "READY_FOR_SHADOW_LINK"
+                or report.get("markdown_expected") is not True
+                or not (
+                    report_path.parent
+                    / f"AI-Daily-{report_date.isoformat()}-shadow.md"
+                ).is_file()
+            ):
                 continue
             audit = report.get("audit")
             if not isinstance(audit, dict):
                 continue
             selected = audit.get("selected_urls")
-            if isinstance(selected, list):
-                used_urls.update(url for url in selected if isinstance(url, str))
+            candidate_audit = audit.get("candidate_audit")
+            if not isinstance(selected, list) or not isinstance(candidate_audit, list):
+                continue
+            selected_urls = {url for url in selected if isinstance(url, str)}
+            final_urls = {
+                str(row["canonical_url"])
+                for row in candidate_audit
+                if isinstance(row, dict)
+                and row.get("disposition") == "FINAL_SELECTED"
+                and isinstance(row.get("canonical_url"), str)
+            }
+            if not selected_urls or selected_urls != final_urls:
+                continue
+            created_at = str(report.get("created_at", ""))
+            previous = successful_by_date.get(report_date)
+            if previous is None or created_at > previous[0]:
+                successful_by_date[report_date] = (created_at, selected_urls)
+    for _, selected_urls in successful_by_date.values():
+        used_urls.update(selected_urls)
     catalog = load_approved_source_catalog()
     return collect_v75_candidates(
         content_date,
@@ -386,8 +412,8 @@ def _reader_task_groups(candidates: Mapping[str, Candidate]) -> set[str]:
 def _semantic_correction_instruction(error_code: str) -> str:
     instructions = {
         "GENERATOR_REQUIRED_EXPOSURE_MISSING": (
-            "If emitting two or more stories, include the candidate named by "
-            "diversity_evidence_id as exactly one story."
+            "Regenerate from the full candidate set and select stories spanning at least "
+            "two reader-task groups: research, build, or strategy."
         ),
         "GENERATOR_DETAIL_DEPTH_REQUIRED": (
             "For every emitted story, create exactly two distinct evidence-backed "
