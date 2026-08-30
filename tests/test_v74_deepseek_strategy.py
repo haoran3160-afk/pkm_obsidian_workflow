@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:5253b2cc51e4f284ae31ee66a752767f81da63080f26a4720a4393ea47d5303e"
+        "sha256:5339afa24b7611706635c9e9b029490cea2512fd13aca001b5e5f5cf345753a7"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -125,6 +125,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert strategy.generator_schema() != generator_output_schema()
     assert "All non-action claims set action_type to NONE" in MVP_GENERATOR_PROMPT
     assert "never fill a quota" in MVP_GENERATOR_PROMPT
+    assert "When five or more candidates are supplied, produce four or five stories" in MVP_GENERATOR_PROMPT
     assert "Across the whole brief emit at most one action" in MVP_GENERATOR_PROMPT
     assert "Only projects, prior_knowledge, or a supplied knowledge_anchors path" in MVP_GENERATOR_PROMPT
     assert "Omit impact when that stronger context is absent" in MVP_GENERATOR_PROMPT
