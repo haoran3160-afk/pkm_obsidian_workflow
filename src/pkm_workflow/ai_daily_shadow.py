@@ -339,7 +339,7 @@ def _evidence_segments(value: str) -> list[str]:
         pieces = re.split(r"(?<=[。！？])\s*|(?<=[.!?])\s+", line)
         for raw_piece in pieces:
             piece = raw_piece.strip()
-            while len(piece) > 800:
+            while len(piece) > 600:
                 cut = piece.rfind(" ", 0, 600)
                 if cut < 300:
                     cut = 600
@@ -371,13 +371,20 @@ def _section_aware_excerpt(
         heading = int(len(segment) <= 80 and term_hits > 0)
         return (term_hits * 6 + context_hits * 2 + concrete + heading * 3, -index, len(segment))
 
-    selected: set[int] = set(range(min(2, len(segments))))
+    selected: set[int] = set()
+    lead_budget = max_chars // 3
+    used = 0
+    for index in range(min(2, len(segments))):
+        segment_cost = len(segments[index]) + 1
+        if used + segment_cost > lead_budget:
+            continue
+        selected.add(index)
+        used += segment_cost
     ranked = sorted(
         range(len(segments)),
         key=lambda index: score(index, segments[index]),
         reverse=True,
     )
-    used = sum(len(segments[index]) + 1 for index in selected)
     for index in ranked:
         if index in selected:
             continue
@@ -872,7 +879,7 @@ def _strip_stock_editorial_leadin(value: str) -> str:
 
 def _contains_reader_directed_copy(value: str) -> bool:
     return re.search(
-        r"(?:对你|与你|你的|你当前|用户当前)|\byour\b|\bfor you\b",
+        r"[你您]|\byou\b|\byour(?:s|self)?\b",
         value,
         re.IGNORECASE,
     ) is not None
@@ -891,15 +898,26 @@ def _needs_builder_self_report_attribution(candidate: Candidate, statement: str)
         r"删除|移除|屏蔽|封禁|诽谤|操纵|造假)",
         lowered,
     )
-    attributed = _has_builder_self_report_attribution(lowered)
+    attributed = _has_builder_self_report_attribution(candidate, lowered)
     return allegation is not None and not attributed
 
 
-def _has_builder_self_report_attribution(statement: str) -> bool:
+def _has_builder_self_report_attribution(
+    candidate: Candidate, statement: str
+) -> bool:
+    source = candidate.source.strip()
+    names = {source, *(part for part in source.split() if len(part) >= 3)}
+    names.discard("")
+    if not names:
+        return False
+    name_pattern = "(?:" + "|".join(re.escape(name) for name in sorted(names)) + ")"
     return re.search(
-        r"(?:据.{0,30}(?:自述|称|表示|认为)|(?:自述|声称|表示|认为)|"
-        r"according to|\bclaims?\b|\bsays?\b|\bwrites?\b)",
-        statement.casefold(),
+        rf"(?:据\s*{name_pattern}.{{0,16}}(?:自述|称|表示|认为)|"
+        rf"{name_pattern}.{{0,12}}(?:自述|声称|表示|认为|称)|"
+        rf"according to\s+{name_pattern}|"
+        rf"{name_pattern}\s+(?:claims?|says?|writes?))",
+        statement,
+        re.IGNORECASE,
     ) is not None
 
 
@@ -1206,8 +1224,11 @@ def _validate_generator_draft(
                 story_candidate, claim["statement"]
             ):
                 claim = dict(claim)
+                unattributed = re.sub(
+                    r"^据称[，,]?\s*", "", claim["statement"]
+                )
                 claim["statement"] = (
-                    f"据 {story_candidate.source} 自述，{claim['statement']}"
+                    f"据 {story_candidate.source} 自述，{unattributed}"
                 )
             normalized_statement = _normalize_builder_attribution(
                 story_candidate, claim["statement"]

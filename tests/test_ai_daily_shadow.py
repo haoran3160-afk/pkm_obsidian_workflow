@@ -498,6 +498,49 @@ def test_generator_sees_evidence_rich_candidates_before_thin_high_score_quotes(
     assert transport.generator_candidate_ids[0][0] == "evidence-1"
 
 
+def test_evidence_packet_reserves_space_for_late_results_after_long_intro(
+    tmp_path: Path,
+) -> None:
+    result_prefix = (
+        "Results and limitations show the benchmark failure mode and measured outcome."
+    )
+    late_result = result_prefix + ("C" * (800 - len(result_prefix)))
+    summary = f"{'A' * 800}\n{'B' * 800}\n{late_result}"
+    candidates = tuple(
+        Candidate(
+            evidence_id=f"evidence-{index + 1}",
+            source=f"Source {index + 1}",
+            title=f"Long report {index + 1}",
+            link=f"https://example.com/long-report-{index + 1}",
+            published="2026-08-29",
+            summary=summary,
+            content_type="research",
+            fulltext_enriched=True,
+            story_type="research",
+        )
+        for index in range(10)
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=candidates,
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result_prefix in transport.generator_candidate_summaries[0][0]
+
+
 def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
@@ -1341,7 +1384,7 @@ def test_reader_directed_copy_cannot_bypass_the_personalization_role(
             credential_reader=lambda: bytearray(b"test-only-secret"),
             transport=_GenerateReviewTransport(
                 reject_claim="",
-                importance_statement="这会直接改善你的当前项目。",
+                importance_statement="这能帮助你完成现在负责的项目。",
                 uncertainty_statement="该结果只覆盖来源描述的任务范围。",
             ),
         ),
@@ -1433,7 +1476,7 @@ def test_first_party_builder_allegation_is_rendered_as_attributed_self_report(
             transport=_GenerateReviewTransport(
                 reject_claim="",
                 title_statement="预订平台删除负面评价，Pieter 推出聚合评分产品。",
-                importance_statement="预订平台删除差评给独立产品留下了机会。",
+                importance_statement="据称，预订平台删除差评给独立产品留下了机会。",
                 uncertainty_statement="该产品目前只有作者提供的使用案例。",
             ),
         ),
