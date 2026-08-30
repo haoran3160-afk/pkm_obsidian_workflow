@@ -641,6 +641,8 @@ def _infer_story_type(
         "ablation",
         "method",
         "model results",
+        "results",
+        "accuracy",
         "研究",
         "论文",
         "基准",

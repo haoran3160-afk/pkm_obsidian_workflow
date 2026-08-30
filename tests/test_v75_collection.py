@@ -704,6 +704,51 @@ def test_research_blog_rss_is_not_mislabeled_as_a_paper_abstract(monkeypatch) ->
     assert observed == ["news"]
 
 
+def test_official_blog_with_benchmark_method_and_results_is_research() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_huggingface_blog":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="quantization-aware-healing",
+                    title=(
+                        "Quantization-Aware Healing trains a 4-bit model against "
+                        "a full-precision baseline"
+                    ),
+                    canonical_url="https://example.com/quantization-aware-healing",
+                    published_at="2026-08-28",
+                    summary="A technical model-compression report.",
+                    content_type="news",
+                ),
+            ),
+        )
+
+    body = (
+        "The authors define the training method and compare it with a baseline. "
+        "Benchmark results report accuracy and performance across several tasks. "
+        "The training comparison identifies which stage restores model quality. "
+    ) * 20
+    result = collect_v75_candidates(
+        date(2026, 8, 30),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: body,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].story_type == "research"
+
+
 def test_mixed_freemium_source_stays_discovery_only_without_public_proof_adapter() -> None:
     catalog = load_source_catalog(MANIFEST)
 

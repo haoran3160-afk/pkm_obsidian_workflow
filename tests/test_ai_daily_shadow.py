@@ -746,8 +746,8 @@ def test_schema_repair_does_not_trigger_an_extra_semantic_generation(
 
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_DETAIL_DEPTH_REQUIRED"
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.error_code is None
     assert result.request_count == 2
     assert result.markdown_path is None
     assert transport.generator_calls == 1
@@ -889,7 +889,9 @@ def test_percentage_without_sample_scope_never_reaches_reviewer_or_markdown(
     assert transport.generator_calls == 1
 
 
-def test_v75_story_requires_two_distinct_evidence_details(tmp_path: Path) -> None:
+def test_v75_story_without_two_distinct_details_is_dropped_not_repaired(
+    tmp_path: Path,
+) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Research Lab",
@@ -920,8 +922,9 @@ def test_v75_story_requires_two_distinct_evidence_details(tmp_path: Path) -> Non
 
     result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_DETAIL_DEPTH_REQUIRED"
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.error_code is None
+    assert result.story_count == 0
     assert result.markdown_path is None
 
 
@@ -1034,22 +1037,67 @@ def test_public_markdown_uses_natural_editorial_copy_without_operational_section
 
 
 @pytest.mark.parametrize(
-    ("claim_id", "include_watch_and_action"),
+    "claim_id",
     [
-        ("title-claim", False),
-        ("event-claim", False),
-        ("mechanism-claim", False),
-        ("importance-claim", False),
-        ("impact-claim", False),
-        ("uncertainty-claim", False),
-        ("watch-claim", True),
-        ("action-claim", True),
+        "title-claim",
+        "event-claim",
+        "mechanism-claim",
+        "importance-claim",
+        "impact-claim",
     ],
 )
-def test_any_non_accept_claim_drops_the_whole_story(
+def test_any_non_accept_material_claim_drops_the_whole_story(
+    tmp_path: Path,
+    claim_id: str,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Agent workflow evaluation",
+        link="https://example.com/agent-workflow",
+        published="2026-08-29",
+        summary="A complete workflow evaluation with concrete implementation detail. " * 30,
+        content_type="engineering",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim=claim_id,
+                context_ref_override="prior_knowledge[1].topic",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
+@pytest.mark.parametrize(
+    ("claim_id", "include_watch_and_action", "rejected_text"),
+    [
+        ("uncertainty-claim", False, "所有网站都已完全兼容"),
+        ("watch-claim", True, "观察后续是否公布跨站点成功率"),
+        ("action-claim", True, "本周用一个浏览任务对比复用前后的脚本量"),
+    ],
+)
+def test_non_accept_optional_claim_is_omitted_without_dropping_story(
     tmp_path: Path,
     claim_id: str,
     include_watch_and_action: bool,
+    rejected_text: str,
 ) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
@@ -1083,8 +1131,10 @@ def test_any_non_accept_claim_drops_the_whole_story(
 
     result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
 
-    assert result.story_count == 0
-    assert result.markdown_path is None
+    assert result.status == "PUBLISHED"
+    assert result.story_count == 1
+    assert result.markdown_path is not None
+    assert rejected_text not in result.markdown_path.read_text(encoding="utf-8")
 
 
 def test_interest_only_context_does_not_render_a_personal_connection(
@@ -1154,7 +1204,7 @@ def test_stock_editorial_leadin_is_removed_before_review_and_render(
             transport=_GenerateReviewTransport(
                 reject_claim="",
                 importance_statement=(
-                    "该案例展示了验证系统会改变 coding agent 的返工成本。"
+                    "该观察表明：验证系统会改变 coding agent 的返工成本。"
                 ),
                 uncertainty_statement="该结果只覆盖来源描述的任务范围。",
             ),
@@ -1167,7 +1217,9 @@ def test_stock_editorial_leadin_is_removed_before_review_and_render(
 
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "该案例展示" not in markdown
+    assert "该观察表明" not in markdown
+    reader_body = markdown.split("# AI Daily", 1)[1].replace("https://", "")
+    assert "：" not in reader_body
     assert "验证系统会改变 coding agent 的返工成本" in markdown
 
 
@@ -1201,7 +1253,7 @@ def test_first_party_builder_allegation_is_rendered_as_attributed_self_report(
             transport=_GenerateReviewTransport(
                 reject_claim="",
                 title_statement="预订平台删除负面评价，Pieter 推出聚合评分产品。",
-                importance_statement="平台审核偏差给独立产品留下了机会。",
+                importance_statement="预订平台删除差评给独立产品留下了机会。",
                 uncertainty_statement="该产品目前只有作者提供的使用案例。",
             ),
         ),
@@ -1214,6 +1266,7 @@ def test_first_party_builder_allegation_is_rendered_as_attributed_self_report(
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "据 Pieter Levels 自述" in markdown
+    assert markdown.count("据 Pieter Levels 自述") == 1
 
 
 def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
@@ -1427,7 +1480,7 @@ def test_no_news_requires_both_operational_and_evidence_coverage_a(
     assert transport.calls == 0
 
 
-def test_rejected_optional_claim_drops_the_story_without_partial_projection(
+def test_rejected_optional_claim_is_omitted_from_an_accepted_story(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -1460,9 +1513,12 @@ def test_rejected_optional_claim_drops_the_story_without_partial_projection(
 
     result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
 
-    assert result.status == "NO_SIGNIFICANT_NEWS"
-    assert result.markdown_path is None
-    assert result.story_count == 0
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    assert result.story_count == 1
+    assert "所有网站都已完全兼容" not in result.markdown_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_rejected_event_claim_drops_the_entire_story(tmp_path: Path) -> None:
@@ -1542,7 +1598,7 @@ def test_reviewer_rejecting_one_required_detail_drops_story(tmp_path: Path) -> N
     assert result.markdown_path is None
 
 
-def test_reviewer_rejecting_research_action_drops_the_story(
+def test_reviewer_rejecting_research_action_keeps_story_without_action(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -1575,11 +1631,14 @@ def test_reviewer_rejecting_research_action_drops_the_story(
 
     result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
 
-    assert result.story_count == 0
-    assert result.markdown_path is None
+    assert result.story_count == 1
+    assert result.markdown_path is not None
+    assert "本周用一个浏览任务" not in result.markdown_path.read_text(
+        encoding="utf-8"
+    )
 
 
-def test_reviewer_rejecting_required_builder_action_drops_builder_story(
+def test_reviewer_rejecting_builder_action_keeps_story_without_action(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -1613,8 +1672,11 @@ def test_reviewer_rejecting_required_builder_action_drops_builder_story(
 
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
-    assert result.story_count == 0
-    assert result.markdown_path is None
+    assert result.story_count == 1
+    assert result.markdown_path is not None
+    assert "本周用一个浏览任务" not in result.markdown_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_builder_action_must_operationalize_the_story_takeaway(tmp_path: Path) -> None:
@@ -1910,6 +1972,50 @@ def test_bounded_excerpt_cannot_support_absence_claim(tmp_path: Path) -> None:
     assert "技术报告未明确漏洞利用细节" not in result.markdown_path.read_text(
         encoding="utf-8"
     )
+
+
+def test_core_absence_claim_drops_the_story_without_invalidating_the_digest(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Example AI security incident report",
+        link="https://example.com/security-report",
+        published="2026-08-26",
+        summary="A bounded canonical excerpt describing a security incident.",
+        content_type="engineering",
+        fulltext_enriched=True,
+        source_complete=False,
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                importance_statement="技术报告没有披露漏洞利用细节。",
+                uncertainty_statement="该结果只覆盖来源描述的任务范围。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
+
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.error_code is None
+    assert result.story_count == 0
+    assert result.markdown_path is None
 
 
 @pytest.mark.parametrize(

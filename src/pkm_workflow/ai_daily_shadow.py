@@ -824,7 +824,7 @@ def _strong_personal_context_ref(value: str) -> bool:
 
 def _strip_stock_editorial_leadin(value: str) -> str:
     stripped = re.sub(
-        r"^(?:该|这个)(?:案例|项目|观点|演讲)"
+        r"^(?:该|这个)(?:案例|项目|观点|演讲|观察)"
         r"(?:展示|显示|表明|说明|反映)(?:了)?[，,:：]?\s*",
         "",
         value.strip(),
@@ -834,7 +834,12 @@ def _strip_stock_editorial_leadin(value: str) -> str:
         "",
         stripped,
     )
-    return stripped or value.strip()
+    stripped = re.sub(
+        r"^(?:值得(?:注意|关注|观察)|需要指出)的是[，,:：]?\s*",
+        "",
+        stripped,
+    )
+    return (stripped or value.strip()).replace("：", "，")
 
 
 def _needs_builder_self_report_attribution(candidate: Candidate, statement: str) -> bool:
@@ -850,12 +855,16 @@ def _needs_builder_self_report_attribution(candidate: Candidate, statement: str)
         r"删除|移除|屏蔽|封禁|诽谤|操纵|造假)",
         lowered,
     )
-    attributed = re.search(
+    attributed = _has_builder_self_report_attribution(lowered)
+    return allegation is not None and not attributed
+
+
+def _has_builder_self_report_attribution(statement: str) -> bool:
+    return re.search(
         r"(?:据.{0,30}(?:自述|称|表示|认为)|(?:自述|声称|表示|认为)|"
         r"according to|\bclaims?\b|\bsays?\b|\bwrites?\b)",
-        lowered,
-    )
-    return allegation is not None and attributed is None
+        statement.casefold(),
+    ) is not None
 
 
 def _validate_generator_draft(
@@ -1052,7 +1061,13 @@ def _validate_generator_draft(
         is_deep_read = rank <= 2
         required_mechanisms = 2 if is_deep_read else 1
         if is_v75 and len(story["mechanism_claim_ids"]) < required_mechanisms:
-            raise ValueError("GENERATOR_DETAIL_DEPTH_REQUIRED")
+            if diversity_evidence_id in {
+                evidence_id
+                for claim in story["claims"]
+                for evidence_id in claim["evidence_ids"]
+            }:
+                diversity_evidence_id = None
+            continue
         if any(
             local_claims[claim_id]["claim_kind"] != "editorial_inference"
             or not any(
@@ -1083,14 +1098,18 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_MULTIPLE_CANDIDATES_PER_STORY")
         story_candidate = evidence[next(iter(story_evidence_ids))]
         attributed_claims: list[dict[str, Any]] = []
+        self_report_attributed = False
         for claim in story["claims"]:
-            if _needs_builder_self_report_attribution(
+            if _has_builder_self_report_attribution(claim["statement"]):
+                self_report_attributed = True
+            elif not self_report_attributed and _needs_builder_self_report_attribution(
                 story_candidate, claim["statement"]
             ):
                 claim = dict(claim)
                 claim["statement"] = (
                     f"据 {story_candidate.source} 自述，{claim['statement']}"
                 )
+                self_report_attributed = True
             attributed_claims.append(claim)
         story = dict(story)
         story["claims"] = attributed_claims
@@ -1160,7 +1179,9 @@ def _validate_generator_draft(
             *story["impact_claim_ids"],
         }
         if unsafe_absence_ids & core_claim_ids:
-            raise ValueError("GENERATOR_CORE_ABSENCE_CLAIM_REQUIRES_COMPLETE_EVIDENCE")
+            if diversity_evidence_id in story_evidence_ids:
+                diversity_evidence_id = None
+            continue
         if unsafe_absence_ids:
             projected = dict(story)
             projected["claims"] = [
@@ -1287,12 +1308,22 @@ def _accepted_stories(
     }
     accepted: list[dict[str, Any]] = []
     for story in stories:
+        material_claim_ids = {
+            story["title_claim_id"],
+            *story["event_claim_ids"],
+            *story["mechanism_claim_ids"],
+            *story["importance_claim_ids"],
+            *story["impact_claim_ids"],
+        }
         if any(
-            verdicts.get(claim["claim_id"]) != "ACCEPT"
-            for claim in story["claims"]
+            verdicts.get(claim_id) != "ACCEPT" for claim_id in material_claim_ids
         ):
             continue
-        kept_claims = list(story["claims"])
+        kept_claims = [
+            claim
+            for claim in story["claims"]
+            if verdicts.get(claim["claim_id"]) == "ACCEPT"
+        ]
         kept_ids = {claim["claim_id"] for claim in kept_claims}
         projected = dict(story)
         projected["claims"] = kept_claims
