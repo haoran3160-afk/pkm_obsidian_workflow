@@ -134,7 +134,7 @@ def _collect_v75_sources(content_date: date) -> CollectionResult:
     root = _repository_root()
     used_urls = daily_curation.load_used_urls(_existing_state_path(root, "used_articles.json"))
     runtime_runs = Path(r"D:\personal\obsidian_workflow-runtime\scratch\runs")
-    successful_by_date: dict[date, tuple[str, set[str]]] = {}
+    successful_by_date: dict[date, tuple[tuple[int, str], set[str]]] = {}
     if runtime_runs.is_dir():
         for report_path in runtime_runs.glob("*/run-report.json"):
             try:
@@ -172,9 +172,13 @@ def _collect_v75_sources(content_date: date) -> CollectionResult:
             if not selected_urls or selected_urls != final_urls:
                 continue
             created_at = str(report.get("created_at", ""))
+            story_count = report.get("story_count")
+            if type(story_count) is not int or story_count <= 0:
+                continue
+            selection_key = (story_count, created_at)
             previous = successful_by_date.get(report_date)
-            if previous is None or created_at > previous[0]:
-                successful_by_date[report_date] = (created_at, selected_urls)
+            if previous is None or selection_key > previous[0]:
+                successful_by_date[report_date] = (selection_key, selected_urls)
     for _, selected_urls in successful_by_date.values():
         used_urls.update(selected_urls)
     catalog = load_approved_source_catalog()
