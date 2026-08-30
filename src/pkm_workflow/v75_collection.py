@@ -711,7 +711,10 @@ def _candidate(
         title=item.title.strip(),
         link=item.canonical_url.strip(),
         published=item.published_at.strip(),
-        summary=evidence_text.strip()[:12_000],
+        # Keep the bounded access-probe text in memory so the model packet can select
+        # results, limitations, and conclusions that appear after a long introduction.
+        # The downstream packet builder still enforces the much smaller model budget.
+        summary=evidence_text.strip()[:100_000],
         content_type=item.content_type.strip(),
         fulltext_enriched=evidence_kind == "CANONICAL_EXCERPT",
         source_id=source.source_id,

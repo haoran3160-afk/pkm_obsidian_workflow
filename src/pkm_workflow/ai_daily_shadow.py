@@ -235,10 +235,189 @@ def _model_safe_summary(value: str) -> str:
     return _RATE_PATTERN.sub("reported rate", value)
 
 
-def _model_candidate_payload(candidate: Candidate) -> dict[str, object]:
+_GENERATOR_EVIDENCE_CHARS = 24_000
+_CANDIDATE_EVIDENCE_MAX_CHARS = 4_000
+_SECTION_TERMS = {
+    "research": (
+        "method",
+        "experiment",
+        "benchmark",
+        "evaluation",
+        "result",
+        "ablation",
+        "baseline",
+        "limitation",
+        "dataset",
+        "方法",
+        "实验",
+        "评测",
+        "结果",
+        "限制",
+    ),
+    "ai_practice": (
+        "failure",
+        "problem",
+        "debug",
+        "test",
+        "evaluation",
+        "context",
+        "token",
+        "latency",
+        "cost",
+        "codebase",
+        "file",
+        "directory",
+        "structure",
+        "limitation",
+        "claude.md",
+        "失败",
+        "测试",
+        "上下文",
+        "成本",
+        "限制",
+    ),
+    "builder": (
+        "problem",
+        "user",
+        "customer",
+        "launch",
+        "revenue",
+        "distribution",
+        "feedback",
+        "cost",
+        "failed",
+        "limitation",
+        "用户",
+        "收入",
+        "分发",
+        "反馈",
+        "成本",
+        "失败",
+    ),
+    "vc": (
+        "investment",
+        "market",
+        "margin",
+        "economics",
+        "moat",
+        "distribution",
+        "revenue",
+        "cost",
+        "risk",
+        "投资",
+        "市场",
+        "护城河",
+        "收入",
+        "成本",
+        "风险",
+    ),
+    "cognition": (
+        "assumption",
+        "argument",
+        "incentive",
+        "framework",
+        "counter",
+        "limitation",
+        "decision",
+        "假设",
+        "论证",
+        "激励",
+        "框架",
+        "限制",
+        "决策",
+    ),
+}
+
+
+def _evidence_segments(value: str) -> list[str]:
+    segments: list[str] = []
+    for raw_line in value.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+        pieces = re.split(r"(?<=[.!?。！？])\s+", line)
+        segments.extend(piece.strip() for piece in pieces if piece.strip())
+    if not segments and value.strip():
+        segments = [value.strip()]
+    return segments
+
+
+def _section_aware_excerpt(
+    candidate: Candidate,
+    *,
+    max_chars: int,
+    context_terms: set[str],
+) -> str:
+    segments = _evidence_segments(candidate.summary)
+    if not segments:
+        return ""
+    story_terms = _SECTION_TERMS[candidate.story_type]
+
+    def score(index: int, segment: str) -> tuple[int, int, int]:
+        lowered = segment.casefold()
+        term_hits = sum(term in lowered for term in story_terms)
+        context_hits = sum(term in lowered for term in context_terms)
+        concrete = int(any(char.isdigit() for char in segment))
+        heading = int(len(segment) <= 80 and term_hits > 0)
+        return (term_hits * 6 + context_hits * 2 + concrete + heading * 3, -index, len(segment))
+
+    selected: set[int] = set(range(min(2, len(segments))))
+    ranked = sorted(
+        range(len(segments)),
+        key=lambda index: score(index, segments[index]),
+        reverse=True,
+    )
+    used = sum(len(segments[index]) + 1 for index in selected)
+    for index in ranked:
+        if index in selected:
+            continue
+        segment = segments[index]
+        if used + len(segment) + 1 > max_chars:
+            continue
+        selected.add(index)
+        used += len(segment) + 1
+    ordered = [segments[index] for index in sorted(selected)]
+    excerpt = "\n".join(ordered)
+    safe = _model_safe_summary(excerpt)
+    return safe[:max_chars].rstrip()
+
+
+def _model_candidate_payload(
+    candidate: Candidate,
+    *,
+    max_chars: int = _CANDIDATE_EVIDENCE_MAX_CHARS,
+    context_terms: set[str] | None = None,
+) -> dict[str, object]:
     payload = candidate.model_payload()
-    payload["summary"] = _model_safe_summary(candidate.summary)[:6000]
+    payload["summary"] = _section_aware_excerpt(
+        candidate,
+        max_chars=max_chars,
+        context_terms=context_terms or set(),
+    )
     return payload
+
+
+def _model_candidate_payloads(
+    candidates: tuple[Candidate, ...],
+    context: Mapping[str, object],
+) -> tuple[dict[str, object], ...]:
+    if not candidates:
+        return ()
+    per_candidate = min(
+        _CANDIDATE_EVIDENCE_MAX_CHARS,
+        _GENERATOR_EVIDENCE_CHARS // len(candidates),
+    )
+    context_terms = _semantic_terms(
+        json.dumps(context, ensure_ascii=False, sort_keys=True)
+    )
+    return tuple(
+        _model_candidate_payload(
+            candidate,
+            max_chars=per_candidate,
+            context_terms=context_terms,
+        )
+        for candidate in candidates
+    )
 
 
 _GENERIC_ACTION_TERMS = {
@@ -347,13 +526,13 @@ def _diversity_evidence_id(
 
 def _generator_request_bytes(
     *,
-    candidates: tuple[Candidate, ...],
+    candidate_payloads: tuple[dict[str, object], ...],
     coverage: CoverageLevel,
     context: Mapping[str, object],
     diversity_evidence_id: str | None,
     semantic_correction: str | None,
 ) -> bytes:
-    payloads = [_model_candidate_payload(item) for item in candidates]
+    payloads = list(candidate_payloads)
     return _canonical(
         {
             "approved_user_context": context,
@@ -639,6 +818,10 @@ def _approved_context_paths(context: Mapping[str, object]) -> set[str]:
     return paths
 
 
+def _strong_personal_context_ref(value: str) -> bool:
+    return value.startswith(("projects[", "prior_knowledge[", "knowledge_anchors["))
+
+
 def _validate_generator_draft(
     draft: object,
     evidence: Mapping[str, Candidate],
@@ -728,6 +911,9 @@ def _validate_generator_draft(
                 r"(?:细节|信息|数据|说明|描述).{0,8}"
                 r"(?:未披露|未提及|未说明|不详|缺失)",
                 statement,
+            ) or re.search(
+                r"(?:没有|无|未包含|未提供).{0,16}(?:细节|信息|数据|说明|描述)",
+                statement,
             )
             english_absence = re.search(
                 r"(?:report|source|evidence|document).{0,24}"
@@ -738,13 +924,15 @@ def _validate_generator_draft(
                 r"(?:details?|information|data).{0,16}"
                 r"(?:remain(?:s)? )?(?:undisclosed|unspecified|unreported|missing)",
                 statement,
+            ) or re.search(
+                r"\bno .{0,20}(?:details?|information|data) "
+                r"(?:is|are|was|were)? ?(?:included|provided|reported|available)\b",
+                statement,
             )
             if (chinese_absence or english_absence) and any(
                 not evidence[evidence_id].source_complete for evidence_id in evidence_ids
             ):
                 unsafe_absence_ids.add(claim_id)
-            if claim_kind in {"editorial_inference", "action"} and not context_refs:
-                raise ValueError("GENERATOR_CONTEXT_BINDING_REQUIRED")
             action_type = claim.get("action_type")
             action_object = claim.get("action_object")
             success_criterion = claim.get("success_criterion")
@@ -787,23 +975,46 @@ def _validate_generator_draft(
                 raise ValueError(f"GENERATOR_{field.upper()}_BINDING_INVALID")
         if len(story["action_claim_ids"]) > 1:
             raise ValueError("GENERATOR_PER_STORY_ACTION_LIMIT_EXCEEDED")
+        weak_personal_ids = {
+            claim_id
+            for claim_id, claim in local_claims.items()
+            if (
+                claim_id in story["impact_claim_ids"]
+                or claim["claim_kind"] == "action"
+            )
+            and not any(
+                _strong_personal_context_ref(context_ref)
+                for context_ref in claim["context_refs"]
+            )
+        }
+        if weak_personal_ids:
+            projected = dict(story)
+            projected["claims"] = [
+                claim
+                for claim in story["claims"]
+                if claim["claim_id"] not in weak_personal_ids
+            ]
+            for field in role_fields:
+                projected[field] = [
+                    claim_id
+                    for claim_id in story[field]
+                    if claim_id not in weak_personal_ids
+                ]
+            story = projected
+            local_claims = {
+                claim["claim_id"]: claim for claim in story["claims"]
+            }
         fields = context.get("fields")
         is_v75 = isinstance(fields, dict) and fields.get("schema_version") == "7.5"
         is_deep_read = rank <= 2
         required_mechanisms = 2 if is_deep_read else 1
         if is_v75 and len(story["mechanism_claim_ids"]) < required_mechanisms:
             raise ValueError("GENERATOR_DETAIL_DEPTH_REQUIRED")
-        if is_v75 and is_deep_read and not story["impact_claim_ids"]:
-            raise ValueError("GENERATOR_PERSONAL_IMPACT_REQUIRED")
         if any(
             local_claims[claim_id]["claim_kind"] != "editorial_inference"
-            or not local_claims[claim_id]["context_refs"]
-            or (
-                is_v75
-                and all(
-                    context_ref.endswith(".pillar_id")
-                    for context_ref in local_claims[claim_id]["context_refs"]
-                )
+            or not any(
+                _strong_personal_context_ref(context_ref)
+                for context_ref in local_claims[claim_id]["context_refs"]
             )
             for claim_id in story["impact_claim_ids"]
         ):
@@ -849,16 +1060,6 @@ def _validate_generator_draft(
                 ]
                 story = projected
         story_type = evidence[next(iter(story_evidence_ids))].story_type
-        if (
-            is_v75
-            and is_deep_read
-            and story_type in {"builder", "cognition"}
-            and not security_story
-            and not story["action_claim_ids"]
-        ):
-            if diversity_evidence_id in story_evidence_ids:
-                diversity_evidence_id = None
-            continue
         if not is_deep_read and story["action_claim_ids"]:
             projected = dict(story)
             removed_radar_actions = set(story["action_claim_ids"])
@@ -895,14 +1096,6 @@ def _validate_generator_draft(
                 continue
         if not story["event_claim_ids"] or not story["importance_claim_ids"]:
             raise ValueError("GENERATOR_REQUIRED_CLAIMS_MISSING")
-        unsafe_absence_ids.update(
-            claim_id
-            for claim_id in story["uncertainty_claim_ids"]
-            if any(
-                not evidence[evidence_id].source_complete
-                for evidence_id in local_claims[claim_id]["evidence_ids"]
-            )
-        )
         core_claim_ids = {
             story["title_claim_id"],
             *story["event_claim_ids"],
@@ -950,7 +1143,7 @@ def _validate_generator_draft(
         used_story_evidence_ids.update(story_evidence_ids)
         validated.append(story)
     action_bounded: list[dict[str, Any]] = []
-    remaining_actions = 2
+    remaining_actions = 1
     for story in sorted(validated, key=lambda item: item["rank"]):
         keep_action_ids = story["action_claim_ids"][:remaining_actions]
         remaining_actions -= len(keep_action_ids)
@@ -964,43 +1157,18 @@ def _validate_generator_draft(
         ]
         action_bounded.append(projected)
 
-    task_group_count = len(_reader_task_groups(evidence))
-    minimum_items = (
-        5
-        if len(evidence) >= 5 and task_group_count >= 3
-        else 4
-        if len(evidence) >= 4 and task_group_count >= 2
-        else 0
-    )
-    if len(action_bounded) < minimum_items:
-        raise ValueError("GENERATOR_MINIMUM_ITEMS_REQUIRED")
-
-    if len(action_bounded) >= 2 and task_group_count >= 2:
-        selected_evidence_ids = {
-            evidence_id
-            for story in action_bounded
-            for claim in story["claims"]
-            for evidence_id in claim["evidence_ids"]
-        }
-        selected_evidence = {
-            evidence_id: evidence[evidence_id]
-            for evidence_id in selected_evidence_ids
-        }
-        if len(_reader_task_groups(selected_evidence)) < 2:
-            raise ValueError("GENERATOR_REQUIRED_EXPOSURE_MISSING")
-
     total_claims = sum(len(story["claims"]) for story in action_bounded)
-    if total_claims <= 32:
+    if total_claims <= 24:
         return tuple(action_bounded)
     claim_bounded = [dict(story) for story in action_bounded]
     for story in reversed(claim_bounded):
-        if total_claims <= 32:
+        if total_claims <= 24:
             break
         optional_ids = [
             *story["uncertainty_claim_ids"],
             *story["watch_claim_ids"],
         ]
-        remove_count = min(len(optional_ids), total_claims - 32)
+        remove_count = min(len(optional_ids), total_claims - 24)
         removed_ids = set(optional_ids[-remove_count:]) if remove_count else set()
         story["uncertainty_claim_ids"] = [
             claim_id
@@ -1014,7 +1182,7 @@ def _validate_generator_draft(
             claim for claim in story["claims"] if claim["claim_id"] not in removed_ids
         ]
         total_claims -= len(removed_ids)
-    if total_claims > 32:
+    if total_claims > 24:
         raise ValueError("GENERATOR_TOTAL_CLAIM_LIMIT_EXCEEDED")
     return tuple(claim_bounded)
 
@@ -1062,19 +1230,12 @@ def _accepted_stories(
     }
     accepted: list[dict[str, Any]] = []
     for story in stories:
-        rendered_claim_ids = {
-            story["title_claim_id"],
-            *story["event_claim_ids"],
-            *story["importance_claim_ids"],
-            *story["impact_claim_ids"],
-        }
         if any(
-            verdicts.get(claim_id) != "ACCEPT" for claim_id in rendered_claim_ids
+            verdicts.get(claim["claim_id"]) != "ACCEPT"
+            for claim in story["claims"]
         ):
             continue
-        kept_claims = [
-            claim for claim in story["claims"] if verdicts.get(claim["claim_id"]) == "ACCEPT"
-        ]
+        kept_claims = list(story["claims"])
         kept_ids = {claim["claim_id"] for claim in kept_claims}
         projected = dict(story)
         projected["claims"] = kept_claims
@@ -1097,11 +1258,6 @@ def _accepted_stories(
             for evidence_id in claim["evidence_ids"]
         }
         if len(story_evidence_ids) != 1:
-            continue
-        story_type = evidence[next(iter(story_evidence_ids))].story_type
-        if story["rank"] <= 2 and story_type in {"builder", "cognition"} and not projected[
-            "action_claim_ids"
-        ]:
             continue
         accepted.append(projected)
     accepted.sort(key=lambda story: story["rank"])
@@ -1155,19 +1311,6 @@ def _render_markdown(
     )
     evidence_start = evidence_dates[0] if evidence_dates else content_date.isoformat()
     evidence_end = evidence_dates[-1] if evidence_dates else content_date.isoformat()
-    reader_group_labels = {
-        "research": "前沿研究",
-        "ai_practice": "构建与杠杆",
-        "builder": "构建与杠杆",
-        "vc": "战略与认知",
-        "cognition": "战略与认知",
-    }
-    covered_groups = {
-        reader_group_labels[evidence[evidence_id].story_type]
-        for evidence_id in referenced_evidence_ids
-    }
-    all_groups = ("前沿研究", "构建与杠杆", "战略与认知")
-    missing_groups = [group for group in all_groups if group not in covered_groups]
     lines = [
         "---",
         f"date: {content_date.isoformat()}",
@@ -1180,24 +1323,14 @@ def _render_markdown(
         "---",
         "",
         f"# AI Daily · {content_date.isoformat()}",
-        "",
-        f"> 今天只保留 {len(stories)} 条真正值得你花时间的变化。",
-        f"> 信息范围：{evidence_start} 至 {evidence_end}。",
-        f"> 今日覆盖：{'、'.join(group for group in all_groups if group in covered_groups)}。",
     ]
-    if missing_groups:
-        lines.append(f"> 已检查但未达质量门：{'、'.join(missing_groups)}。")
-    if evidence_level is CoverageLevel.B:
-        lines.append("> 部分来源今天没有可确认的完整正文，以下只采用已核验内容。")
     layer_labels = {
-        "research": "学术研究",
+        "research": "研究",
         "ai_practice": "AI 实践",
-        "builder": "Builder 与超级个体",
-        "vc": "创投与产业",
-        "cognition": "认知与个人成长",
+        "builder": "Builder",
+        "vc": "创投",
+        "cognition": "认知",
     }
-    deep_heading_written = False
-    radar_heading_written = False
     accepted_actions: list[str] = []
     for display_index, story in enumerate(stories, start=1):
         claims = {claim["claim_id"]: claim for claim in story["claims"]}
@@ -1214,22 +1347,8 @@ def _render_markdown(
             "VC" in evidence[evidence_id].pillars
             for evidence_id in story_evidence_ids
         ):
-            layer_label += " × 创投投资"
-        story_dates = [
-            date.fromisoformat(evidence[evidence_id].published[:10])
-            for evidence_id in story_evidence_ids
-            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", evidence[evidence_id].published[:10])
-        ]
-        if story_dates and max(story_dates) < content_date - timedelta(days=7):
-            layer_label = f"慢层回顾 · {layer_label}"
-        is_deep_read = story["rank"] <= 2
-        if is_deep_read and not deep_heading_written:
-            lines.extend(("", "## 今日深读"))
-            deep_heading_written = True
-        if not is_deep_read and not radar_heading_written:
-            lines.extend(("", "## 分层情报雷达"))
-            radar_heading_written = True
-        lines.extend(("", f"### {display_index} · {layer_label}｜{title}", ""))
+            layer_label += " × 创投"
+        lines.extend(("", f"### {display_index}｜{layer_label}｜{title}", ""))
         context = _brief_sentences(
             _claim_texts(story, "event_claim_ids")
             + _claim_texts(story, "mechanism_claim_ids"),
@@ -1237,18 +1356,16 @@ def _render_markdown(
         )
         if context:
             lines.extend((context, ""))
-        takeaway = _brief_sentences(
+        editorial_judgment = _brief_sentences(
             _claim_texts(story, "importance_claim_ids")
             + _claim_texts(story, "uncertainty_claim_ids")
             + _claim_texts(story, "watch_claim_ids")
+            + _claim_texts(story, "impact_claim_ids")
         )
-        if takeaway:
-            lines.extend((f"**Takeaway**：{takeaway}", ""))
-        inspiration = _brief_sentences(_claim_texts(story, "impact_claim_ids"))
-        if is_deep_read and inspiration:
-            lines.extend((f"**对你的启发**：{inspiration}", ""))
+        if editorial_judgment:
+            lines.extend(("**简报判断**", editorial_judgment, ""))
         action = _brief_sentences(_claim_texts(story, "action_claim_ids"))
-        if is_deep_read and action:
+        if action:
             accepted_actions.append(action)
         evidence_ids = []
         for claim in story["claims"]:
@@ -1259,10 +1376,10 @@ def _render_markdown(
         for evidence_id in evidence_ids:
             item = evidence[evidence_id]
             links.append(f"[{item.source}]({item.link}) · {item.published}")
-        lines.append(f"**原文**：{'；'.join(links)}")
+        lines.append(f"**原文** {'；'.join(links)}")
     if accepted_actions:
         lines.extend(("", "## 今天可以做", ""))
-        lines.extend(f"- {action}" for action in accepted_actions[:2])
+        lines.extend(f"- {action}" for action in accepted_actions[:1])
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1430,9 +1547,13 @@ def run_ai_daily_shadow(
     evidence = {item.evidence_id: item for item in collected.candidates}
     if len(evidence) != len(collected.candidates):
         raise ValueError("candidate evidence IDs must be unique")
+    candidate_payloads = _model_candidate_payloads(collected.candidates, context)
+    payload_by_evidence_id = {
+        str(payload["evidence_id"]): payload for payload in candidate_payloads
+    }
     diversity_evidence_id = None
     generator_request = _generator_request_bytes(
-        candidates=collected.candidates,
+        candidate_payloads=candidate_payloads,
         coverage=collected.coverage,
         context=context,
         diversity_evidence_id=diversity_evidence_id,
@@ -1490,20 +1611,14 @@ def run_ai_daily_shadow(
         )
     except ValueError as error:
         validation_error: ValueError | None = error
-        retryable_semantic_errors = {
-            "GENERATOR_REQUIRED_EXPOSURE_MISSING",
-            "GENERATOR_DETAIL_DEPTH_REQUIRED",
-            "GENERATOR_PERSONAL_IMPACT_REQUIRED",
-            "GENERATOR_UNSCOPED_RATE",
-            "GENERATOR_MINIMUM_ITEMS_REQUIRED",
-        }
+        retryable_semantic_errors: set[str] = set()
         if str(error) in retryable_semantic_errors and budget.remaining >= 2:
             retry_candidates = collected.candidates
             retry_evidence = {
                 candidate.evidence_id: candidate for candidate in retry_candidates
             }
             retry_request = _generator_request_bytes(
-                candidates=retry_candidates,
+                candidate_payloads=candidate_payloads,
                 coverage=collected.coverage,
                 context=context,
                 diversity_evidence_id=diversity_evidence_id,
@@ -1622,7 +1737,7 @@ def run_ai_daily_shadow(
         for evidence_id in claim["evidence_ids"]
     }
     reviewer_items = [
-        _model_candidate_payload(item)
+        payload_by_evidence_id[item.evidence_id]
         for item in collected.candidates
         if item.evidence_id in referenced_ids
     ]
@@ -1783,7 +1898,7 @@ def run_ai_daily_shadow(
                 reviewer.validated_structured_result
             ),
             "evidence_hash": _digest(
-                [_model_candidate_payload(item) for item in collected.candidates]
+                list(candidate_payloads)
             ),
             "generator_result_hash": generator.structured_result_hash,
             "review_decisions_hash": reviewer.structured_result_hash,

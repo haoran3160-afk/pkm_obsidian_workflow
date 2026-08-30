@@ -80,6 +80,7 @@ class _GenerateReviewTransport:
         self.generator_rubric: dict[str, object] = {}
         self.generator_calls = 0
         self.generator_candidate_ids: list[list[str]] = []
+        self.generator_candidate_summaries: list[list[str]] = []
         self.semantic_corrections: list[str | None] = []
 
     def request(self, **kwargs: object) -> TransportResponse:
@@ -92,6 +93,12 @@ class _GenerateReviewTransport:
             self.generator_candidate_ids.append(
                 [
                     str(candidate["evidence_id"])
+                    for candidate in sealed["sealed_evidence"]["candidates"]
+                ]
+            )
+            self.generator_candidate_summaries.append(
+                [
+                    str(candidate["summary"])
                     for candidate in sealed["sealed_evidence"]["candidates"]
                 ]
             )
@@ -330,7 +337,10 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
         fulltext_enriched=True,
         profile_refs=(),
     )
-    transport = _GenerateReviewTransport(reject_claim="uncertainty-claim")
+    transport = _GenerateReviewTransport(
+        reject_claim="",
+        uncertainty_statement="该能力只在来源描述的任务范围内成立。",
+    )
     ports = ShadowPorts(
         collect=lambda _content_date: CollectionResult(
             coverage=CoverageLevel.A,
@@ -359,7 +369,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert result.report_path.is_file()
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert report["model_metrics"]["total_tokens"] == 280
-    assert report["personalization_refs"] == ["priorities[0].topics[0]"]
+    assert report["personalization_refs"] == []
     assert len(report["git_head"]) == 40
     assert report["audit"]["selected_urls"] == ["https://example.com/agent-release"]
     assert report["audit"]["generator_result_hash"].startswith("sha256:")
@@ -367,13 +377,68 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
     assert "Example AI 发布了新的 Agent 工具" in markdown
     assert "该工具新增了可复用的浏览器操作能力" in markdown
     assert "所有网站都已完全兼容" not in markdown
-    assert "**原文**：[Example AI](https://example.com/agent-release)" in markdown
+    assert "**原文** [Example AI](https://example.com/agent-release)" in markdown
     assert "evidence_date_start: 2026-08-25" in markdown
     assert "· 2026-08-25" in markdown
     assert "https://example.com/agent-release" in markdown
     assert "无需行动" not in markdown
     assert "## Top 2" not in markdown
     assert transport.calls == 2
+
+
+def test_generator_receives_one_bounded_packet_that_keeps_late_high_value_sections(
+    tmp_path: Path,
+) -> None:
+    filler = (
+        "The author describes the visual theme and repeats background production notes. "
+        * 120
+    )
+    limitation = (
+        "Limitations\n"
+        "The coding agent grew the main file beyond 3,000 lines and left more than "
+        "20 files in one flat directory. It then wrote Python scripts to edit the "
+        "oversized file, which made each change slower and wasted tokens. The builder "
+        "added CLAUDE.md rules for file size, directory structure, comments, and testing."
+    )
+    candidates = tuple(
+        Candidate(
+            evidence_id=f"evidence-{index + 1}",
+            source=f"Builder {index + 1}",
+            title=f"A long coding-agent build log {index + 1}",
+            link=f"https://example.com/build-log-{index + 1}",
+            published="2026-08-29",
+            summary=f"{filler}\n{limitation}",
+            content_type="engineering",
+            fulltext_enriched=True,
+            story_type="ai_practice",
+        )
+        for index in range(10)
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=candidates,
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    packet = transport.generator_candidate_summaries[0]
+    assert len(packet) == 10
+    assert sum(len(summary) for summary in packet) <= 24_000
+    assert all(len(summary) <= 4_000 for summary in packet)
+    assert "3,000 lines" in packet[0]
+    assert "CLAUDE.md" in packet[0]
 
 
 def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Path) -> None:
@@ -529,7 +594,7 @@ def test_builder_without_observed_validation_is_not_forced_for_diversity(
     assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
-def test_builder_brief_requires_one_concrete_action(tmp_path: Path) -> None:
+def test_builder_brief_can_publish_without_a_forced_action(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Builder",
@@ -560,13 +625,14 @@ def test_builder_brief_requires_one_concrete_action(tmp_path: Path) -> None:
 
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
-    assert result.status == "NO_SIGNIFICANT_NEWS"
-    assert result.story_count == 0
-    assert result.markdown_path is None
+    assert result.status == "PUBLISHED"
+    assert result.story_count == 1
+    assert result.markdown_path is not None
+    assert "## 今天可以做" not in result.markdown_path.read_text(encoding="utf-8")
     assert transport.generator_calls == 1
 
 
-def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
+def test_schema_repair_does_not_trigger_an_extra_semantic_generation(
     tmp_path: Path,
 ) -> None:
     class RepairThenActionTransport(_GenerateReviewTransport):
@@ -680,15 +746,11 @@ def test_schema_repair_can_still_leave_one_semantic_retry_and_reviewer(
 
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
-    assert result.status == "PUBLISHED"
-    assert result.request_count == 4
-    assert result.markdown_path is not None
-    assert "## 今天可以做" in result.markdown_path.read_text(encoding="utf-8")
-    assert transport.generator_candidate_ids[-1] == [
-        "evidence-1",
-        "evidence-cognition",
-        "evidence-builder",
-    ]
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_DETAIL_DEPTH_REQUIRED"
+    assert result.request_count == 2
+    assert result.markdown_path is None
+    assert transport.generator_calls == 1
 
 
 def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
@@ -749,7 +811,7 @@ def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
     assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
-def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
+def test_v75_story_without_personal_impact_remains_publishable(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
         source="Research Lab",
@@ -769,7 +831,11 @@ def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
         ),
         provider=DeepSeekShadowProvider(
             credential_reader=lambda: bytearray(b"test-only-secret"),
-            transport=_GenerateReviewTransport(omit_impact=True),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                omit_impact=True,
+                uncertainty_statement="该结果只覆盖来源描述的评测范围。",
+            ),
         ),
         runtime_root=tmp_path,
         load_user_context=lambda: load_approved_user_context_v75().model_payload(),
@@ -777,9 +843,9 @@ def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
 
     result = run_ai_daily_shadow(date(2026, 8, 27), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_PERSONAL_IMPACT_REQUIRED"
-    assert result.markdown_path is None
+    assert result.status == "PUBLISHED"
+    assert result.story_count == 1
+    assert result.markdown_path is not None
 
 
 def test_percentage_without_sample_scope_never_reaches_reviewer_or_markdown(
@@ -820,7 +886,7 @@ def test_percentage_without_sample_scope_never_reaches_reviewer_or_markdown(
     assert result.status == "SCHEMA_INVALID"
     assert result.error_code == "GENERATOR_UNSCOPED_RATE"
     assert result.markdown_path is None
-    assert transport.generator_calls == 2
+    assert transport.generator_calls == 1
 
 
 def test_v75_story_requires_two_distinct_evidence_details(tmp_path: Path) -> None:
@@ -894,14 +960,12 @@ def test_research_story_renders_as_a_human_brief_not_a_claim_checklist(
 
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "## 今日深读" in markdown
-    assert "### 1 · 学术研究｜" in markdown
-    assert "**Takeaway**" in markdown
+    assert "### 1｜研究｜" in markdown
+    assert "**简报判断**" in markdown
     assert "浏览器操作被封装为可复用工具接口。" in markdown
     assert "工具接口保留了可验证的操作结果与失败状态。" in markdown
-    assert "**对你的启发**" in markdown
     assert "## 今天可以做" in markdown
-    assert "**原文**：[Research Lab](https://example.com/harness-study)" in markdown
+    assert "**原文** [Research Lab](https://example.com/harness-study)" in markdown
     for old_label in (
         "**研究发现**",
         "**方法与证据**",
@@ -909,6 +973,199 @@ def test_research_story_renders_as_a_human_brief_not_a_claim_checklist(
         "**证据**",
     ):
         assert old_label not in markdown
+
+
+def test_public_markdown_uses_natural_editorial_copy_without_operational_sections(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="A coding-agent evaluation with concrete failure analysis",
+        link="https://example.com/coding-agent-evaluation",
+        published="2026-08-29",
+        summary=(
+            "The study evaluates a coding agent on a controlled repository task. "
+            "It reports the failure path, verification method, and bounded result. " * 20
+        ),
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                include_watch_and_action=True,
+                context_ref_override="prior_knowledge[1].topic",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "### 1｜研究｜" in markdown
+    assert "**简报判断**" in markdown
+    assert "**原文** [Research Lab](https://example.com/coding-agent-evaluation)" in markdown
+    assert "## 今天可以做" in markdown
+    for old_surface in (
+        "## 今日深读",
+        "## 分层情报雷达",
+        "**Takeaway**",
+        "**对你的启发**",
+        "慢层回顾",
+        "> 信息范围",
+        "> 今日覆盖",
+        "> 已检查但未达质量门",
+    ):
+        assert old_surface not in markdown
+
+
+@pytest.mark.parametrize(
+    ("claim_id", "include_watch_and_action"),
+    [
+        ("title-claim", False),
+        ("event-claim", False),
+        ("mechanism-claim", False),
+        ("importance-claim", False),
+        ("impact-claim", False),
+        ("uncertainty-claim", False),
+        ("watch-claim", True),
+        ("action-claim", True),
+    ],
+)
+def test_any_non_accept_claim_drops_the_whole_story(
+    tmp_path: Path,
+    claim_id: str,
+    include_watch_and_action: bool,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Agent workflow evaluation",
+        link="https://example.com/agent-workflow",
+        published="2026-08-29",
+        summary="A complete workflow evaluation with concrete implementation detail. " * 30,
+        content_type="engineering",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim=claim_id,
+                include_watch_and_action=include_watch_and_action,
+                context_ref_override="prior_knowledge[1].topic",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
+def test_interest_only_context_does_not_render_a_personal_connection(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Agent workflow evaluation",
+        link="https://example.com/agent-workflow",
+        published="2026-08-29",
+        summary="A complete workflow evaluation with concrete implementation detail. " * 30,
+        content_type="engineering",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "用户当前" not in markdown
+    assert "对你的启发" not in markdown
+
+
+def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
+    tmp_path: Path,
+) -> None:
+    candidates = tuple(
+        Candidate(
+            evidence_id=f"evidence-{index + 1}",
+            source=f"Source {index + 1}",
+            title=f"Candidate {index + 1}",
+            link=f"https://example.com/candidate-{index + 1}",
+            published="2026-08-29",
+            summary="A complete public article with concrete implementation detail. " * 30,
+            content_type="engineering",
+            fulltext_enriched=True,
+            story_type="research" if index == 0 else "builder",
+        )
+        for index in range(4)
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=candidates,
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert result.story_count == 1
+    assert transport.generator_calls == 1
 
 
 def test_cognition_investment_story_displays_both_reader_layers(
@@ -948,7 +1205,8 @@ def test_cognition_investment_story_displays_both_reader_layers(
     assert result.status == "PUBLISHED"
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "### 1 · 慢层回顾 · 认知与个人成长 × 创投投资｜" in markdown
+    assert "### 1｜认知 × 创投｜" in markdown
+    assert "慢层回顾" not in markdown
 
 
 def test_research_story_without_testable_question_keeps_other_deep_takeaways(
@@ -1081,7 +1339,7 @@ def test_no_news_requires_both_operational_and_evidence_coverage_a(
     assert transport.calls == 0
 
 
-def test_rejected_optional_claim_is_not_published_but_keeps_accepted_story(
+def test_rejected_optional_claim_drops_the_story_without_partial_projection(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -1114,10 +1372,9 @@ def test_rejected_optional_claim_is_not_published_but_keeps_accepted_story(
 
     result = run_ai_daily_shadow(date(2026, 8, 26), ports=ports)
 
-    assert result.status == "PUBLISHED"
-    assert result.markdown_path is not None
-    assert result.story_count == 1
-    assert "所有网站都已完全兼容" not in result.markdown_path.read_text(encoding="utf-8")
+    assert result.status == "NO_SIGNIFICANT_NEWS"
+    assert result.markdown_path is None
+    assert result.story_count == 0
 
 
 def test_rejected_event_claim_drops_the_entire_story(tmp_path: Path) -> None:
@@ -1197,7 +1454,7 @@ def test_reviewer_rejecting_one_required_detail_drops_story(tmp_path: Path) -> N
     assert result.markdown_path is None
 
 
-def test_reviewer_rejecting_optional_research_action_keeps_research_story(
+def test_reviewer_rejecting_research_action_drops_the_story(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -1230,9 +1487,8 @@ def test_reviewer_rejecting_optional_research_action_keeps_research_story(
 
     result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
 
-    assert result.story_count == 1
-    assert result.markdown_path is not None
-    assert "本周用一个浏览任务" not in result.markdown_path.read_text(encoding="utf-8")
+    assert result.story_count == 0
+    assert result.markdown_path is None
 
 
 def test_reviewer_rejecting_required_builder_action_drops_builder_story(
@@ -1418,7 +1674,7 @@ def test_one_story_cannot_mix_multiple_candidate_evidence_packages(
     assert result.markdown_path is None
 
 
-def test_renderer_keeps_supported_visible_roles_and_omits_excerpt_uncertainty(
+def test_renderer_keeps_supported_judgment_without_weak_personal_copy(
     tmp_path: Path,
 ) -> None:
     candidate = Candidate(
@@ -1457,14 +1713,14 @@ def test_renderer_keeps_supported_visible_roles_and_omits_excerpt_uncertainty(
 
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
-    assert "它与用户当前的 Agent 工程优先级直接相关" in markdown
+    assert "它与用户当前的 Agent 工程优先级直接相关" not in markdown
     assert "所有网站都已完全兼容" not in markdown
     assert "观察后续是否公布跨站点成功率" in markdown
-    assert "本周用一个浏览任务对比复用前后的脚本量" in markdown
+    assert "本周用一个浏览任务对比复用前后的脚本量" not in markdown
     assert "无需行动" not in markdown
     assert "operational_coverage: A" in markdown
     assert "evidence_availability: B" in markdown
-    assert "部分来源今天没有可确认的完整正文" in markdown
+    assert "部分来源今天没有可确认的完整正文" not in markdown
     assert "evidence_date_start: 2026-08-25" in markdown
 
 

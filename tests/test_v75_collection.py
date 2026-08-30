@@ -194,6 +194,42 @@ def test_metadata_rank_refills_with_two_candidates_per_reader_lane() -> None:
     assert all("summary" not in row and row["canonical_url"] for row in candidate_audit)
 
 
+def test_fulltext_attempts_cycle_across_reader_pillars_before_global_refill() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    source_order = [
+        "rss_simon_willison",
+        "rss_ethan_mollick",
+        "rss_pieter_levels",
+        "rss_air_street_press",
+        "rss_works_in_progress",
+    ]
+    attempts: list[str] = []
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id not in source_order:
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        items = tuple(_item(source.source_id, index) for index in range(3))
+        return MetadataObservation(True, False, "OK", items)
+
+    def fetch_fulltext(url: str) -> str:
+        attempts.append(url)
+        return ""
+
+    collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=fetch_fulltext,
+        ),
+    )
+
+    attempted_sources = [url.split("/")[-2] for url in attempts]
+    assert attempted_sources == source_order + source_order
+
+
 def test_fulltext_attempts_are_bounded_at_sixteen() -> None:
     catalog = load_source_catalog(MANIFEST)
     core_ids = {source.source_id for source in catalog.operational_coverage_sources}
@@ -296,6 +332,50 @@ def test_short_public_cognitive_metadata_can_qualify_after_verified_fulltext() -
     candidate = result.candidates[0]
     assert candidate.story_type == "cognition"
     assert candidate.metadata_score >= 5000
+
+
+def test_collection_preserves_late_fulltext_for_downstream_section_selection() -> None:
+    catalog = load_source_catalog(MANIFEST)
+    late_constraint = (
+        "Limitations: the agent created a 3,000-line file, wasted tokens, and required "
+        "explicit CLAUDE.md structure and testing rules."
+    )
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id != "rss_tony_dinh":
+            return MetadataObservation(True, True, "ZERO_YIELD", ())
+        return MetadataObservation(
+            True,
+            False,
+            "OK",
+            (
+                MetadataItem(
+                    item_native_id="late-builder-constraint",
+                    title="A long coding-agent build log",
+                    canonical_url="https://example.com/long-build-log",
+                    published_at="2026-08-27",
+                    summary="A builder used an AI coding agent to ship a product.",
+                    content_type="engineering",
+                ),
+            ),
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "The builder explains the visual design. " * 400
+            )
+            + late_constraint,
+        ),
+    )
+
+    assert len(result.candidates) == 1
+    assert late_constraint in result.candidates[0].summary
 
 
 def test_verified_fulltext_upgrades_evidence_availability(tmp_path: Path) -> None:
