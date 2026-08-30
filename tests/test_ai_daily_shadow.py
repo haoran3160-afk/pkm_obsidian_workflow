@@ -441,6 +441,63 @@ def test_generator_receives_one_bounded_packet_that_keeps_late_high_value_sectio
     assert "CLAUDE.md" in packet[0]
 
 
+def test_generator_sees_evidence_rich_candidates_before_thin_high_score_quotes(
+    tmp_path: Path,
+) -> None:
+    thin_quote = Candidate(
+        evidence_id="evidence-quote",
+        source="Quote Blog",
+        title="Quoting a model comment",
+        link="https://example.com/quote",
+        published="2026-08-29",
+        summary="A short attributed quotation about coding models. " * 15,
+        content_type="news",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+        metadata_score=9500,
+        editorial_score=12000,
+    )
+    rich_report = Candidate(
+        evidence_id="evidence-1",
+        source="Research Lab",
+        title="A full benchmark and failure analysis",
+        link="https://example.com/full-report",
+        published="2026-08-28",
+        summary=(
+            "The report explains the benchmark, method, results, failure analysis, "
+            "and operating limits in separate sections. " * 100
+        ),
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+        metadata_score=7000,
+        editorial_score=8000,
+    )
+    transport = _GenerateReviewTransport(
+        reject_claim="",
+        uncertainty_statement="该结果只覆盖来源描述的任务范围。",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(thin_quote, rich_report),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.status == "PUBLISHED"
+    assert transport.generator_candidate_ids[0][0] == "evidence-1"
+
+
 def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",

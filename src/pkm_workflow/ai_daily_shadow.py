@@ -403,6 +403,24 @@ def _model_candidate_payloads(
 ) -> tuple[dict[str, object], ...]:
     if not candidates:
         return ()
+    def richness_band(candidate: Candidate) -> int:
+        length = len(candidate.summary)
+        if length >= 8_000:
+            return 2
+        if length >= 2_000:
+            return 1
+        return 0
+
+    ordered_candidates = tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: (
+                -richness_band(candidate),
+                -candidate.editorial_score,
+                candidate.evidence_id,
+            ),
+        )
+    )
     per_candidate = min(
         _CANDIDATE_EVIDENCE_MAX_CHARS,
         _GENERATOR_EVIDENCE_CHARS // len(candidates),
@@ -416,7 +434,7 @@ def _model_candidate_payloads(
             max_chars=per_candidate,
             context_terms=context_terms,
         )
-        for candidate in candidates
+        for candidate in ordered_candidates
     )
 
 
