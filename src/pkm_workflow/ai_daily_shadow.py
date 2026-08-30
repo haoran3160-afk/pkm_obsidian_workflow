@@ -924,11 +924,17 @@ def _normalize_publisher_authorship(candidate: Candidate, statement: str) -> str
         and path_parts[0].casefold() == "blog"
     ):
         contributor = path_parts[1]
+        normalized = re.sub(
+            r"Hugging Face\s*的(?:论文|文章)",
+            f"{contributor} 在 Hugging Face Blog 发表的文章",
+            statement,
+            flags=re.IGNORECASE,
+        )
         return re.sub(
             r"^Hugging Face(?:\s+Blog|\s*博客)?"
             r"(?:发布(?:了)?(?:一篇)?(?:论文|文章)[，,]?)?\s*提出",
             f"Hugging Face Blog 上由 {contributor} 署名的文章提出",
-            statement,
+            normalized,
             flags=re.IGNORECASE,
         )
     return statement

@@ -1480,6 +1480,9 @@ def test_contributor_article_does_not_turn_the_hosting_platform_into_the_author(
                 title_statement=(
                     "Hugging Face 博客发布论文，提出量化感知修复方法。"
                 ),
+                importance_statement=(
+                    "Hugging Face 的论文证明该方法改变了压缩模型的表现。"
+                ),
                 uncertainty_statement="结果只覆盖来源报告的基准范围。",
             ),
         ),
@@ -1496,6 +1499,8 @@ def test_contributor_article_does_not_turn_the_hosting_platform_into_the_author(
         in markdown
     )
     assert "Hugging Face 博客发布论文，提出" not in markdown
+    assert "Hugging Face 的论文" not in markdown
+    assert "MultiverseComputingCAI 在 Hugging Face Blog 发表的文章" in markdown
 
 
 def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
