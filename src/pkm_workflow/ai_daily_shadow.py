@@ -352,15 +352,26 @@ def _evidence_segments(value: str) -> list[str]:
     return segments
 
 
+def _safe_evidence_segment(value: str) -> str:
+    sentences = re.split(r"(?<=[。！？])\s*|(?<=[.!?])\s+", value.strip())
+    retained = [sentence.strip() for sentence in sentences if not _has_unscoped_rate(sentence)]
+    return " ".join(sentence for sentence in retained if sentence)
+
+
 def _section_aware_excerpt(
     candidate: Candidate,
     *,
     max_chars: int,
     context_terms: set[str],
 ) -> str:
-    segments = _evidence_segments(candidate.summary)
+    raw_segments = _evidence_segments(candidate.summary)
+    segments = [
+        safe
+        for segment in raw_segments
+        if (safe := _safe_evidence_segment(segment))
+    ]
     if not segments:
-        return ""
+        return _RATE_PATTERN.sub("reported rate", candidate.summary)[:max_chars].rstrip()
     story_terms = _SECTION_TERMS[candidate.story_type]
 
     def score(index: int, segment: str) -> tuple[int, int, int]:

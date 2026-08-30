@@ -541,6 +541,56 @@ def test_evidence_packet_reserves_space_for_late_results_after_long_intro(
     assert result_prefix in transport.generator_candidate_summaries[0][0]
 
 
+def test_unsafe_rate_segments_do_not_consume_packet_budget_before_backfill(
+    tmp_path: Path,
+) -> None:
+    lead = "L" * 600
+    unsafe = (
+        "Benchmark method results accuracy improved 80% without scoped evidence "
+        + ("U" * 320)
+    )
+    late_result = (
+        "Limitations identify the bounded failure mode and the decision-changing result. "
+        + ("R" * 720)
+    )
+    summary = "\n".join((lead, unsafe, unsafe, unsafe, unsafe, late_result))
+    candidates = tuple(
+        Candidate(
+            evidence_id=f"evidence-{index + 1}",
+            source=f"Source {index + 1}",
+            title=f"Research report {index + 1}",
+            link=f"https://example.com/research-{index + 1}",
+            published="2026-08-29",
+            summary=summary,
+            content_type="research",
+            fulltext_enriched=True,
+            story_type="research",
+        )
+        for index in range(10)
+    )
+    transport = _GenerateReviewTransport(reject_claim="")
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=candidates,
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    packet = transport.generator_candidate_summaries[0][0]
+    assert "80%" not in packet
+    assert "Limitations identify the bounded failure mode" in packet
+
+
 def test_v75_personalization_uses_exact_prior_knowledge_field_path(tmp_path: Path) -> None:
     candidate = Candidate(
         evidence_id="evidence-1",
