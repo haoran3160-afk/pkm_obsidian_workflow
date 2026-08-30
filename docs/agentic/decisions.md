@@ -498,3 +498,28 @@ tool_calls、空/坏 JSON 或 schema mismatch 全部 fail-closed。正常双审 
 当前正式 model-contract adapter 为 `NOT_IMPLEMENTED`，因此真实 provider smoke 不得称为完整
 Generator→Reviewer pipeline。D-010/T1.3b 保留为冻结历史但不进入 v7.4 gate。Provider 仍
 `production_eligible=false`；不写 Vault、Task、Home/Status。
+
+## D-019 — AI Daily V4 使用证据丰富度优先的自然编辑契约
+
+状态：`ACCEPTED`（2026-08-30，真实 shadow 与双红队通过）
+
+决定：保留现有来源治理、抓取、Coverage、DeepSeek 双请求、逐 claim evidence mapping 与
+确定性链接渲染；只收敛证据取材、编辑契约和读者 Markdown。候选保留有界完整正文，模型前按
+段落选择导语、方法、结果和限制，全部 packet 合计不超过 24,000 字符。证据丰富的长文先于
+短引用进入 Generator；引用整理页只能显示为“引用页”。
+
+输出最多 5 条，正常为 4–5 条。前两条允许展开，后位条目保持简析；不再渲染“今日深读”、
+“分层情报雷达”、“Takeaway”、“对你的启发”、“慢层回顾”或 Coverage 说明。标题、事件、
+机制、重要性与显式个人影响属于物质 claim，任一未获 Reviewer `ACCEPT` 即删除整条；可选的
+不确定性、观察信号和行动未通过时只省略。行动全篇最多 1 条。
+
+正常 Generator + Reviewer 为 2 个 fresh DeepSeek 请求。只有结构修复，或 5 个以上合格候选却
+少于 4 条这一种 underfill，允许一次额外 Generator；全链仍不超过 4 次，不切换 provider，
+不自动充值。pillar 只影响选择，不能制造个人连接；显式个性化只允许 project、prior knowledge
+或用户逐项批准的 knowledge anchor。
+
+真实验收样本：
+`D:/personal/obsidian_workflow-runtime/scratch/runs/306602053b5242f2b4673decb37da534/AI-Daily-2026-08-30-shadow.md`。
+内容红队评分为注意力价值 9/10、清晰度 8/10、深度 8/10、证据边界 9/10、个性化诚实度
+8/10；最终内容与工程复审均无剩余 P0/P1。该决定不授权覆盖 Vault 文件、修改 `.obsidian`
+或切换模型供应商。

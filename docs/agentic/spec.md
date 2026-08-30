@@ -213,28 +213,30 @@ Coverage 车道：官方实验室、科研论文、开源/产品 release、产�
 
 ### 4.3 发布判断
 
-- Top 最多 3 条；不为了凑数补内容。
+- 最终最多 5 条；有 5 个以上合格候选时以 4–5 条为正常编辑目标，不为了数量放宽证据门。
 - 每个 Top/critical/high-risk claim 必须有规范化 evidence、全部确定性检查通过、Reviewer 明确 `ACCEPT`。
-- 无法确认的普通 claim 删除后重新渲染；如果删除改变标题、排名或核心结论，则删除 story。
+- 标题、事件、机制、重要性或显式个人影响任一未获 `ACCEPT` 时删除 story；未通过的不确定性、观察信号或行动只允许省略，不能改写成新 claim。
 - 争议涉及 Top、价格、安全、可用性、法律政策或模型能力时删除 story；若因此总体判断失真，整份 digest 返回 `INSUFFICIENT_EVIDENCE`。
 - 没有达到发布价值但 Coverage A 时，只创建 `NO_SIGNIFICANT_NEWS` terminal status，不创建 digest 文件。
 - 同一事件只有能力、价格、API、可用性、安全或政策结论实质变化时才能重复出现。
 
 ### 4.4 个性化
 
-- renderer 必须验证 `user_context_hash` 等于当前批准的 `UserContextContract-v7.3.json` hash。
-- 个性化结论必须引用白名单 profile field；否则只能标记为“一般可能影响”。
+- renderer 必须验证 `user_context_hash` 等于当前批准的 `UserContextContract-v7.5.json` hash。
+- pillar、purpose 与 selection question 只影响选择和编辑角度，不能支持“对你”类表述。
+- 显式个人连接必须引用 sealed request 中的 project、prior knowledge 或逐项批准且 hash 固定的 knowledge anchor。
 - 不从 Vault、历史日报或模型记忆推断个人情况。
 
 ## 5. 确定性输出
 
 - Renderer 是纯函数，只接收 accepted stories、validated evidence registry、coverage proof 和 user context hash。
 - Renderer 只使用 fetcher 已验证的 HTTPS URL。
-- AI Daily：Top≤3，30 秒扫描，正文通常 5–8 分钟，0–5 个详解。
+- Generator 的全部候选 evidence packet 合计不超过 24,000 字符；安全过滤在排序与预算之前完成，Generator 与 Reviewer 使用相同 packet。
+- AI Daily：最多 5 条，通常 4–5 条；1–2 条深读，其余为简析，正文通常 5–8 分钟。
 - Weekly：12–20 分钟，聚焦一周结构性变化与工程决策。
 - IELTS：10–15 分钟，科学/技术主题轻量训练。
-- 每条结构：事件 → 机制 → 原始证据 → 具体影响 → 不确定性 → 观察信号。
-- 没有行动时写“无需行动”；不生成空章节、通用建议或填充新闻。
+- 每条只渲染类别、标题、自然事实段、必要的编辑判断与来源链接；后位简讯不重复固定判断标签。
+- 行动最多 1 条且必须有强个性化绑定；不生成空章节、通用建议或填充新闻。
 
 ## 6. 发布、冲突与恢复
 
