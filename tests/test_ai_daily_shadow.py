@@ -1128,6 +1128,94 @@ def test_interest_only_context_does_not_render_a_personal_connection(
     assert "对你的启发" not in markdown
 
 
+def test_stock_editorial_leadin_is_removed_before_review_and_render(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Agent workflow evaluation",
+        link="https://example.com/agent-workflow",
+        published="2026-08-29",
+        summary="A complete workflow evaluation with concrete implementation detail. " * 30,
+        content_type="engineering",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                importance_statement=(
+                    "该案例展示了验证系统会改变 coding agent 的返工成本。"
+                ),
+                uncertainty_statement="该结果只覆盖来源描述的任务范围。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "该案例展示" not in markdown
+    assert "验证系统会改变 coding agent 的返工成本" in markdown
+
+
+def test_first_party_builder_allegation_is_rendered_as_attributed_self_report(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Pieter Levels",
+        title="Hotel review aggregation",
+        link="https://example.com/hotel-reviews",
+        published="2026-08-29",
+        summary=(
+            "Pieter Levels writes that booking platforms delete negative reviews. "
+            "He built a rating aggregation product. " * 20
+        ),
+        content_type="builder",
+        fulltext_enriched=True,
+        story_type="builder",
+        evidence_role="BUILDER_PRIMARY",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                title_statement="预订平台删除负面评价，Pieter 推出聚合评分产品。",
+                importance_statement="平台审核偏差给独立产品留下了机会。",
+                uncertainty_statement="该产品目前只有作者提供的使用案例。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "据 Pieter Levels 自述" in markdown
+
+
 def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
     tmp_path: Path,
 ) -> None:

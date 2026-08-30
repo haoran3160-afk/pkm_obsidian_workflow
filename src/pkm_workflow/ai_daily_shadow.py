@@ -822,6 +822,42 @@ def _strong_personal_context_ref(value: str) -> bool:
     return value.startswith(("projects[", "prior_knowledge[", "knowledge_anchors["))
 
 
+def _strip_stock_editorial_leadin(value: str) -> str:
+    stripped = re.sub(
+        r"^(?:该|这个)(?:案例|项目|观点|演讲)"
+        r"(?:展示|显示|表明|说明|反映)(?:了)?[，,:：]?\s*",
+        "",
+        value.strip(),
+    )
+    stripped = re.sub(
+        r"^这(?:表明|显示|说明)(?:了)?[，,:：]?\s*",
+        "",
+        stripped,
+    )
+    return stripped or value.strip()
+
+
+def _needs_builder_self_report_attribution(candidate: Candidate, statement: str) -> bool:
+    if candidate.evidence_role not in {
+        "BUILDER_PRIMARY",
+        "PRIMARY_BUILDER",
+        "PRIMARY_OR_EXPERT",
+    }:
+        return False
+    lowered = statement.casefold()
+    allegation = re.search(
+        r"(?:delete|remove|censor|ban|defam|manipulat|"
+        r"删除|移除|屏蔽|封禁|诽谤|操纵|造假)",
+        lowered,
+    )
+    attributed = re.search(
+        r"(?:据.{0,30}(?:自述|称|表示|认为)|(?:自述|声称|表示|认为)|"
+        r"according to|\bclaims?\b|\bsays?\b|\bwrites?\b)",
+        lowered,
+    )
+    return allegation is not None and attributed is None
+
+
 def _validate_generator_draft(
     draft: object,
     evidence: Mapping[str, Candidate],
@@ -871,6 +907,11 @@ def _validate_generator_draft(
         for claim in claims:
             if not isinstance(claim, dict):
                 raise ValueError("GENERATOR_CLAIM_INVALID")
+            claim = dict(claim)
+            if isinstance(claim.get("statement"), str):
+                claim["statement"] = _strip_stock_editorial_leadin(
+                    claim["statement"]
+                )
             claim_id = claim.get("claim_id")
             evidence_ids = claim.get("evidence_ids")
             claim_kind = claim.get("claim_kind")
@@ -957,6 +998,8 @@ def _validate_generator_draft(
                 raise ValueError("GENERATOR_UNSCOPED_RATE")
             claim_ids.add(claim_id)
             local_claims[claim_id] = claim
+        story = dict(story)
+        story["claims"] = list(local_claims.values())
         if context_ref_unknown:
             invalid_story_evidence_ids = {
                 evidence_id
@@ -1038,6 +1081,20 @@ def _validate_generator_draft(
         }
         if len(story_evidence_ids) != 1:
             raise ValueError("GENERATOR_MULTIPLE_CANDIDATES_PER_STORY")
+        story_candidate = evidence[next(iter(story_evidence_ids))]
+        attributed_claims: list[dict[str, Any]] = []
+        for claim in story["claims"]:
+            if _needs_builder_self_report_attribution(
+                story_candidate, claim["statement"]
+            ):
+                claim = dict(claim)
+                claim["statement"] = (
+                    f"据 {story_candidate.source} 自述，{claim['statement']}"
+                )
+            attributed_claims.append(claim)
+        story = dict(story)
+        story["claims"] = attributed_claims
+        local_claims = {claim["claim_id"]: claim for claim in attributed_claims}
         security_evidence = "\n".join(
             f"{evidence[evidence_id].title}\n{evidence[evidence_id].summary}"
             for evidence_id in story_evidence_ids
@@ -1845,6 +1902,7 @@ def run_ai_daily_shadow(
                 for story in accepted
                 for claim in story["claims"]
                 for ref in claim["context_refs"]
+                if _strong_personal_context_ref(ref)
             }
         )
     )
