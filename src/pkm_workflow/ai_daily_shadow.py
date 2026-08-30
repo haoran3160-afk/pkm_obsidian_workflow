@@ -927,14 +927,18 @@ def _validate_generator_draft(
     if len(action_bounded) < minimum_items:
         raise ValueError("GENERATOR_MINIMUM_ITEMS_REQUIRED")
 
-    if len(action_bounded) >= 2 and diversity_evidence_id is not None:
+    if len(action_bounded) >= 2 and task_group_count >= 2:
         selected_evidence_ids = {
             evidence_id
             for story in action_bounded
             for claim in story["claims"]
             for evidence_id in claim["evidence_ids"]
         }
-        if diversity_evidence_id not in selected_evidence_ids:
+        selected_evidence = {
+            evidence_id: evidence[evidence_id]
+            for evidence_id in selected_evidence_ids
+        }
+        if len(_reader_task_groups(selected_evidence)) < 2:
             raise ValueError("GENERATOR_REQUIRED_EXPOSURE_MISSING")
 
     total_claims = sum(len(story["claims"]) for story in action_bounded)
