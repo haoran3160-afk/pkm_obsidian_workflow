@@ -21,6 +21,7 @@ def test_production_promotes_reviewed_shadow_with_create_new(tmp_path: Path) -> 
     result = run_ai_daily_production(
         date(2026, 8, 30),
         vault_daily_dir=vault,
+        coordination_path=tmp_path / "production.lock",
         shadow_runner=lambda _date: ShadowResult(
             0,
             "PUBLISHED",
@@ -56,6 +57,7 @@ def test_existing_daily_note_skips_shadow_and_token_usage(tmp_path: Path) -> Non
     result = run_ai_daily_production(
         date(2026, 8, 30),
         vault_daily_dir=vault,
+        coordination_path=tmp_path / "production.lock",
         shadow_runner=forbidden,
     )
 
@@ -63,3 +65,25 @@ def test_existing_daily_note_skips_shadow_and_token_usage(tmp_path: Path) -> Non
     assert result.request_count == 0
     assert called is False
     assert destination.read_text(encoding="utf-8") == "existing user note"
+
+
+def test_missing_vault_returns_structured_failure_without_shadow(tmp_path: Path) -> None:
+    called = False
+
+    def forbidden(_date: date | None) -> ShadowResult:
+        nonlocal called
+        called = True
+        raise AssertionError("shadow must not run")
+
+    result = run_ai_daily_production(
+        date(2026, 8, 30),
+        vault_daily_dir=tmp_path / "missing",
+        coordination_path=tmp_path / "production.lock",
+        shadow_runner=forbidden,
+    )
+
+    assert result.exit_code == 10
+    assert result.status == "PRODUCTION_FAILED"
+    assert result.error_code == "VAULT_PATH_INVALID"
+    assert result.request_count == 0
+    assert called is False
