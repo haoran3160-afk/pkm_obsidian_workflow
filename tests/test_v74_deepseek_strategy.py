@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:521ef9e4b69f5938ad0c3c73f8bbf502736fe14332304638f987017f7c77e6c8"
+        "sha256:53a6dd168417c6c11526e2525ea5fed15fab1c1d209861e3850778e9f4d73c4d"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -123,46 +123,34 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert strategy.generator_schema() == mvp_generator_output_schema()
     assert strategy.reviewer_schema() == mvp_reviewer_output_schema()
     assert strategy.generator_schema() != generator_output_schema()
-    assert 'action_type exactly "NONE"' in MVP_GENERATOR_PROMPT
-    assert "watch and uncertainty claims are not actions" in MVP_GENERATOR_PROMPT
-    assert "copy context_refs only from candidate profile_refs or exact approved context paths" in MVP_GENERATOR_PROMPT
-    assert "never prefix a copied path with fields" in MVP_GENERATOR_PROMPT
-    assert "Every story must include an impact claim" in MVP_GENERATOR_PROMPT
-    assert "pillar_id alone is not a semantic personalization reference" in MVP_GENERATOR_PROMPT
-    assert "Each evidence_id may support at most one story" in MVP_GENERATOR_PROMPT
-    assert "first results never means the world's first product" in MVP_GENERATOR_PROMPT
-    assert "existing revenue or valuation cannot validate a newly announced direction" in MVP_GENERATOR_PROMPT
-    assert "never say existing scale reflects or supports the new trend" in MVP_GENERATOR_PROMPT
-    assert "Across the whole response emit at most two action claims" in MVP_GENERATOR_PROMPT
-    assert "an editorial_inference need not appear verbatim in the source" in MVP_REVIEWER_PROMPT
-    assert "evidence supports its factual premise" in MVP_REVIEWER_PROMPT
-    assert "Ranks 1-2 are deep reads" in MVP_GENERATOR_PROMPT
-    assert "Ranks 3-5 are layer radar items" in MVP_GENERATOR_PROMPT
-    assert "Research candidates: identify the research problem" in MVP_GENERATOR_PROMPT
-    assert "Builder candidates: explain the user problem" in MVP_GENERATOR_PROMPT
-    assert "Builder and cognition stories must each include one concrete" in MVP_GENERATOR_PROMPT
-    assert "directly operationalize the same story's importance or impact" in MVP_GENERATOR_PROMPT
-    assert "secondary anecdote or generic reading task" in MVP_REVIEWER_PROMPT
-    assert "An action claim need not appear verbatim in the source" in MVP_REVIEWER_PROMPT
-    assert "VC candidates: identify the layer being funded" in MVP_GENERATOR_PROMPT
-    assert "Cognition candidates: name the default assumption" in MVP_GENERATOR_PROMPT
-    assert "a research story may include one action claim" in MVP_GENERATOR_PROMPT
-    assert "never invent an action merely to fill the field" in MVP_GENERATOR_PROMPT
-    assert (
-        "an approved research priority, prior knowledge, project, or affected technology"
-        in MVP_GENERATOR_PROMPT
-    )
-    assert "Leave action claims empty unless" not in MVP_GENERATOR_PROMPT
-    assert "retain its exact sample size or denominator" in MVP_GENERATOR_PROMPT
-    assert "first-party Builder claim" in MVP_GENERATOR_PROMPT
-    assert "design goal into a validated outcome" in MVP_REVIEWER_PROMPT
-    assert "prefer at least two story types" in MVP_GENERATOR_PROMPT
-    assert "Across all stories emit at most 32 claims" in MVP_GENERATOR_PROMPT
-    assert "candidate order encodes deterministic pillar exposure" in MVP_GENERATOR_PROMPT
-    assert "pillar_exposure and editorial_score are deterministic tie-break signals" in MVP_GENERATOR_PROMPT
-    assert "at least two reader-task groups" in MVP_GENERATOR_PROMPT
-    assert "semantic_correction is non-null" in MVP_GENERATOR_PROMPT
-    assert "never by candidate order" not in MVP_GENERATOR_PROMPT
+    assert "All non-action claims set action_type to NONE" in MVP_GENERATOR_PROMPT
+    assert "never fill a quota" in MVP_GENERATOR_PROMPT
+    assert "Across the whole brief emit at most one action" in MVP_GENERATOR_PROMPT
+    assert "Only projects, prior_knowledge, or a supplied knowledge_anchors path" in MVP_GENERATOR_PROMPT
+    assert "Omit impact when that stronger context is absent" in MVP_GENERATOR_PROMPT
+    assert "one story per evidence_id" in MVP_GENERATOR_PROMPT
+    assert "Candidate order puts evidence-rich reports" in MVP_GENERATOR_PROMPT
+    assert "it must not become rank 1 or 2" in MVP_GENERATOR_PROMPT
+    assert "Choose only the two to four questions" in MVP_GENERATOR_PROMPT
+    assert "AI-practice stories should expose a real failure" in MVP_GENERATOR_PROMPT
+    assert "Builder stories should explain the user problem" in MVP_GENERATOR_PROMPT
+    assert "VC stories should explain the capital layer" in MVP_GENERATOR_PROMPT
+    assert "Cognition stories should reconstruct the challenged assumption" in MVP_GENERATOR_PROMPT
+    assert "An importance claim is allowed to be editorial analysis" in MVP_REVIEWER_PROMPT
+    assert "Do not ABSTAIN merely because the conclusion is interpretive" in MVP_REVIEWER_PROMPT
+    assert "Pillars and selection questions never support claims about the reader personally" in MVP_REVIEWER_PROMPT
+    assert "generic reading, continued-attention, toy-project" in MVP_REVIEWER_PROMPT
+    assert "Every story must include an impact claim" not in MVP_GENERATOR_PROMPT
+    assert "An action may be accepted only when" in MVP_REVIEWER_PROMPT
+    assert "Never invent a reading task or toy project" in MVP_GENERATOR_PROMPT
+    assert "Retain exact numeric scope and attribution" in MVP_GENERATOR_PROMPT
+    assert "A builder's claim about users, platforms, or results" in MVP_GENERATOR_PROMPT
+    assert "proposals presented as proven outcomes" in MVP_REVIEWER_PROMPT
+    assert "whole response at or below 24 claims" in MVP_GENERATOR_PROMPT
+    assert "Candidate order puts evidence-rich reports" in MVP_GENERATOR_PROMPT
+    assert "If semantic_correction is present" in MVP_GENERATOR_PROMPT
+    assert "prefer at least two story types" not in MVP_GENERATOR_PROMPT
+    assert "at least two reader-task groups" not in MVP_GENERATOR_PROMPT
 
 
 def test_d018_strategy_binding_returns_an_unshared_nested_copy() -> None:
