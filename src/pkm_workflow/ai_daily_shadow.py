@@ -885,6 +885,19 @@ def _has_builder_self_report_attribution(statement: str) -> bool:
     ) is not None
 
 
+def _normalize_builder_attribution(candidate: Candidate, statement: str) -> str:
+    source = candidate.source.strip()
+    if not source:
+        return statement
+    last_name = source.split()[-1]
+    pattern = (
+        rf"^据\s+{re.escape(source)}\s+自述，\s*"
+        rf"(?:{re.escape(source)}|{re.escape(last_name)})\s*"
+        r"(?:称|表示|认为)[，,]?\s*"
+    )
+    return re.sub(pattern, f"{source} 称，", statement)
+
+
 def _validate_generator_draft(
     draft: object,
     evidence: Mapping[str, Candidate],
@@ -1116,18 +1129,20 @@ def _validate_generator_draft(
             raise ValueError("GENERATOR_MULTIPLE_CANDIDATES_PER_STORY")
         story_candidate = evidence[next(iter(story_evidence_ids))]
         attributed_claims: list[dict[str, Any]] = []
-        self_report_attributed = False
         for claim in story["claims"]:
-            if _has_builder_self_report_attribution(claim["statement"]):
-                self_report_attributed = True
-            elif not self_report_attributed and _needs_builder_self_report_attribution(
+            if _needs_builder_self_report_attribution(
                 story_candidate, claim["statement"]
             ):
                 claim = dict(claim)
                 claim["statement"] = (
                     f"据 {story_candidate.source} 自述，{claim['statement']}"
                 )
-                self_report_attributed = True
+            normalized_statement = _normalize_builder_attribution(
+                story_candidate, claim["statement"]
+            )
+            if normalized_statement != claim["statement"]:
+                claim = dict(claim)
+                claim["statement"] = normalized_statement
             attributed_claims.append(claim)
         story = dict(story)
         story["claims"] = attributed_claims
@@ -1469,7 +1484,10 @@ def _render_markdown(
             + _claim_texts(story, "impact_claim_ids")
         )
         if editorial_judgment:
-            lines.extend(("**简报判断**", editorial_judgment, ""))
+            if story["rank"] <= 2:
+                lines.extend(("**简报判断**", editorial_judgment, ""))
+            else:
+                lines.extend((editorial_judgment, ""))
         action = _brief_sentences(_claim_texts(story, "action_claim_ids"))
         if action:
             accepted_actions.append(action)
@@ -1482,7 +1500,19 @@ def _render_markdown(
         for evidence_id in evidence_ids:
             item = evidence[evidence_id]
             links.append(f"[{item.source}]({item.link}) · {item.published}")
-        lines.append(f"**原文** {'；'.join(links)}")
+        source_label = (
+            "引用页"
+            if any(
+                re.match(
+                    r"^(?:quoting\b|a quote from\b)",
+                    evidence[evidence_id].title,
+                    re.IGNORECASE,
+                )
+                for evidence_id in evidence_ids
+            )
+            else "原文"
+        )
+        lines.append(f"**{source_label}** {'；'.join(links)}")
     if accepted_actions:
         lines.extend(("", "## 今天可以做", ""))
         lines.extend(f"- {action}" for action in accepted_actions[:1])

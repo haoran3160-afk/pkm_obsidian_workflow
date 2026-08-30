@@ -56,6 +56,7 @@ class _GenerateReviewTransport:
         action_statement: str = "本周用一个浏览任务对比复用前后的脚本量。",
         action_object: str = "一个真实浏览任务",
         action_success_criterion: str = "复用后重复脚本行数下降",
+        story_rank: int = 1,
     ) -> None:
         self.calls = 0
         self.empty = empty
@@ -76,6 +77,7 @@ class _GenerateReviewTransport:
         self.action_statement = action_statement
         self.action_object = action_object
         self.action_success_criterion = action_success_criterion
+        self.story_rank = story_rank
         self.generator_profile_refs: list[str] = []
         self.generator_rubric: dict[str, object] = {}
         self.generator_calls = 0
@@ -225,7 +227,7 @@ class _GenerateReviewTransport:
                 "stories": [
                     {
                         "story_id": "story-1",
-                        "rank": 1,
+                        "rank": self.story_rank,
                         "title_claim_id": "title-claim",
                         "event_claim_ids": ["event-claim"],
                         "mechanism_claim_ids": (
@@ -1093,6 +1095,87 @@ def test_public_markdown_uses_natural_editorial_copy_without_operational_section
         assert old_surface not in markdown
 
 
+def test_quote_curator_page_is_labeled_as_a_quote_page_not_original_source(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Simon Willison",
+        title="Quoting Paul Dix",
+        link="https://example.com/quoting-paul-dix",
+        published="2026-08-29",
+        summary="Simon Willison reproduces an attributed Paul Dix quotation. " * 30,
+        content_type="news",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                uncertainty_statement="该判断只来自被收录的单段评论。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "**引用页** [Simon Willison]" in markdown
+    assert "**原文** [Simon Willison]" not in markdown
+
+
+def test_lower_rank_brief_keeps_judgment_without_repeating_the_section_label(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="A brief model-routing observation",
+        link="https://example.com/model-routing",
+        published="2026-08-29",
+        summary="A bounded observation about model routing and cost. " * 30,
+        content_type="engineering",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                story_rank=3,
+                uncertainty_statement="该观察只覆盖来源描述的团队。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "这会减少 Agent 工作流中的重复浏览器脚本" in markdown
+    assert "**简报判断**" not in markdown
+
+
 @pytest.mark.parametrize(
     "claim_id",
     [
@@ -1323,7 +1406,8 @@ def test_first_party_builder_allegation_is_rendered_as_attributed_self_report(
     assert result.markdown_path is not None
     markdown = result.markdown_path.read_text(encoding="utf-8")
     assert "据 Pieter Levels 自述" in markdown
-    assert markdown.count("据 Pieter Levels 自述") == 1
+    assert "据 Pieter Levels 自述，预订平台删除差评" in markdown
+    assert "据 Pieter Levels 自述，Levels 称" not in markdown
 
 
 def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(

@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:53a6dd168417c6c11526e2525ea5fed15fab1c1d209861e3850778e9f4d73c4d"
+        "sha256:5253b2cc51e4f284ae31ee66a752767f81da63080f26a4720a4393ea47d5303e"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -136,10 +136,15 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Builder stories should explain the user problem" in MVP_GENERATOR_PROMPT
     assert "VC stories should explain the capital layer" in MVP_GENERATOR_PROMPT
     assert "Cognition stories should reconstruct the challenged assumption" in MVP_GENERATOR_PROMPT
+    assert "source field names the publication or feed, not necessarily the author" in MVP_GENERATOR_PROMPT
+    assert "For a title beginning with Quoting" in MVP_GENERATOR_PROMPT
+    assert "reported benchmark win does not prove general quality preservation" in MVP_GENERATOR_PROMPT
     assert "An importance claim is allowed to be editorial analysis" in MVP_REVIEWER_PROMPT
     assert "Do not ABSTAIN merely because the conclusion is interpretive" in MVP_REVIEWER_PROMPT
     assert "Pillars and selection questions never support claims about the reader personally" in MVP_REVIEWER_PROMPT
     assert "generic reading, continued-attention, toy-project" in MVP_REVIEWER_PROMPT
+    assert "REJECT publisher-as-author claims" in MVP_REVIEWER_PROMPT
+    assert "Claims about true ratings, restored truth, platform manipulation" in MVP_REVIEWER_PROMPT
     assert "Every story must include an impact claim" not in MVP_GENERATOR_PROMPT
     assert "An action may be accepted only when" in MVP_REVIEWER_PROMPT
     assert "Never invent a reading task or toy project" in MVP_GENERATOR_PROMPT
