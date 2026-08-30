@@ -641,10 +641,10 @@ def _semantic_correction_instruction(error_code: str) -> str:
             "qualitatively instead."
         ),
         "GENERATOR_MINIMUM_ITEMS_REQUIRED": (
-            "Regenerate five stories when the full candidate set spans all three reader "
-            "task groups; otherwise regenerate at least four. Ranks 1-2 "
-            "are deep reads and ranks 3-5 are concise layer radar items. Keep total "
-            "claims at or below 32."
+            "Regenerate four or five stories from the full evidence set. Preserve the "
+            "evidence-rich candidate order for ranks 1-2 and use concise lower-ranked "
+            "briefs for thinner evidence. Do not weaken evidence requirements or add filler. "
+            "Keep the total at or below 24 claims."
         ),
     }
     return instructions[error_code]
@@ -1340,6 +1340,9 @@ def _validate_generator_draft(
         ]
         action_bounded.append(projected)
 
+    if len(evidence) >= 5 and len(action_bounded) < 4:
+        raise ValueError("GENERATOR_MINIMUM_ITEMS_REQUIRED")
+
     total_claims = sum(len(story["claims"]) for story in action_bounded)
     if total_claims <= 24:
         return tuple(action_bounded)
@@ -1819,7 +1822,7 @@ def run_ai_daily_shadow(
         )
     except ValueError as error:
         validation_error: ValueError | None = error
-        retryable_semantic_errors: set[str] = set()
+        retryable_semantic_errors = {"GENERATOR_MINIMUM_ITEMS_REQUIRED"}
         if str(error) in retryable_semantic_errors and budget.remaining >= 2:
             retry_candidates = collected.candidates
             retry_evidence = {

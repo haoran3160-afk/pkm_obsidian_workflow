@@ -431,7 +431,8 @@ def test_generator_receives_one_bounded_packet_that_keeps_late_high_value_sectio
 
     result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
 
-    assert result.status == "PUBLISHED"
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_MINIMUM_ITEMS_REQUIRED"
     packet = transport.generator_candidate_summaries[0]
     assert len(packet) == 10
     assert sum(len(summary) for summary in packet) <= 24_000
@@ -1541,6 +1542,53 @@ def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
     assert result.status == "PUBLISHED"
     assert result.story_count == 1
     assert transport.generator_calls == 1
+
+
+def test_five_candidates_trigger_one_bounded_refill_when_generator_underselects(
+    tmp_path: Path,
+) -> None:
+    candidates = tuple(
+        Candidate(
+            evidence_id=f"evidence-{index + 1}",
+            source=f"Source {index + 1}",
+            title=f"Candidate {index + 1}",
+            link=f"https://example.com/candidate-{index + 1}",
+            published="2026-08-29",
+            summary="A complete public report with concrete implementation detail. " * 30,
+            content_type="engineering",
+            fulltext_enriched=True,
+            story_type="ai_practice",
+        )
+        for index in range(5)
+    )
+    transport = _GenerateReviewTransport(
+        reject_claim="",
+        uncertainty_statement="该结果只覆盖来源描述的任务范围。",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=candidates,
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=transport,
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.status == "SCHEMA_INVALID"
+    assert result.error_code == "GENERATOR_MINIMUM_ITEMS_REQUIRED"
+    assert result.request_count == 2
+    assert result.markdown_path is None
+    assert transport.generator_calls == 2
+    assert transport.semantic_corrections[0] is None
+    assert "four or five" in str(transport.semantic_corrections[1])
 
 
 def test_cognition_investment_story_displays_both_reader_layers(
