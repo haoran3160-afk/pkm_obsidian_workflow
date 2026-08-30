@@ -545,10 +545,7 @@ def test_unsafe_rate_segments_do_not_consume_packet_budget_before_backfill(
     tmp_path: Path,
 ) -> None:
     lead = "L" * 600
-    unsafe = (
-        "Benchmark method results accuracy improved 80% without scoped evidence "
-        + ("U" * 320)
-    )
+    unsafe = "80% " + ("benchmark method results accuracy " * 35)
     late_result = (
         "Limitations identify the bounded failure mode and the decision-changing result. "
         + ("R" * 720)

@@ -339,6 +339,8 @@ def _evidence_segments(value: str) -> list[str]:
         pieces = re.split(r"(?<=[。！？])\s*|(?<=[.!?])\s+", line)
         for raw_piece in pieces:
             piece = raw_piece.strip()
+            if _has_unscoped_rate(piece):
+                continue
             while len(piece) > 600:
                 cut = piece.rfind(" ", 0, 600)
                 if cut < 300:
