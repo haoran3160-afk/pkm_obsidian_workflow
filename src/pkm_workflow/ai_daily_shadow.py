@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from .deepseek_mvp_strategy import (
@@ -335,8 +336,17 @@ def _evidence_segments(value: str) -> list[str]:
         line = re.sub(r"\s+", " ", raw_line).strip()
         if not line:
             continue
-        pieces = re.split(r"(?<=[.!?。！？])\s+", line)
-        segments.extend(piece.strip() for piece in pieces if piece.strip())
+        pieces = re.split(r"(?<=[。！？])\s*|(?<=[.!?])\s+", line)
+        for raw_piece in pieces:
+            piece = raw_piece.strip()
+            while len(piece) > 800:
+                cut = piece.rfind(" ", 0, 600)
+                if cut < 300:
+                    cut = 600
+                segments.append(piece[:cut].strip())
+                piece = piece[cut:].strip()
+            if piece:
+                segments.append(piece)
     if not segments and value.strip():
         segments = [value.strip()]
     return segments
@@ -857,7 +867,15 @@ def _strip_stock_editorial_leadin(value: str) -> str:
         "",
         stripped,
     )
-    return (stripped or value.strip()).replace("：", "，")
+    return stripped or value.strip()
+
+
+def _contains_reader_directed_copy(value: str) -> bool:
+    return re.search(
+        r"(?:对你|与你|你的|你当前|用户当前)|\byour\b|\bfor you\b",
+        value,
+        re.IGNORECASE,
+    ) is not None
 
 
 def _needs_builder_self_report_attribution(candidate: Candidate, statement: str) -> bool:
@@ -896,6 +914,24 @@ def _normalize_builder_attribution(candidate: Candidate, statement: str) -> str:
         r"(?:称|表示|认为)[，,]?\s*"
     )
     return re.sub(pattern, f"{source} 称，", statement)
+
+
+def _normalize_publisher_authorship(candidate: Candidate, statement: str) -> str:
+    path_parts = [part for part in urlsplit(candidate.link).path.split("/") if part]
+    if (
+        candidate.source == "Hugging Face Blog"
+        and len(path_parts) >= 3
+        and path_parts[0].casefold() == "blog"
+    ):
+        contributor = path_parts[1]
+        return re.sub(
+            r"^Hugging Face(?:\s+Blog|\s*博客)?"
+            r"(?:发布(?:了)?(?:一篇)?(?:论文|文章)[，,]?)?\s*提出",
+            f"Hugging Face Blog 上由 {contributor} 署名的文章提出",
+            statement,
+            flags=re.IGNORECASE,
+        )
+    return statement
 
 
 def _validate_generator_draft(
@@ -944,6 +980,19 @@ def _validate_generator_draft(
         local_claims: dict[str, dict[str, Any]] = {}
         unsafe_absence_ids: set[str] = set()
         context_ref_unknown = False
+        ungrounded_reader_copy = False
+        protected_personal_ids = {
+            *(
+                story.get("impact_claim_ids", [])
+                if isinstance(story.get("impact_claim_ids"), list)
+                else []
+            ),
+            *(
+                story.get("action_claim_ids", [])
+                if isinstance(story.get("action_claim_ids"), list)
+                else []
+            ),
+        }
         for claim in claims:
             if not isinstance(claim, dict):
                 raise ValueError("GENERATOR_CLAIM_INVALID")
@@ -978,6 +1027,15 @@ def _validate_generator_draft(
                 raise ValueError("GENERATOR_CONTEXT_REFS_INVALID")
             if any(item not in allowed_context_refs for item in context_refs):
                 context_ref_unknown = True
+            if (
+                claim_id not in protected_personal_ids
+                and _contains_reader_directed_copy(claim["statement"])
+                and not any(
+                    _strong_personal_context_ref(context_ref)
+                    for context_ref in context_refs
+                )
+            ):
+                ungrounded_reader_copy = True
             statement = str(claim["statement"]).casefold()
             chinese_absence = re.search(
                 r"(?:报告|文档|来源|证据).{0,10}"
@@ -1040,6 +1098,8 @@ def _validate_generator_draft(
             local_claims[claim_id] = claim
         story = dict(story)
         story["claims"] = list(local_claims.values())
+        if ungrounded_reader_copy:
+            continue
         if context_ref_unknown:
             invalid_story_evidence_ids = {
                 evidence_id
@@ -1130,6 +1190,12 @@ def _validate_generator_draft(
         story_candidate = evidence[next(iter(story_evidence_ids))]
         attributed_claims: list[dict[str, Any]] = []
         for claim in story["claims"]:
+            normalized_authorship = _normalize_publisher_authorship(
+                story_candidate, claim["statement"]
+            )
+            if normalized_authorship != claim["statement"]:
+                claim = dict(claim)
+                claim["statement"] = normalized_authorship
             if _needs_builder_self_report_attribution(
                 story_candidate, claim["statement"]
             ):

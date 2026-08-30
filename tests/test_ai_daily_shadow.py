@@ -391,10 +391,7 @@ def test_run_ai_daily_shadow_generates_reviewed_create_new_markdown(tmp_path: Pa
 def test_generator_receives_one_bounded_packet_that_keeps_late_high_value_sections(
     tmp_path: Path,
 ) -> None:
-    filler = (
-        "The author describes the visual theme and repeats background production notes. "
-        * 120
-    )
+    filler = "作者反复描述视觉主题和背景制作过程。" * 400
     limitation = (
         "Limitations\n"
         "The coding agent grew the main file beyond 3,000 lines and left more than "
@@ -1318,6 +1315,48 @@ def test_interest_only_context_does_not_render_a_personal_connection(
     assert "对你的启发" not in markdown
 
 
+def test_reader_directed_copy_cannot_bypass_the_personalization_role(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Example AI",
+        title="Agent workflow evaluation",
+        link="https://example.com/agent-workflow",
+        published="2026-08-29",
+        summary="A complete workflow evaluation with concrete implementation detail. " * 30,
+        content_type="engineering",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                importance_statement="这会直接改善你的当前项目。",
+                uncertainty_statement="该结果只覆盖来源描述的任务范围。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: {
+            "user_context_hash": "sha256:" + "1" * 64,
+            "fields": {"priorities": [{"topics": ["Agent"]}]},
+        },
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.story_count == 0
+    assert result.markdown_path is None
+
+
 def test_stock_editorial_leadin_is_removed_before_review_and_render(
     tmp_path: Path,
 ) -> None:
@@ -1408,6 +1447,55 @@ def test_first_party_builder_allegation_is_rendered_as_attributed_self_report(
     assert "据 Pieter Levels 自述" in markdown
     assert "据 Pieter Levels 自述，预订平台删除差评" in markdown
     assert "据 Pieter Levels 自述，Levels 称" not in markdown
+
+
+def test_contributor_article_does_not_turn_the_hosting_platform_into_the_author(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Hugging Face Blog",
+        title="Quantization-Aware Healing",
+        link=(
+            "https://huggingface.co/blog/MultiverseComputingCAI/"
+            "quantization-aware-healing"
+        ),
+        published="2026-08-29",
+        summary="A contributor article presents a bounded benchmark and method. " * 40,
+        content_type="research",
+        fulltext_enriched=True,
+        story_type="research",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(
+                reject_claim="",
+                title_statement=(
+                    "Hugging Face 博客发布论文，提出量化感知修复方法。"
+                ),
+                uncertainty_statement="结果只覆盖来源报告的基准范围。",
+            ),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert (
+        "Hugging Face Blog 上由 MultiverseComputingCAI 署名的文章提出"
+        in markdown
+    )
+    assert "Hugging Face 博客发布论文，提出" not in markdown
 
 
 def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
