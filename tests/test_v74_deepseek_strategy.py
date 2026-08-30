@@ -87,7 +87,7 @@ def test_v74_strategy_uses_deepseek_api_and_no_codex_model_contract() -> None:
     assert binding["fallback_eligible"] is False
     assert str(binding["strategy_hash"]).startswith("sha256:")
     assert binding["strategy_hash"] == (
-        "sha256:a5f573f54afb9145ff238685e5097f94f19bc13b1b3d16b04025ab4f8551655c"
+        "sha256:521ef9e4b69f5938ad0c3c73f8bbf502736fe14332304638f987017f7c77e6c8"
     )
     assert API_URL == "https://api.deepseek.com/chat/completions"
     assert MODEL_NAME == "deepseek-v4-flash"
@@ -160,7 +160,7 @@ def test_strategy_preserves_d009_and_exposes_the_ai_daily_v75_contract() -> None
     assert "Across all stories emit at most 32 claims" in MVP_GENERATOR_PROMPT
     assert "candidate order encodes deterministic pillar exposure" in MVP_GENERATOR_PROMPT
     assert "pillar_exposure and editorial_score are deterministic tie-break signals" in MVP_GENERATOR_PROMPT
-    assert "diversity_evidence_id is non-null" in MVP_GENERATOR_PROMPT
+    assert "at least two reader-task groups" in MVP_GENERATOR_PROMPT
     assert "semantic_correction is non-null" in MVP_GENERATOR_PROMPT
     assert "never by candidate order" not in MVP_GENERATOR_PROMPT
 

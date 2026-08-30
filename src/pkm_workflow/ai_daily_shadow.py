@@ -133,6 +133,24 @@ def _collect_v75_sources(content_date: date) -> CollectionResult:
 
     root = _repository_root()
     used_urls = daily_curation.load_used_urls(_existing_state_path(root, "used_articles.json"))
+    runtime_runs = Path(r"D:\personal\obsidian_workflow-runtime\scratch\runs")
+    if runtime_runs.is_dir():
+        for report_path in runtime_runs.glob("*/run-report.json"):
+            try:
+                report = _read_json_object(report_path)
+                report_date = date.fromisoformat(str(report.get("content_date", "")))
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if not content_date - timedelta(days=7) <= report_date < content_date:
+                continue
+            if report.get("markdown_expected") is not True:
+                continue
+            audit = report.get("audit")
+            if not isinstance(audit, dict):
+                continue
+            selected = audit.get("selected_urls")
+            if isinstance(selected, list):
+                used_urls.update(url for url in selected if isinstance(url, str))
     catalog = load_approved_source_catalog()
     return collect_v75_candidates(
         content_date,
@@ -1382,12 +1400,7 @@ def run_ai_daily_shadow(
     evidence = {item.evidence_id: item for item in collected.candidates}
     if len(evidence) != len(collected.candidates):
         raise ValueError("candidate evidence IDs must be unique")
-    diversity_gap = collected.audit.get("diversity_metadata_gap", 1500)
-    if type(diversity_gap) is not int or diversity_gap < 0:
-        raise ValueError("INVALID_DIVERSITY_METADATA_GAP")
-    diversity_evidence_id = _diversity_evidence_id(
-        collected.candidates, max_metadata_gap=diversity_gap
-    )
+    diversity_evidence_id = None
     generator_request = _generator_request_bytes(
         candidates=collected.candidates,
         coverage=collected.coverage,

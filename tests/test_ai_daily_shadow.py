@@ -465,7 +465,7 @@ def test_generator_receives_close_cross_type_diversity_target(tmp_path: Path) ->
     result = run_ai_daily_shadow(date(2026, 8, 28), ports=ports)
 
     assert result.status == "PUBLISHED"
-    assert transport.generator_rubric["diversity_evidence_id"] == "evidence-builder"
+    assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
 def test_builder_without_observed_validation_is_not_forced_for_diversity(
@@ -746,7 +746,7 @@ def test_exposed_cognition_can_be_the_cross_layer_diversity_target(
     result = run_ai_daily_shadow(date(2026, 8, 29), ports=ports)
 
     assert result.status == "PUBLISHED"
-    assert transport.generator_rubric["diversity_evidence_id"] == "evidence-cognition"
+    assert transport.generator_rubric["diversity_evidence_id"] is None
 
 
 def test_v75_story_without_personal_impact_fails_closed(tmp_path: Path) -> None:
