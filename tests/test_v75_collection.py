@@ -182,9 +182,14 @@ def test_metadata_rank_refills_with_two_candidates_per_reader_lane() -> None:
     assert all(candidate.fulltext_enriched for candidate in result.candidates)
     assert all(candidate.metadata_score >= 5000 for candidate in result.candidates)
     assert max(
-        sum(candidate.source_id == source_id for candidate in result.candidates)
-        for source_id in {candidate.source_id for candidate in result.candidates}
-    ) <= 2
+        sum(
+            candidate.canonical_origin_id == origin_id
+            for candidate in result.candidates
+        )
+        for origin_id in {
+            candidate.canonical_origin_id for candidate in result.candidates
+        }
+    ) <= 1
     assert max(
         sum(candidate.story_type == story_type for candidate in result.candidates)
         for story_type in {candidate.story_type for candidate in result.candidates}
@@ -192,6 +197,59 @@ def test_metadata_rank_refills_with_two_candidates_per_reader_lane() -> None:
     candidate_audit = result.audit["candidate_audit"]
     assert len(candidate_audit) == len(result.candidates)
     assert all("summary" not in row and row["canonical_url"] for row in candidate_audit)
+
+
+def test_candidate_pool_keeps_one_item_per_origin_and_backfills_another_source() -> None:
+    catalog = load_source_catalog(MANIFEST)
+
+    def fetch_metadata(source, _content_date):
+        if source.source_id == "rss_simon_willison":
+            items = tuple(_item(source.source_id, index) for index in range(2))
+        elif source.source_id == "rss_works_in_progress":
+            items = (
+                MetadataItem(
+                    item_native_id="wip-institutions",
+                    title="Institutional incentives change the innovation model",
+                    canonical_url="https://example.com/wip/institutions",
+                    published_at="2026-08-27",
+                    summary=(
+                        "A mental model connects institutional incentives and innovation. "
+                        * 8
+                    ),
+                    content_type="essay",
+                ),
+            )
+        else:
+            items = ()
+        return MetadataObservation(
+            True,
+            not items,
+            "OK" if items else "ZERO_YIELD",
+            items,
+        )
+
+    result = collect_v75_candidates(
+        date(2026, 8, 27),
+        catalog=catalog,
+        user_context=load_approved_user_context_v75(),
+        used_urls=set(),
+        ports=CollectionPorts(
+            fetch_metadata=fetch_metadata,
+            fetch_fulltext=lambda _url: (
+                "Canonical public article body with a concrete mechanism and limitation. "
+                * 30
+            ),
+        ),
+    )
+
+    assert sum(
+        candidate.source_id == "rss_simon_willison"
+        for candidate in result.candidates
+    ) == 1
+    assert any(
+        candidate.source_id == "rss_works_in_progress"
+        for candidate in result.candidates
+    )
 
 
 def test_fulltext_attempts_cycle_across_reader_pillars_before_global_refill() -> None:

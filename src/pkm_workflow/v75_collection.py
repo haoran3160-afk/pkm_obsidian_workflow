@@ -830,13 +830,14 @@ def collect_v75_candidates(
     candidates: list[Candidate] = []
     lane_candidates: dict[str, int] = {}
     source_attempts: dict[str, int] = {}
-    source_candidates: dict[str, int] = {}
+    origin_candidates: dict[str, int] = {}
     exclusions: list[dict[str, str]] = []
     for row in ranked:
         if len(candidates) >= max_candidates or attempts >= max_attempts:
             break
         source_id = row.source.source_id
-        if source_candidates.get(source_id, 0) >= 2 or source_attempts.get(source_id, 0) >= 2:
+        origin_id = row.source.canonical_origin_id
+        if origin_candidates.get(origin_id, 0) >= 1 or source_attempts.get(source_id, 0) >= 2:
             continue
         if row.source.access_policy == "MIXED_FREEMIUM_DISCOVERY_ONLY":
             exclusions.append(
@@ -858,7 +859,7 @@ def collect_v75_candidates(
             lane_candidates[candidate.story_type] = (
                 lane_candidates.get(candidate.story_type, 0) + 1
             )
-            source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
+            origin_candidates[origin_id] = origin_candidates.get(origin_id, 0) + 1
             continue
         attempts += 1
         source_attempts[source_id] = source_attempts.get(source_id, 0) + 1
@@ -909,7 +910,7 @@ def collect_v75_candidates(
         lane_candidates[candidate.story_type] = (
             lane_candidates.get(candidate.story_type, 0) + 1
         )
-        source_candidates[source_id] = source_candidates.get(source_id, 0) + 1
+        origin_candidates[origin_id] = origin_candidates.get(origin_id, 0) + 1
     candidates = _reapply_pillar_exposure(candidates)
     assessment_source_ids.update(
         candidate.source_id

@@ -506,7 +506,8 @@ Generator→Reviewer pipeline。D-010/T1.3b 保留为冻结历史但不进入 v7
 决定：保留现有来源治理、抓取、Coverage、DeepSeek 双请求、逐 claim evidence mapping 与
 确定性链接渲染；只收敛证据取材、编辑契约和读者 Markdown。候选保留有界完整正文，模型前按
 段落选择导语、方法、结果和限制，全部 packet 合计不超过 24,000 字符。证据丰富的长文先于
-短引用进入 Generator；引用整理页只能显示为“引用页”。
+短引用进入 Generator；每日候选按独立 canonical origin 最多保留一条并回填其他来源。
+引用整理页只能显示为“引用页”，link post 显示为“来源页”，不能冒充官方原文。
 
 输出最多 5 条，正常为 4–5 条。前两条允许展开，后位条目保持简析；不再渲染“今日深读”、
 “分层情报雷达”、“Takeaway”、“对你的启发”、“慢层回顾”或 Coverage 说明。标题、事件、

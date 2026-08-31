@@ -1625,6 +1625,15 @@ def _render_markdown(
                 )
                 for evidence_id in evidence_ids
             )
+            else "来源页"
+            if any(
+                re.search(
+                    r"\b(?:this is a link post by|link blog)\b",
+                    evidence[evidence_id].summary,
+                    re.IGNORECASE,
+                )
+                for evidence_id in evidence_ids
+            )
             else "原文"
         )
         lines.append(f"**{source_label}** {'；'.join(links)}")

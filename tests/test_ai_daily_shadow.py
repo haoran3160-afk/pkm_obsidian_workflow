@@ -1223,6 +1223,46 @@ def test_quote_curator_page_is_labeled_as_a_quote_page_not_original_source(
     assert "**原文** [Simon Willison]" not in markdown
 
 
+def test_link_post_is_labeled_as_source_page_not_original_source(
+    tmp_path: Path,
+) -> None:
+    candidate = Candidate(
+        evidence_id="evidence-1",
+        source="Simon Willison",
+        title="Introducing a model preview",
+        link="https://example.com/model-preview",
+        published="2026-08-29",
+        summary=(
+            "A bounded model test with concrete specifications and limitations. " * 20
+            + " This is a link post by Simon Willison."
+        ),
+        content_type="news",
+        fulltext_enriched=True,
+        story_type="ai_practice",
+    )
+    ports = ShadowPorts(
+        collect=lambda _content_date: CollectionResult(
+            coverage=CoverageLevel.A,
+            configured_sources=14,
+            healthy_sources=14,
+            candidates=(candidate,),
+        ),
+        provider=DeepSeekShadowProvider(
+            credential_reader=lambda: bytearray(b"test-only-secret"),
+            transport=_GenerateReviewTransport(reject_claim=""),
+        ),
+        runtime_root=tmp_path,
+        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
+    )
+
+    result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
+
+    assert result.markdown_path is not None
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "**来源页** [Simon Willison]" in markdown
+    assert "**原文** [Simon Willison]" not in markdown
+
+
 def test_lower_rank_brief_keeps_judgment_without_repeating_the_section_label(
     tmp_path: Path,
 ) -> None:
