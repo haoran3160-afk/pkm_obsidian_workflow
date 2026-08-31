@@ -515,7 +515,8 @@ Generator→Reviewer pipeline。D-010/T1.3b 保留为冻结历史但不进入 v7
 
 正常 Generator + Reviewer 为 2 个 fresh DeepSeek 请求。只有结构修复，或 5 个以上合格候选却
 少于 4 条这一种 underfill，允许一次额外 Generator；全链仍不超过 4 次，不切换 provider，
-不自动充值。pillar 只影响选择，不能制造个人连接；显式个性化只允许 project、prior knowledge
+不自动充值。4–5 条是软编辑目标，不是发布门；补选后的 1–3 条有效故事仍进入 Reviewer，
+不能仅因 underfill 丢弃整期或降低证据要求。pillar 只影响选择，不能制造个人连接；显式个性化只允许 project、prior knowledge
 或用户逐项批准的 knowledge anchor。
 
 真实验收样本：

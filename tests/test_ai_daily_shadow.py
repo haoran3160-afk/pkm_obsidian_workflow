@@ -431,8 +431,8 @@ def test_generator_receives_one_bounded_packet_that_keeps_late_high_value_sectio
 
     result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_MINIMUM_ITEMS_REQUIRED"
+    assert result.status == "PUBLISHED"
+    assert result.request_count == 3
     packet = transport.generator_candidate_summaries[0]
     assert len(packet) == 10
     assert sum(len(summary) for summary in packet) <= 24_000
@@ -1634,7 +1634,7 @@ def test_generator_may_publish_one_strong_story_from_a_wider_candidate_pool(
     assert transport.generator_calls == 1
 
 
-def test_five_candidates_trigger_one_bounded_refill_when_generator_underselects(
+def test_bounded_refill_keeps_valid_stories_when_editorial_target_remains_underfilled(
     tmp_path: Path,
 ) -> None:
     candidates = tuple(
@@ -1672,10 +1672,11 @@ def test_five_candidates_trigger_one_bounded_refill_when_generator_underselects(
 
     result = run_ai_daily_shadow(date(2026, 8, 30), ports=ports)
 
-    assert result.status == "SCHEMA_INVALID"
-    assert result.error_code == "GENERATOR_MINIMUM_ITEMS_REQUIRED"
-    assert result.request_count == 2
-    assert result.markdown_path is None
+    assert result.status == "PUBLISHED"
+    assert result.error_code is None
+    assert result.story_count == 1
+    assert result.request_count == 3
+    assert result.markdown_path is not None
     assert transport.generator_calls == 2
     assert transport.semantic_corrections[0] is None
     assert "four or five" in str(transport.semantic_corrections[1])

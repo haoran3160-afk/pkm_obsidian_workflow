@@ -976,6 +976,8 @@ def _validate_generator_draft(
     evidence: Mapping[str, Candidate],
     context: Mapping[str, object],
     diversity_evidence_id: str | None = None,
+    *,
+    enforce_editorial_target: bool = True,
 ) -> tuple[dict[str, Any], ...]:
     if not isinstance(draft, dict) or set(draft) != {"stories"}:
         raise ValueError("GENERATOR_DRAFT_INVALID")
@@ -1374,7 +1376,11 @@ def _validate_generator_draft(
         ]
         action_bounded.append(projected)
 
-    if len(evidence) >= 5 and len(action_bounded) < 4:
+    if (
+        enforce_editorial_target
+        and len(evidence) >= 5
+        and len(action_bounded) < 4
+    ):
         raise ValueError("GENERATOR_MINIMUM_ITEMS_REQUIRED")
 
     total_claims = sum(len(story["claims"]) for story in action_bounded)
@@ -1914,6 +1920,7 @@ def run_ai_daily_shadow(
                     retry_evidence,
                     context,
                     diversity_evidence_id=diversity_evidence_id,
+                    enforce_editorial_target=False,
                 )
             except ValueError as retry_error:
                 validation_error = retry_error
