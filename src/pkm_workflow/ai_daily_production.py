@@ -135,6 +135,17 @@ def _write_new(path: Path, content: bytes) -> _FileFacts:
     return facts
 
 
+def _write_or_verify(path: Path, content: bytes) -> _FileFacts:
+    """Resume deterministic runtime artifacts; never use to adopt a Vault note."""
+    try:
+        return _write_new(path, content)
+    except FileExistsError:
+        facts = _file_facts(path)
+        if facts.size != len(content) or facts.sha256 != _digest(content):
+            raise ValueError("EXISTING_ARTIFACT_MISMATCH") from None
+        return facts
+
+
 def _write_receipt(path: Path, payload: dict[str, object]) -> Path:
     content = _canonical_json(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -515,14 +526,14 @@ def run_ai_daily_production(
             )
         run_id, shadow_markdown, shadow_report = _shadow_run(shadow, runtime_root)
         backing, durable_report, _ = _paths(runtime_root, selected_date, run_id)
-        _write_new(durable_report, shadow_report.read_bytes())
+        _write_or_verify(durable_report, shadow_report.read_bytes())
         markdown = shadow_markdown.read_text(encoding="utf-8")
         production = (
             markdown.replace("type: ai-daily-shadow", "type: ai-daily", 1)
             .replace("production: false", "production: true", 1)
             .encode("utf-8")
         )
-        backing_facts = _write_new(backing, production)
+        backing_facts = _write_or_verify(backing, production)
         prepared_path, published_path = _receipt_paths(
             runtime_root, selected_date
         )

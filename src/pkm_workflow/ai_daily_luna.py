@@ -285,7 +285,7 @@ def _review(run, state):
         )
         return _report(run, state, (), {}, status, code, generator=envelope)
     review_input = _review_file(run, "review-input")
-    if review_input.exists():
+    if _review_file(run, "review-state").exists():
         frozen = _sealed_read(_review_file(run, "review-state"))
         if _file_hash(draft_path) != frozen["draft_file_hash"]:
             raise StageError("DRAFT_CHANGED_AFTER_REVIEW")
@@ -300,9 +300,11 @@ def _review(run, state):
         "sealed_evidence": {"items": [row for row in model_packet if row["evidence_id"] in referenced]},
     }
     review_hash = editorial._digest(review_packet)
-    _write(review_input, review_packet | {"review_request_hash": review_hash})
-    publishing._write_new(_review_file(run, "reviewer-instructions", ".txt"), REVIEWER_PROMPT.encode("utf-8"))
-    publishing._write_new(_review_file(run, "reviewer-schema"), mvp_reviewer_output_schema())
+    publishing._write_or_verify(
+        review_input, editorial._canonical(review_packet | {"review_request_hash": review_hash}) + b"\n",
+    )
+    publishing._write_or_verify(_review_file(run, "reviewer-instructions", ".txt"), REVIEWER_PROMPT.encode("utf-8"))
+    publishing._write_or_verify(_review_file(run, "reviewer-schema"), mvp_reviewer_output_schema())
     frozen = {
         "draft_file_hash": _file_hash(draft_path), "draft_filename": draft_path.name,
         "generator_session_id": envelope["session_id"],
@@ -431,10 +433,24 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
     }
     _sealed_write(run / "run-report.json", report)
     if markdown_path is not None and markdown is not None:
-        backing = run / "rendered-content.txt"
-        publishing._write_new(backing, markdown.encode("utf-8"))
-        markdown_path.hardlink_to(backing)
+        _complete_shadow(run, report, markdown)
     return _report_result(run, report)
+
+
+def _complete_shadow(run, report, markdown):
+    """Complete a verified render without rewriting the sealed report."""
+    content = markdown.encode("utf-8")
+    if publishing._digest(content) != report["markdown_sha256"]:
+        raise StageError("RENDERED_CONTENT_CHANGED")
+    backing = run / "rendered-content.txt"
+    publishing._write_or_verify(backing, content)
+    destination = run / f"AI-Daily-{report['content_date']}-shadow.md"
+    try:
+        destination.hardlink_to(backing)
+    except FileExistsError:
+        pass
+    if _file_hash(destination) != report["markdown_sha256"]:
+        raise StageError("RENDERED_CONTENT_CHANGED")
 
 
 def _report_result(run, report):
@@ -462,9 +478,7 @@ def _finalize(run, state, mode, confirm, runtime, vault):
                 date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
                 CoverageLevel(state["evidence_level"]), accepted, _candidates(state),
             )
-            markdown_path = run / f"AI-Daily-{state['content_date']}-shadow.md"
-            if report["markdown_sha256"] != _file_hash(markdown_path) or markdown_path.read_text(encoding="utf-8") != expected:
-                raise StageError("RENDERED_CONTENT_CHANGED")
+            _complete_shadow(run, report, expected)
         result = _report_result(run, report)
     else:
         accepted, decisions, frozen, reviewer = _check_review(run, state)

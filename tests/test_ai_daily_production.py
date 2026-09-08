@@ -77,6 +77,46 @@ def test_production_promotes_reviewed_shadow_with_create_new(tmp_path: Path) -> 
     assert backing.samefile(result.vault_path)
 
 
+def test_interrupted_backing_write_reuses_identical_durable_report(tmp_path, monkeypatch):
+    original = production_module._write_new
+    interrupted = False
+    def fail_once(path, content):
+        nonlocal interrupted
+        if path.suffix == ".md" and "backing" in path.parts and not interrupted:
+            interrupted = True
+            raise OSError("injected interruption")
+        return original(path, content)
+    monkeypatch.setattr(production_module, "_write_new", fail_once)
+    first, shadow, _, _ = _publish(tmp_path, "c" * 32)
+    assert first.status == "PRODUCTION_FAILED"
+    durable = tmp_path / "durable/reports/ai-daily/2026-08-30" / f"{'c' * 32}.json"
+    prior = durable.read_bytes()
+    retried = run_ai_daily_production(
+        date(2026, 8, 30), vault_daily_dir=tmp_path / "30-Daily",
+        coordination_path=tmp_path / "production.lock", shadow_runner=lambda _: shadow,
+    )
+    assert retried.status == "PUBLISHED"
+    assert durable.read_bytes() == prior
+    assert retried.vault_write_performed is True
+
+
+def test_recovery_does_not_adopt_a_mismatched_durable_artifact(tmp_path):
+    shadow, _, _ = _reviewed_shadow(tmp_path, "d" * 32)
+    vault = tmp_path / "30-Daily"
+    vault.mkdir()
+    durable = tmp_path / "durable/reports/ai-daily/2026-08-30" / f"{'d' * 32}.json"
+    durable.parent.mkdir(parents=True)
+    durable.write_bytes(b"different user content")
+    result = run_ai_daily_production(
+        date(2026, 8, 30), vault_daily_dir=vault,
+        coordination_path=tmp_path / "production.lock", shadow_runner=lambda _: shadow,
+    )
+    assert result.status == "CONFLICT"
+    assert result.vault_write_performed is False
+    assert durable.read_bytes() == b"different user content"
+    assert not list(vault.glob("*.md"))
+
+
 def test_existing_unreceipted_daily_is_a_conflict_without_token_usage(
     tmp_path: Path,
 ) -> None:

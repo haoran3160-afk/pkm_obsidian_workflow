@@ -113,6 +113,53 @@ def test_duplicate_prepare_is_busy(workflow):
     assert call("prepare", run_id=first["run_id"])["run_id"] == first["run_id"]
 
 
+def test_interrupted_review_handoff_resumes_without_rewriting_input(workflow, monkeypatch):
+    from pkm_workflow import ai_daily_production as publishing
+    call, _ = workflow
+    prepared = call("prepare")
+    save(prepared["draft_path"], draft())
+    original = publishing._write_new
+    interrupted = False
+    def fail_once(path, content):
+        nonlocal interrupted
+        if path.name == "reviewer-instructions.txt" and not interrupted:
+            interrupted = True
+            raise OSError("injected interruption")
+        return original(path, content)
+    monkeypatch.setattr(publishing, "_write_new", fail_once)
+    assert call("review", run_id=prepared["run_id"])["exit_code"] == 4
+    run = Path(prepared["draft_path"]).parent
+    original_input = (run / "review-input.json").read_bytes()
+    resumed = call("review", run_id=prepared["run_id"])
+    assert resumed["status"] == "REVIEWER_READY"
+    assert (run / "review-input.json").read_bytes() == original_input
+    assert not (run / "repair.json").exists()
+
+
+def test_interrupted_shadow_render_preserves_report_and_model_counts(workflow, monkeypatch):
+    from pkm_workflow import ai_daily_production as publishing
+    call, _ = workflow
+    prepared, _, _ = ready(workflow)
+    original = publishing._write_new
+    interrupted = False
+    def fail_once(path, content):
+        nonlocal interrupted
+        if path.name == "rendered-content.txt" and not interrupted:
+            interrupted = True
+            raise OSError("injected interruption")
+        return original(path, content)
+    monkeypatch.setattr(publishing, "_write_new", fail_once)
+    assert call("finalize", run_id=prepared["run_id"])["exit_code"] == 4
+    run = Path(prepared["draft_path"]).parent
+    original_report = (run / "run-report.json").read_bytes()
+    resumed = call("finalize", run_id=prepared["run_id"])
+    assert resumed["status"] == "PUBLISHED"
+    assert resumed["role_execution_count"] == 2
+    assert resumed["repair_count"] == 0
+    assert (run / "run-report.json").read_bytes() == original_report
+    assert Path(resumed["markdown_path"]).is_file()
+
+
 @pytest.mark.parametrize("problem", ["missing", "duplicate", "hash", "self_review", "model", "changed_draft"])
 def test_invalid_review_cannot_create_markdown(workflow, problem):
     call, vault = workflow
