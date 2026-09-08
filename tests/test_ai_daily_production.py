@@ -8,7 +8,7 @@ import pytest
 
 import pkm_workflow.ai_daily_production as production_module
 from pkm_workflow.ai_daily_production import ProductionResult, run_ai_daily_production
-from pkm_workflow.ai_daily_shadow import CoverageLevel, ShadowResult
+from pkm_workflow.daily_content import CoverageLevel, ShadowResult
 
 
 def _reviewed_shadow(tmp_path: Path, run_id: str) -> tuple[ShadowResult, Path, Path]:

@@ -15,16 +15,23 @@ from typing import Any
 from uuid import uuid4
 
 from . import ai_daily_production as publishing
-from . import ai_daily_shadow as editorial
-from .deepseek_provider import (
-    MVP_GENERATOR_PROMPT,
-    MVP_REVIEWER_PROMPT,
-    DeepSeekShadowProvider,
-    _contains_forbidden_output_text,
+from . import daily_brief as brief
+from . import daily_content as editorial
+from .daily_brief import (
+    GENERATOR_PROMPT,
+    REVIEWER_PROMPT,
     _strict_json_loads,
-    mvp_generator_output_schema,
-    mvp_reviewer_output_schema,
 )
+from .daily_brief import (
+    contains_forbidden_text as _contains_forbidden_output_text,
+)
+from .daily_brief import (
+    generator_schema as mvp_generator_output_schema,
+)
+from .daily_brief import (
+    reviewer_schema as mvp_reviewer_output_schema,
+)
+from .module_collection import collect_modules
 from .source_catalog import load_approved_source_catalog
 from .user_context_v75 import load_approved_user_context_v75
 from .v75_collection import (
@@ -32,42 +39,15 @@ from .v75_collection import (
     Candidate,
     CollectionResult,
     CoverageLevel,
-    collect_v75_candidates,
     default_collection_ports,
 )
 
 MODEL = "gpt-5.6-luna"
-CONTRACT = "pkm.ai-daily-luna.v1"
+CONTRACT = "pkm.ai-daily-luna.v2"
 RUNTIME = Path(r"D:\personal\obsidian_workflow-runtime")
 SHANGHAI = timezone(timedelta(hours=8))
-GENERATOR_PROMPT = (
-    MVP_GENERATOR_PROMPT.replace(
-        "When five or more candidates are supplied, produce four or five stories",
-        "With five or more candidates, aim for four or five stories when worthwhile",
-    )
-    + "\nYou are GPT-5.6 Luna in Codex, not an API provider. Read only the supplied "
-    "evidence and approved context. Output the schema-conforming draft inside "
-    '{"model":"gpt-5.6-luna","session_id":"YOUR_REAL_CODEX_SESSION_ID","draft":...}. '
-    "Use your actual session identifier, never invent one. Do not compute hashes. "
-    "Do not use tools to fetch more news or write Vault files. Write only the specified "
-    "runtime draft file. Avoid stock follow-up sentences. Titles should be compact, "
-    "normally under 35 Chinese characters. Preserve author attribution, distinguish "
-    "an interested party's assertions from independently established facts. "
-    "Do not repeat one event in several stories. Interest match alone is not a takeaway."
-)
-REVIEWER_PROMPT = (
-    MVP_REVIEWER_PROMPT
-    + "\nYou are a new GPT-5.6 Luna Reviewer session with no generator conversation. "
-    "Read only this review packet. Return decisions in "
-    '{"model":"gpt-5.6-luna","session_id":"YOUR_REAL_CODEX_SESSION_ID",'
-    '"review_request_hash":"COPY_FROM_PACKET","decisions":[...]}. '
-    "Copy each requirement hash exactly; never compute it. Do not edit the draft, "
-    "rewrite rejected claims, fetch additional evidence, or write the Vault. "
-    "Accept editorial judgment only when its concrete premise and bounded implication "
-    "give the reader something beyond the title. Attribution applies to official company "
-    "statements about disputes too. Do not accept absence claims from incomplete excerpts."
-)
 STRATEGY_HASH = editorial._digest({
+    "selection_policy": "six_complete_modules_public_evidence_v1",
     "contract": CONTRACT, "model": MODEL, "reasoning": "medium",
     "generator_prompt": GENERATOR_PROMPT, "reviewer_prompt": REVIEWER_PROMPT,
     "generator_schema": json.loads(mvp_generator_output_schema()),
@@ -120,8 +100,14 @@ def _result(status: str, exit_code: int = 0, **kwargs: Any) -> dict[str, Any]:
 def _published_urls(runtime: Path, vault: Path, day: date) -> set[str]:
     """Only verified published reports count as daily reading history."""
     urls: set[str] = set()
-    for offset in range(1, 8):
-        old_day = day - timedelta(days=offset)
+    receipt_root = runtime / "durable" / "receipts" / "ai-daily"
+    for receipt in sorted(receipt_root.glob("*.published.json")):
+        try:
+            old_day = date.fromisoformat(receipt.name.removesuffix(".published.json"))
+        except ValueError:
+            continue
+        if old_day >= day:
+            continue
         prepared_path, published_path = publishing._receipt_paths(runtime, old_day)
         if not published_path.is_file():
             continue
@@ -137,15 +123,10 @@ def _published_urls(runtime: Path, vault: Path, day: date) -> set[str]:
 
 
 def _collect(day: date, runtime: Path, vault: Path) -> CollectionResult:
-    import daily_curation
-
-    legacy_used = daily_curation.load_used_urls(
-        editorial._existing_state_path(editorial._repository_root(), "used_articles.json")
-    )
     catalog = load_approved_source_catalog()
-    return collect_v75_candidates(
+    return collect_modules(
         day, catalog=catalog, user_context=load_approved_user_context_v75(),
-        used_urls=legacy_used | _published_urls(runtime, vault, day),
+        used_urls=_published_urls(runtime, vault, day),
         ports=default_collection_ports(catalog),
     )
 
@@ -155,7 +136,7 @@ def _prepare(runtime, vault, day, mode, collect, context_loader):
         prior = publishing._reconcile(runtime, day, vault / f"AI-Daily-{day}.md")
         if prior is not None:
             return _result(prior.status, prior.exit_code) | prior.payload()
-    claim_path = runtime / "locks" / f"ai-daily-luna-{day}.json"
+    claim_path = runtime / "locks" / f"ai-daily-{STRATEGY_HASH[-12:]}-{day}.json"
     if claim_path.exists():
         return _result("PRODUCTION_BUSY", 4, **_read(claim_path))
     run_id = uuid4().hex
@@ -195,9 +176,9 @@ def _prepare(runtime, vault, day, mode, collect, context_loader):
         return _report(run, state, (), {}, "COVERAGE_INSUFFICIENT", 4)
     if collected.evidence_level is CoverageLevel.INSUFFICIENT:
         return _report(run, state, (), {}, "EVIDENCE_INSUFFICIENT", 4)
-    if not candidates:
-        status, code, _ = editorial._no_story_disposition(collected.coverage, collected.evidence_level)
-        return _report(run, state, (), {}, status, code)
+    missing = set(brief.SECTIONS) - {candidate.story_type for candidate in candidates}
+    if missing:
+        return _report(run, state, (), {}, "MODULE_SOURCES_INCOMPLETE", 4)
     return _generator_ready(run, state)
 
 
@@ -232,7 +213,7 @@ def _load(runtime: Path, run_id: str, day: date):
     ):
         if _file_hash(run / file) != state[key]:
             raise StageError("INPUT_CHANGED")
-    claim = _read(runtime / "locks" / f"ai-daily-luna-{day}.json")
+    claim = _read(runtime / "locks" / f"ai-daily-{STRATEGY_HASH[-12:]}-{day}.json")
     if claim["run_id"] != run_id:
         raise StageError("RUN_OWNERSHIP_MISMATCH")
     return run, state
@@ -255,9 +236,9 @@ def _role_output(path: Path, role: str):
     schema = mvp_generator_output_schema() if role == "generator" else mvp_reviewer_output_schema()
     if _contains_forbidden_output_text(structured):
         raise StageError("FORBIDDEN_OUTPUT_TEXT")
-    # Reuse only the provider's pure schema functions, never its constructor or transport.
-    if not DeepSeekShadowProvider._matches_schema(structured, json.loads(schema)):
-        unknown = DeepSeekShadowProvider._contains_unknown_fields(structured, json.loads(schema))
+    # Model-independent validation; no provider credentials or transport.
+    if not brief.matches_schema(structured, json.loads(schema)):
+        unknown = brief.contains_unknown_fields(structured, json.loads(schema))
         raise StageError("OUTPUT_SCHEMA_INVALID", repairable=not unknown)
     return envelope, structured
 
@@ -277,14 +258,20 @@ def _output_path(run: Path, role: str) -> Path:
     repair = run / "repair.json"
     if repair.exists() and _read(repair)["role"] == role:
         return run / f"{role}-repair.json"
-    return run / ("draft.json" if role == "generator" else "review.json")
+    return run / "draft.json" if role == "generator" else _review_file(run, "review", ".json")
+
+
+def _review_file(run, stem, extension=".json"):
+    repair = run / "repair.json"
+    revision = repair.exists() and _read(repair).get("error_code") == "EDITORIAL_REVISION_REQUIRED"
+    return run / f"{stem}{'-revision' if revision else ''}{extension}"
 
 
 def _review(run, state):
     draft_path = _output_path(run, "generator")
     envelope, draft = _role_output(draft_path, "generator")
     try:
-        stories = editorial._validate_generator_draft(
+        stories = brief.validate_draft(
             draft, _candidates(state), state["context"], enforce_editorial_target=False,
         )
     except ValueError as error:
@@ -296,9 +283,9 @@ def _review(run, state):
             CoverageLevel(state["coverage"]), CoverageLevel(state["evidence_level"])
         )
         return _report(run, state, (), {}, status, code, generator=envelope)
-    review_input = run / "review-input.json"
+    review_input = _review_file(run, "review-input")
     if review_input.exists():
-        frozen = _sealed_read(run / "review-state.json")
+        frozen = _sealed_read(_review_file(run, "review-state"))
         if _file_hash(draft_path) != frozen["draft_file_hash"]:
             raise StageError("DRAFT_CHANGED_AFTER_REVIEW")
         return _reviewer_ready(run, state, frozen)
@@ -313,42 +300,45 @@ def _review(run, state):
     }
     review_hash = editorial._digest(review_packet)
     _write(review_input, review_packet | {"review_request_hash": review_hash})
-    publishing._write_new(run / "reviewer-instructions.txt", REVIEWER_PROMPT.encode("utf-8"))
-    publishing._write_new(run / "reviewer-schema.json", mvp_reviewer_output_schema())
+    publishing._write_new(_review_file(run, "reviewer-instructions", ".txt"), REVIEWER_PROMPT.encode("utf-8"))
+    publishing._write_new(_review_file(run, "reviewer-schema"), mvp_reviewer_output_schema())
     frozen = {
         "draft_file_hash": _file_hash(draft_path), "draft_filename": draft_path.name,
         "generator_session_id": envelope["session_id"],
         "review_request_hash": review_hash,
         "review_input_hash": _file_hash(review_input),
     }
-    _sealed_write(run / "review-state.json", frozen)
+    _sealed_write(_review_file(run, "review-state"), frozen)
     return _reviewer_ready(run, state, frozen)
 
 
 def _reviewer_ready(run, state, frozen):
     return _result(
         "REVIEWER_READY", run_id=state["run_id"],
-        review_input_path=str(run / "review-input.json"),
-        instructions_path=str(run / "reviewer-instructions.txt"),
-        schema_path=str(run / "reviewer-schema.json"),
+        review_input_path=str(_review_file(run, "review-input")),
+        instructions_path=str(_review_file(run, "reviewer-instructions", ".txt")),
+        schema_path=str(_review_file(run, "reviewer-schema")),
         review_path=str(_output_path(run, "reviewer")),
         review_request_hash=frozen["review_request_hash"],
     )
 
 
 def _check_review(run, state):
-    frozen = _sealed_read(run / "review-state.json")
+    frozen = _sealed_read(_review_file(run, "review-state"))
     if (
         _file_hash(run / frozen["draft_filename"]) != frozen["draft_file_hash"]
-        or _file_hash(run / "review-input.json") != frozen["review_input_hash"]
+        or _file_hash(_review_file(run, "review-input")) != frozen["review_input_hash"]
     ):
         raise StageError("DRAFT_OR_REVIEW_INPUT_CHANGED")
     envelope, structured = _role_output(_output_path(run, "reviewer"), "reviewer")
     if envelope["session_id"] == frozen["generator_session_id"]:
         raise StageError("INDEPENDENT_REVIEWER_REQUIRED")
+    if _review_file(run, "review") != run / "review.json" and (run / "review.json").exists():
+        if envelope["session_id"] == _read(run / "review.json")["session_id"]:
+            raise StageError("FRESH_REVISION_REVIEWER_REQUIRED")
     if envelope["review_request_hash"] != frozen["review_request_hash"]:
         raise StageError("REVIEW_REQUEST_MISMATCH")
-    packet = _read(run / "review-input.json")
+    packet = _read(_review_file(run, "review-input"))
     requirements = {row["claim_id"]: row for row in packet["rubric"]["requirements"]}
     decisions = structured["decisions"]
     ids = [row["claim_id"] for row in decisions]
@@ -364,11 +354,12 @@ def _check_review(run, state):
         if (
             row["evidence_ids"] != requirement["evidence_ids"]
             or row["review_requirement_hash"] != requirement["review_requirement_hash"]
-            or row["reason_code"] != reasons[row["decision"]]
         ):
             raise StageError("REVIEW_DECISION_MISMATCH")
+        if row["reason_code"] != reasons[row["decision"]]:
+            raise StageError("REVIEW_REASON_MISMATCH", repairable=True)
     stories = tuple(packet["generator_result"]["draft"]["stories"])
-    accepted = editorial._accepted_stories(stories, structured, _candidates(state))
+    accepted = brief.accepted_stories(stories, structured, _candidates(state))
     return accepted, structured, frozen, envelope
 
 
@@ -378,8 +369,8 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
                        for eid in claim["evidence_ids"]})
     markdown_path = None
     markdown = None
-    if accepted:
-        markdown = editorial._render_markdown(
+    if status == "PUBLISHED" and accepted:
+        markdown = brief.render(
             date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
             CoverageLevel(state["evidence_level"]), accepted, evidence,
         )
@@ -389,8 +380,7 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
     generated_ids = set()
     if raw_draft.exists():
         generated_ids = {
-            eid for story in _read(raw_draft)["draft"]["stories"]
-            for claim in story["claims"] for eid in claim["evidence_ids"]
+            story["evidence_id"] for story in _read(raw_draft)["draft"]["stories"]
         }
     reviewed_ids = {eid for row in decisions.get("decisions", []) for eid in row["evidence_ids"]}
     selected_ids = {eid for story in accepted for claim in story["claims"] for eid in claim["evidence_ids"]}
@@ -411,7 +401,7 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
             "disposition": disposition,
         })
     report = {
-        "schema": "pkm.ai-daily-luna.run.v1", "contract": CONTRACT,
+        "schema": "pkm.ai-daily-luna.run.v2", "contract": CONTRACT,
         "git_head": editorial._git_head(), "strategy_hash": STRATEGY_HASH,
         "model": MODEL, "reasoning": "medium", "content_date": state["content_date"],
         "started_at": state["started_at"], "created_at": datetime.now(timezone.utc).isoformat(),
@@ -423,13 +413,18 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         "markdown_sha256": publishing._digest(markdown.encode("utf-8")) if markdown else None,
         "vault_write": False, "api_request_count": 0, "model_metrics": None,
         "usage_status": "CODEX_USAGE_NOT_EXPOSED",
-        "role_execution_count": int(generator is not None) + int(reviewer is not None) + int(repair.exists()),
+        "role_execution_count": int(generator is not None) + int(reviewer is not None)
+        + (2 if repair.exists() and _read(repair).get("error_code") == "EDITORIAL_REVISION_REQUIRED" else int(repair.exists())),
         "repair_count": int(repair.exists()),
         "generator_session_id": generator["session_id"] if generator else None,
         "reviewer_session_id": reviewer["session_id"] if reviewer else None,
         "model_identity_source": "CODEX_SESSION_DECLARATION",
         "evidence_chars": sum(len(row["summary"]) for row in _read(run / "generator-input.json")["candidates"]),
-        "underfilled": len(accepted) < 4,
+        "underfilled": len(accepted) < 6,
+        "missing_modules": [key for key in brief.SECTIONS if key not in (
+            {candidate.story_type for candidate in evidence.values()}
+            if status == "MODULE_SOURCES_INCOMPLETE" else {story["section"] for story in accepted}
+        )],
         "audit": {**state["audit"], "candidate_audit": candidate_audit,
                   "selected_urls": selected, "review_decisions": decisions.get("decisions", [])},
     }
@@ -446,7 +441,7 @@ def _report_result(run, report):
         "content_date", "model", "reasoning", "coverage", "evidence_level",
         "candidate_count", "story_count", "markdown_path", "repair_count",
         "role_execution_count", "model_metrics", "usage_status", "evidence_chars",
-        "generator_session_id", "reviewer_session_id",
+        "generator_session_id", "reviewer_session_id", "missing_modules",
     )
     return _result(
         report["status"], report["exit_code"], run_id=run.name,
@@ -462,7 +457,7 @@ def _finalize(run, state, mode, confirm, runtime, vault):
             raise StageError("REPORT_BINDING_MISMATCH")
         if report["markdown_path"]:
             accepted, decisions, frozen, reviewer = _check_review(run, state)
-            expected = editorial._render_markdown(
+            expected = brief.render(
                 date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
                 CoverageLevel(state["evidence_level"]), accepted, _candidates(state),
             )
@@ -473,10 +468,20 @@ def _finalize(run, state, mode, confirm, runtime, vault):
     else:
         accepted, decisions, frozen, reviewer = _check_review(run, state)
         status, code = "PUBLISHED", 0
-        if not accepted:
-            status, code, _ = editorial._no_story_disposition(
-                CoverageLevel(state["coverage"]), CoverageLevel(state["evidence_level"])
-            )
+        if len(accepted) != 6:
+            if not (run / "repair.json").exists():
+                _write(run / "editorial-feedback.json", {
+                    "instructions": "修正被拒绝的泛化/归因，或使用同模块已提供备选。不虚构证据，不放宽判断。只写新的generator-repair.json。必须重新独立审核。",
+                    "draft": _read(_review_file(run, "review-input"))["generator_result"]["draft"],
+                    "decisions": decisions["decisions"],
+                })
+                _write(run / "repair.json", {"role": "generator", "error_code": "EDITORIAL_REVISION_REQUIRED"})
+                return _result(
+                    "EDITORIAL_REVISION_REQUIRED", 4, run_id=state["run_id"],
+                    feedback_path=str(run / "editorial-feedback.json"),
+                    output_path=str(_output_path(run, "generator")),
+                )
+            status, code = "MODULE_REVIEW_INCOMPLETE", 4
         result = _report(
             run, state, accepted, decisions, status, code,
             generator={"session_id": frozen["generator_session_id"]}, reviewer=reviewer,
@@ -533,8 +538,8 @@ def run_luna_stage(
         if stage == "prepare":
             if (run / "run-report.json").exists():
                 return _finalize(run, state, "shadow", False, runtime, vault)
-            if (run / "review-state.json").exists():
-                return _reviewer_ready(run, state, _sealed_read(run / "review-state.json"))
+            if _review_file(run, "review-state").exists():
+                return _reviewer_ready(run, state, _sealed_read(_review_file(run, "review-state")))
             return _generator_ready(run, state)
         if (run / "run-report.json").exists() and stage == "review":
             return _finalize(run, state, "shadow", False, runtime, vault)

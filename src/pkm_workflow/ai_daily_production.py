@@ -14,7 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from .ai_daily_shadow import ShadowResult, run_ai_daily_shadow
+from .daily_content import ShadowResult
 
 VAULT_DAILY_DIR = Path(r"D:\personal\ObsidianVault\30-Daily")
 PRODUCTION_LOCK_PATH = Path(
@@ -467,7 +467,7 @@ def run_ai_daily_production(
     *,
     vault_daily_dir: Path = VAULT_DAILY_DIR,
     coordination_path: Path = PRODUCTION_LOCK_PATH,
-    shadow_runner: Callable[[date | None], ShadowResult] = run_ai_daily_shadow,
+    shadow_runner: Callable[[date | None], ShadowResult],
 ) -> ProductionResult:
     selected_date = content_date or date.today()
     try:

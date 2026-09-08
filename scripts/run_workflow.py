@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Thin checkout-local adapter for the sealed v7.4 engine."""
+"""Checkout-local entry for the personal Luna AI Daily workflow."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_SRC = REPOSITORY_ROOT / "src"
 if not (REPOSITORY_SRC / "pkm_workflow" / "cli.py").is_file():
-    raise SystemExit("v7.3 source engine is missing from this checkout")
+    raise SystemExit("AI Daily engine is missing from this checkout")
 sys.path.insert(0, str(REPOSITORY_SRC))
 sys.path.insert(1, str(REPOSITORY_ROOT))
 

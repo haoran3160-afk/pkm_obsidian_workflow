@@ -1,5 +1,38 @@
 # Implementation Tasks
 
+## Current — Six-module brief and legacy retirement (2026-09-08)
+
+Five requested interests each receive one article, plus one personalized GitHub
+recommendation. Recent content is preferred; unread free classic material is
+allowed with its original date. Scope and deleted files are recorded in
+[workflow-simplification.md](../workflow-simplification.md). Three-stage Luna
+operation is documented in [the runbook](../ai-daily-luna.md).
+
+Delivered six-module shadow: run e7df454a16ea4774996e84e10f570592. Nine candidates,
+22,864 evidence characters, six accepted stories, one omitted optional action.
+Real roles: /root/luna_six_fact_generator and /root/luna_six_fact_reviewer.
+One Reviewer structure repair corrected a verdict/reason mismatch; three role
+executions, no model API calls, Codex token usage unknown. Original drafts,
+reviews and failed evaluation runs remain in runtime. Existing Vault notes are
+not replaced by same-day development previews. Production prepare was verified
+to return ALREADY_EXISTS with zero generation and unchanged existing-note hash.
+
+Portable retained suite: 203 passed, 123 environment-gated skips before the final
+cross-month unread-history regression was added. Expanded compatibility run with
+the required short allowlisted test root: 324 passed, 2 failures in unchanged
+legacy verification-harness manifest hash tests. The current focused suite has
+82 passing cases, including cross-month unread history. Ruff and Mypy passed.
+Do not describe the entire historical suite as green or fix legacy expected values.
+The existing ai-daily-obsidian automation was updated and read back as ACTIVE,
+gpt-5.6-luna/medium, daily 08:00, failed-runs-only, same project.
+
+Reading-quality limitations remain: some personal connections still echo internal
+interest labels, and the AI-practice item is a strategy quote rather than a hands-on
+method. Six-section completeness is verified; user content satisfaction and a
+seven-day coverage trend are not claimed. The new plain-action requirement no
+longer emits empty obsolete action-object/success fields; the delivered frozen
+review retains its original, conservative omitted-action decision.
+
 ## Current — Luna AI Daily migration (2026-09-08) — DONE
 
 Specification: [Luna runbook](../ai-daily-luna.md). Shared lock lifecycle extracted

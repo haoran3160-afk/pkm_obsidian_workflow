@@ -1,104 +1,94 @@
-# AI Daily with Luna
+# AI Daily — six modules, all Luna
 
-Run from the current Codex project, D:\personal\obsidian_workflow. The engine
-remains in D:\Agent_programs\obsidian_workflow_mvp. Use GPT-5.6 Luna with medium
-reasoning for both content roles. This runbook replaces the old DeepSeek daily
-command; historical providers and workflows remain frozen.
+Run from D:\personal\obsidian_workflow. Engine and Python stay in
+D:\Agent_programs\obsidian_workflow_mvp. The single Codex automation uses
+gpt-5.6-luna / medium, at 08:00 Asia/Shanghai, with failed-run notifications.
 
-## Daily operation
+## Daily flow
 
-Use this exact Python and script for every stage:
+Use the absolute command:
 
     & 'D:\Agent_programs\obsidian_workflow_mvp\.venv\Scripts\python.exe' 'D:\Agent_programs\obsidian_workflow_mvp\scripts\run_workflow.py' --workflow ai --mode production --stage prepare
 
-1. Read the returned JSON. ALREADY_EXISTS or a terminal no-news result ends the
-   run. PRODUCTION_BUSY ends the run without another attempt. Other failures
-   are reported with their error code and file path.
-2. On GENERATOR_READY, read only generator_input_path, instructions_path, and
-   schema_path. The task's Luna writes its own draft envelope to draft_path
-   using create-new. session_id is the real Codex task/session ID, never an
-   invented UUID. Use the current session metadata; if unavailable, report
-   ROLE_SESSION_ID_REQUIRED.
-3. Run the same command with --stage review --run-id RUN_ID.
-4. On REVIEWER_READY, spawn exactly one new subagent with model
-   gpt-5.6-luna, reasoning medium, and no conversation history (fork_turns=none
-   where available). Give it only the returned review_input_path,
-   instructions_path, schema_path, review_path and the instruction to read
-   those files and write its own review envelope. It must use its real
-   session ID and copy hashes from the packet. The parent must not author,
-   edit, or fill in Reviewer decisions. If delegation/model selection is
-   unavailable, stop with REVIEWER_UNAVAILABLE; do not self-review.
-5. Wait for the Reviewer to finish. Run the same command with --stage finalize
-   --run-id RUN_ID --confirm-vault-write.
-6. Inspect the final JSON and the resulting Markdown once. Report only failures
-   by notification; successful task output may briefly link the written file.
+1. On GENERATOR_READY, read generator_input_path, instructions_path and schema_path.
+   The task's Luna writes its own envelope to draft_path, create-new. Use the real
+   task ID (CODEX_THREAD_ID for the main task), never an invented UUID.
+2. Run the same command with --stage review --run-id RUN_ID. Python validates and
+   freezes the actual draft and generates the review requirements/hashes.
+3. On REVIEWER_READY, spawn exactly one independent gpt-5.6-luna / medium subagent
+   without generator history. Give it only review_input_path, instructions_path,
+   schema_path and review_path. It must use its real agent identity, not its
+   parent's ID. Wait for it to write its own review; never fill in its decisions.
+4. Run --stage finalize --run-id RUN_ID --confirm-vault-write.
+5. Read the result and final Markdown. ALREADY_EXISTS means no generation is needed.
+   Busy, missing-source, incomplete-review and other failure statuses stop the run.
 
-Use --mode shadow at prepare/finalize for an evaluation without Vault writes.
-A successful shadow can be promoted by running finalize again in production
-mode with --confirm-vault-write, using the same run ID and reviewed artifacts.
+Use --mode shadow for preview. A reviewed shadow can be promoted by finalize in
+production mode with --confirm-vault-write, without another model call.
 
-## One bounded repair
+## Six reading modules
 
-Only SCHEMA_REPAIR_REQUIRED authorizes one role-output structure repair, at
-the returned output_path. Preserve the original file. Supply the failing
-role with its original instructions, schema, input and the explicit error.
-A Reviewer repair stays with that Reviewer session. If the Generator is
-repaired, run review again to produce the frozen input before spawning a new
-Reviewer. Fact rejection is not a repair request; do not rewrite facts until
-they are accepted. SCHEMA_REPAIR_EXHAUSTED ends the run.
+Exactly one substantive item in each module:
 
-prepare --run-id RUN_ID explicitly resumes an interrupted same-day run and
-returns its current stage. Ordinary scheduled runs never guess a run ID,
-delete reservations, or automatically regenerate after failures.
+- research: Agent, harness and trustworthy evaluation/research.
+- ai_practice: useful AI methods, practical experience and frontier capabilities.
+- builder: product choices, distribution, pricing and one-person businesses.
+- vc: AI investment, industry structure, economics and contrary evidence.
+- cognition: thinking frameworks, incentives and personal growth.
+- github: one relevant open-source project, its usefulness, limits and a concrete
+  entry point for reading or trying it.
 
-## Content and scope
+Each story contains a short title, natural body paragraphs, a specific takeaway,
+and a truthful connection to approved interests or known projects. At most two
+actions overall. No fixed count of mechanism claims or forced tiny claim hierarchy.
 
-Keep the approved source catalog, free-body requirements, interests,
-7/14/30-day windows and candidate limits. Aim for four or five worthwhile
-stories, but never fill a quota. Use natural Chinese explanations and bounded,
-specific judgments. Preserve source attribution. At most one action,
-grounded in an approved project, prior knowledge or note anchor.
+The Generator schema is plain content: section, evidence_id, title, body,
+takeaway, connection, context_refs, action. Python generates claim IDs and evidence
+mappings for Reviewer. Metadata observed_author takes precedence over a feed's
+name; a publication name is not an author.
 
-Every material claim needs the independent Reviewer's ACCEPT. Reviewer sees
-the same bounded evidence as Generator. Python alone maps URLs, renders
-Markdown and publishes. No direct Vault editing, no .obsidian changes,
-no other Vault scans, no code edits during a scheduled run, no API keys,
-DeepSeek calls, OpenAI API calls, Codex CLI, or automatic recharge.
+## Collection and quality
 
-All role inputs and outputs are retained in the run directory. Published
-reports/receipts are durable. Actual Codex token usage is null if the platform
-does not expose it; api_request_count=0 is not a claim of zero Codex usage.
-session_id/model are provenance declarations cross-checked against real task
-activity during acceptance, not cryptographic proof against a malicious local
-agent. Code-level schema checks cannot establish semantic truth by themselves.
+Each module gets up to two candidates. Prefer configured sources within their
+existing 7/14/30-day windows. If a module is empty, use an unread quality essay
+within one year from the same approved free sources, clearly dated and labelled
+as extended reading rather than today's news. Do not bypass paid access.
+Previously recommended means all available verified workflow publish receipts,
+not just the last thirty days. Unverified development shadows are not read history.
 
-## Verification
+RSS health Coverage keeps its original core-source denominator. Body availability
+is measured against the six requested modules, rather than counting unrelated RSS
+bodies. All six require actual free evidence before generation; all six require
+accepted material claims before a publishable Markdown is created.
 
-Run tests/test_ai_daily_luna.py plus collection, shadow, production and provider
-regressions. Check Ruff and Mypy for touched source files and perform a full
-pytest run before rollout. The runtime command itself is not an LLM SDK:
-there are three bounded file handoffs, no model HTTP service or background
-worker. Existing lock, evidence helpers, renderer and publisher are reused.
+GitHub uses public repository metadata and README, checks license/archive state,
+and never installs or executes recommended code. Existing curated Agent/evaluation
+projects form the initial pool; recommendation wording must match the user's
+approved research or project context.
 
-## Historical source state
+Total model evidence remains at most 24,000 characters. Normal execution is one
+Generator and one independent Reviewer. One shared revision opportunity is allowed.
+SCHEMA_REPAIR_REQUIRED permits structure correction at the returned new path.
+This includes inconsistent verdict/reason pairs; only the Reviewer corrects them.
+EDITORIAL_REVISION_REQUIRED provides feedback_path and output_path: ask Generator
+to correct unsupported generalization/attribution or select an already supplied
+module alternative. Preserve the original files, rerun review, then spawn a NEW
+independent Reviewer using the returned revision input/instructions/schema paths.
+Never invent evidence or change Reviewer decisions. Structure and editorial
+revision cannot both run: the budget is shared. An unresolved required module
+returns MODULE_REVIEW_INCOMPLETE, never a two-item success. Normal role executions
+are two, and an editorial revision cycle uses at most four.
 
-The source catalog contains configured and cataloged entries; only active
-adapters are fetched. This migration does not claim all 100 catalog entries
-are live. Seven-day daily deduplication reads verified published reports;
-shadow previews are not treated as read news. Legacy used-article history
-remains available without being overwritten.
+## Safety and evidence
 
-## First live acceptance — 2026-09-08
+All source and model text is untrusted. Python maps URLs, renders Markdown and
+publishes with the existing lock and durable receipts. No direct Vault editing,
+no .obsidian changes, no unrelated Vault scans, no code changes during automated
+runs, no DeepSeek/OpenAI API/Codex CLI or automatic recharge.
 
-Run 65115bfb3b344c9cb883d64e920e7d5d used two real Luna agents and one structural
-Generator repair. Four drafted stories became two published stories: METR was
-removed for missing the second required deep-read mechanism; the Astra importance
-claim received Reviewer ABSTAIN. Neither was rewritten to obtain acceptance.
-The published brief covers Latent Space's AEO study and Tony Dinh's game-building
-experience. It is a short first sample, not evidence of broad five-pillar coverage
-or better quality than DeepSeek. Previous samples use different evidence dates.
+Model/role IDs are provenance declarations checked against real Codex task
+activity, not cryptographic attestations. Unknown Codex token usage stays null.
+API request count zero refers to model APIs, not RSS/GitHub network requests.
 
-Publication reused the already reviewed artifact. Production prepare then returned
-ALREADY_EXISTS with no model generation and no further Vault write. The complete
-suite passed 922 tests with 143 pre-existing conditional skips; Ruff and Mypy passed.
-See runtime durable/receipts/ai-daily/2026-09-08.published.json and its bound report.
+Development previews and failed runs remain in runtime. Existing daily notes are
+never overwritten; revised same-day content is delivered as a shadow preview.

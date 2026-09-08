@@ -447,6 +447,8 @@ def _ranked_metadata(
     source_quality_scores: Mapping[str, object],
     quality_threshold: int,
     used_urls: set[str],
+    balanced_modules: bool = False,
+    max_age_days: int | None = None,
 ) -> tuple[_RankedItem, ...]:
     ranked: list[_RankedItem] = []
     for source_id, observation in observations.items():
@@ -463,7 +465,7 @@ def _ranked_metadata(
             published = _published_date(item.published_at)
             if (
                 published is None
-                or not content_date - timedelta(days=_lookback_days(source))
+                or not content_date - timedelta(days=max_age_days or _lookback_days(source))
                 <= published
                 <= content_date
             ):
@@ -475,6 +477,14 @@ def _ranked_metadata(
                 user_context=user_context,
                 source_quality_scores=source_quality_scores,
             )
+            if balanced_modules and score >= 0:
+                # Modules no longer compete on the user's cross-module weight.
+                # Preserve source/body quality while normalizing relevant pillar fit.
+                source_text = f"{item.title}\n{item.summary}".casefold()
+                primary = source.pillars[0]
+                if any(term in source_text for term in _PILLAR_TERMS[primary]):
+                    weight = next(p.weight_bps for p in user_context.pillars if p.pillar_id == primary)
+                    score += 4000 - min(4000, weight * 4000 // 3500)
             discovery_threshold = max(0, quality_threshold - 1200)
             required_score = (
                 discovery_threshold

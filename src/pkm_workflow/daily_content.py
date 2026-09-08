@@ -106,6 +106,7 @@ _CANDIDATE_EVIDENCE_MAX_CHARS = 4_000
 
 
 _SECTION_TERMS = {
+    "github": ("agent", "eval", "harness", "install", "usage", "example", "limitation", "license", "readme"),
     "research": (
         "method",
         "experiment",
@@ -286,6 +287,12 @@ def _model_candidate_payload(
     context_terms: set[str] | None = None,
 ) -> dict[str, object]:
     payload = candidate.model_payload()
+    byline = re.search(
+        r"\bby\s+([A-Z][A-Za-z'-]+(?:[ \t]+[A-Z][A-Za-z'-]+){1,3})\b",
+        candidate.summary[:2000],
+    )
+    if byline:
+        payload["observed_author"] = byline.group(1)
     payload["summary"] = _section_aware_excerpt(
         candidate,
         max_chars=max_chars,
@@ -524,9 +531,6 @@ def _review_requirements(stories: tuple[dict[str, Any], ...]) -> tuple[list[dict
                 "evidence_ids": claim["evidence_ids"],
                 "claim_kind": claim["claim_kind"],
                 "context_refs": claim["context_refs"],
-                "action_type": claim["action_type"],
-                "action_object": claim["action_object"],
-                "success_criterion": claim["success_criterion"],
                 "required": True,
                 "generator_draft_hash": draft_hash,
             }

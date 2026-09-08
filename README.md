@@ -1,10 +1,10 @@
 # PKM Obsidian Workflow
 
 > [!IMPORTANT]
-> 当前唯一规范是 [Agentic Development Context](docs/agentic/README.md) 与 [轻量规格](docs/agentic/spec.md)。方向已从 v7.3 的 Rust/native 企业级资格路线收敛为“单一 Python orchestrator + 固定来源证据链 + 高风险双审 + `os.link` create-new 发布”。规格已可开发，但实现仍是 **shadow-only / production blocked**。
+> 当前运行指南是 [六模块 Luna 日报](docs/ai-daily-luna.md)。Codex 每日定时触发，Python 抓取与准备证据，Luna 生成并独立审核，确定性渲染后 create-new 写入 Obsidian。每期包含研究、AI 实践、Builder、创投、认知、个性化 GitHub 推荐各一条。旧原生/模型/activation 框架已退役，见 [精简记录](docs/workflow-simplification.md)。
 
 > [!CAUTION]
-> 本警告以下的大部分 README 是 2.x/v7.3 以前的历史产品说明，不是可执行指南。不得运行旧 `main.py`、REST/UI writer、旧 Task installer 或把它们重新接入 Vault。当前只可运行 `scripts/run_workflow.py --doctor` / `--dry-run` 来确认阻断状态；实际开发从 [Current Goal](docs/agentic/goal.md) 开始，顺序见 [Implementation Tasks](docs/agentic/tasks.md)。
+> 以下保留旧产品说明供历史参考。当前入口仅为 `scripts/run_workflow.py --workflow ai --mode shadow|production --stage prepare|review|finalize`；不要运行旧 `main.py`、REST/UI writer 或旧 Task installer。
 
 > 一个面向 AI 信息获取、策展、沉淀的 Obsidian 本地优先工作流。  
 > 目标不是“抓更多”，而是每天稳定产出一份高信息密度、可执行、可回溯的 `AI Daily`。
