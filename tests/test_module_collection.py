@@ -41,6 +41,17 @@ def test_github_reads_metadata_and_readme_without_executing_projects():
     assert all(call.startswith("repos/") for call in calls)
 
 
+def test_github_stars_are_observed_metadata_not_invented_or_ranked():
+    def get(endpoint):
+        return github_response(endpoint) | {"stargazers_count": 7162}
+    candidates, _ = github_candidates(DAY, set(), get)
+    assert all(item.github_stars == 7162 for item in candidates)
+    assert all(item.model_payload()["github_stars"] == 7162 for item in candidates)
+    assert len({item.editorial_score for item in candidates}) == 1
+    unknown, _ = github_candidates(DAY, set(), github_response)
+    assert all(item.github_stars is None for item in unknown)
+
+
 def test_archived_or_unlicensed_repositories_are_not_recommended():
     def get(endpoint):
         value = github_response(endpoint)

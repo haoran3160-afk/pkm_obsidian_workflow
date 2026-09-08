@@ -46,7 +46,7 @@ def draft():
          "title": "浏览器工具开始复用", "body": ["Agent 把重复操作整理为工具，并保留失败状态。"],
          "takeaway": "复用边界同时包含成功和失败，调用者才能少写重复处理。",
          "connection": "这一接口划分可以帮助理解 Agent 研究中的工具边界。",
-         "context_refs": ["projects[0]"], "action": None}
+         "context_refs": ["projects[0]"], "action": None, "priority": "USEFUL"}
         for section in SECTIONS
     ]}}
 
@@ -86,6 +86,8 @@ def test_luna_stages_render_and_publish_without_provider(workflow, monkeypatch):
     assert shadow["story_count"] == 6
     assert markdown.count("\n## ") == 6
     assert all(label in markdown for label in SECTIONS.values())
+    assert "★★★★☆" in markdown
+    assert "🧪" in markdown and "🧰" in markdown
     final = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
     assert final["vault_write"] is True
     assert (vault / f"AI-Daily-{DAY}.md").exists()

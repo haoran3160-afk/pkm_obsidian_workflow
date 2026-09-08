@@ -43,9 +43,16 @@ and a truthful connection to approved interests or known projects. At most two
 actions overall. No fixed count of mechanism claims or forced tiny claim hierarchy.
 
 The Generator schema is plain content: section, evidence_id, title, body,
-takeaway, connection, context_refs, action. Python generates claim IDs and evidence
+takeaway, connection, context_refs, action, priority. Python generates claim IDs and evidence
 mappings for Reviewer. Metadata observed_author takes precedence over a feed's
 name; a publication name is not an author.
+
+Module headers use one fixed emoji each. Personal priority is editorial, reviewed
+with the story: DEEP_READ (five stars), USEFUL (four), EXPLORE (three), with the
+reason in the personal connection. It is not a paper-quality or popularity score.
+GitHub stargazers_count is a separate dated, deterministic metadata display;
+missing data says unknown, never zero. Recommendations explain one or two concrete
+self-use scenarios, inputs/outputs, integration effort and known cost prerequisites.
 
 ## Collection and quality
 

@@ -107,6 +107,7 @@ def github_candidates(day, used_urls, get_json=github_json):
                 canonical_origin_id=metadata["full_name"].casefold(),
                 evidence_role="PROJECT_PRIMARY", pillars=("AGENTIC_RESEARCH", "AI_MASTERY"),
                 story_type="github", editorial_score=8000,
+                github_stars=metadata.get("stargazers_count"),
             ))
         except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
             failures.append({"source_id": repo, "reason": "GITHUB_FREE_README_UNAVAILABLE"})

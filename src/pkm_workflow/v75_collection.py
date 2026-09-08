@@ -74,6 +74,7 @@ class Candidate:
     story_type: str = "ai_practice"
     pillar_exposure: bool = False
     editorial_score: int = 5000
+    github_stars: int | None = None
 
     def model_payload(self) -> dict[str, object]:
         return {
@@ -94,6 +95,7 @@ class Candidate:
             "source_id": self.source_id,
             "story_type": self.story_type,
             "editorial_score": self.editorial_score,
+            "github_stars": self.github_stars,
             "summary": self.summary,
             "title": self.title,
         }
