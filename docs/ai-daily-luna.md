@@ -3,6 +3,10 @@
 Run from D:\personal\obsidian_workflow. Engine and Python stay in
 D:\Agent_programs\obsidian_workflow_mvp. The single Codex automation uses
 gpt-5.6-luna / medium, at 08:00 Asia/Shanghai, with failed-run notifications.
+08:00 is the scheduled start, not a promised completion time. The note appears
+only after collection, generation, independent review and final publication all
+succeed. Keep the computer on and Codex running with the project accessible;
+see [official scheduled-task documentation](https://learn.chatgpt.com/docs/automations?surface=app).
 
 ## Daily flow
 
@@ -24,6 +28,15 @@ Use the absolute command:
 4. Run --stage finalize --run-id RUN_ID --confirm-vault-write.
 5. Read the result and final Markdown. ALREADY_EXISTS means no generation is needed.
    Busy, missing-source, incomplete-review and other failure statuses stop the run.
+   Say "newly written" only when vault_write=true. ALREADY_EXISTS is an existing
+   note being skipped, not delivery of the newest shadow or an upgraded note.
+
+For an interrupted local review/finalize write, resume the SAME stage and run ID
+once, without invoking another model. Only byte-identical deterministic runtime
+artifacts can be reused; mismatched files remain a failure and are not overwritten.
+This local completion attempt does not reset the shared model repair budget.
+Do not retry collection/model/quota failures through this rule or start a new run
+to evade a terminal failure. Preserve run ID and error details for explicit recovery.
 
 Use --mode shadow for preview. A reviewed shadow can be promoted by finalize in
 production mode with --confirm-vault-write, without another model call.
