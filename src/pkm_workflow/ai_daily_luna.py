@@ -232,7 +232,7 @@ def _role_output(path: Path, role: str):
     if not isinstance(envelope["session_id"], str) or not re.fullmatch(
         r"(?:[0-9a-fA-F-]{36}|/root/[a-z0-9_/]+)", envelope["session_id"]
     ):
-        raise StageError("ROLE_SESSION_ID_REQUIRED")
+        raise StageError("ROLE_SESSION_ID_REQUIRED", repairable=True)
     structured = envelope["draft"] if role == "generator" else {"decisions": envelope["decisions"]}
     schema = mvp_generator_output_schema() if role == "generator" else mvp_reviewer_output_schema()
     if _contains_forbidden_output_text(structured):

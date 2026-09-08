@@ -13,6 +13,8 @@ Use the absolute command:
 1. On GENERATOR_READY, read generator_input_path, instructions_path and schema_path.
    The task's Luna writes its own envelope to draft_path, create-new. Use the real
    task ID (CODEX_THREAD_ID for the main task), never an invented UUID.
+   A model name is not a session ID. When delegating a content role, explicitly
+   tell that role its actual canonical identity returned by the delegation tool.
 2. Run the same command with --stage review --run-id RUN_ID. Python validates and
    freezes the actual draft and generates the review requirements/hashes.
 3. On REVIEWER_READY, spawn exactly one independent gpt-5.6-luna / medium subagent
@@ -69,7 +71,8 @@ activated; total source rows stay 100 and operational RSS Coverage is unchanged.
 
 At most four primary-paper fulltext attempts, at most two paper candidates, and
 up to 4,000 evidence characters per paper inside the unchanged 24,000 total budget.
-Other article fulltext attempts are capped at fourteen, keeping eighteen total.
+Other article fulltext attempts are capped at fourteen, keeping eighteen article
+and paper attempts total, plus the existing at-most-two GitHub README inputs.
 Abstract-only pages cannot support a paper deep read. Rate limits and missing
 bodies stay visible; a successful classic fallback does not prove current-news
 coverage. arXiv is not a peer-review/venue verification service.

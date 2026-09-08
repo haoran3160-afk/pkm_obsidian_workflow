@@ -223,6 +223,21 @@ def test_single_structure_repair_budget(workflow):
     assert exhausted["status"] == "SCHEMA_REPAIR_EXHAUSTED"
 
 
+def test_model_name_cannot_stand_in_for_real_role_identity(workflow):
+    call, _ = workflow
+    prepared = call("prepare")
+    generated = draft()
+    generated["session_id"] = MODEL
+    save(prepared["draft_path"], generated)
+    repair = call("review", run_id=prepared["run_id"])
+    assert repair["status"] == "SCHEMA_REPAIR_REQUIRED"
+    assert repair["error_code"] == "ROLE_SESSION_ID_REQUIRED"
+    assert not list(Path(prepared["draft_path"]).parent.glob("AI-Daily-*.md"))
+    generated["session_id"] = GENERATOR_ID
+    save(repair["output_path"], generated)
+    assert call("review", run_id=prepared["run_id"])["status"] == "REVIEWER_READY"
+
+
 def test_bad_evidence_is_not_repaired_or_published(workflow):
     call, vault = workflow
     prepared = call("prepare")
