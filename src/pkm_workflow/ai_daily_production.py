@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from .ai_daily_shadow import ShadowResult, run_ai_daily_shadow
 
@@ -441,6 +441,27 @@ def _reconcile(
     return None
 
 
+def acquire_production_lock(path: Path) -> BinaryIO:
+    """Acquire the existing nonblocking OS lock; caller closes via release."""
+    handle = path.open("a+b")
+    try:
+        if path.stat().st_size == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        handle.close()
+        raise
+    return handle
+
+
+def release_production_lock(handle: BinaryIO) -> None:
+    handle.seek(0)
+    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    handle.close()
+
+
 def run_ai_daily_production(
     content_date: date | None = None,
     *,
@@ -464,22 +485,13 @@ def run_ai_daily_production(
             "VAULT_PATH_INVALID",
         )
     destination = daily_dir / f"AI-Daily-{selected_date.isoformat()}.md"
-    lock_handle = None
     try:
-        lock_handle = lock_path.open("a+b")
-        if lock_path.stat().st_size == 0:
-            lock_handle.write(b"0")
-            lock_handle.flush()
-        lock_handle.seek(0)
-        msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        lock_handle = acquire_production_lock(lock_path)
     except OSError:
-        if lock_handle is not None:
-            lock_handle.close()
         return ProductionResult(
             4, "PRODUCTION_BUSY", selected_date, None, None, 0, "PRODUCTION_BUSY"
         )
 
-    assert lock_handle is not None
     shadow: ShadowResult | None = None
     prepared_path: Path | None = None
     durable_report: Path | None = None
@@ -590,6 +602,4 @@ def run_ai_daily_production(
             shadow_report_path=durable_report or (shadow.report_path if shadow else None),
         )
     finally:
-        lock_handle.seek(0)
-        msvcrt.locking(lock_handle.fileno(), msvcrt.LK_UNLCK, 1)
-        lock_handle.close()
+        release_production_lock(lock_handle)
