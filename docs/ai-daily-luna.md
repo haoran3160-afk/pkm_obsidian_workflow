@@ -55,6 +55,10 @@ reason in the personal connection. It is not a paper-quality or popularity score
 GitHub stargazers_count is a separate dated, deterministic metadata display;
 missing data says unknown, never zero. Recommendations explain one or two concrete
 self-use scenarios, inputs/outputs, integration effort and known cost prerequisites.
+An investment firm's published thesis does not establish that it invested in a
+company. Transaction language requires explicit source evidence; otherwise use
+attributed analysis in title/body and keep capital-allocation interpretation in
+the editorial judgment.
 
 ## Paper reading, not institutional news
 
