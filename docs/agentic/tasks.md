@@ -1,5 +1,25 @@
 # Implementation Tasks
 
+## Current — Luna AI Daily migration (2026-09-08) — DONE
+
+Specification: [Luna runbook](../ai-daily-luna.md). Shared lock lifecycle extracted
+without changing existing production expectations (`de2e404`). Three-stage CLI,
+structured role handoffs, approved source reuse, no DeepSeek API, and independent
+Reviewer binding passed live validation. Historical task statuses below are
+preserved; they do not authorize restoring retired infrastructure.
+
+Evidence: runtime run `65115bfb3b344c9cb883d64e920e7d5d`, two real Luna role
+sessions, one generator structural repair, 22 draft claims; one story dropped
+by deterministic validation and one by Reviewer, two published. No additional
+model generation during promotion. Repeated production prepare returned
+ALREADY_EXISTS with zero API calls and no Vault write. Complete suite: 922 passed,
+143 pre-existing environment/retired-contract skips; Ruff and Mypy passed.
+The existing automation now targets the current obsidian_workflow project,
+gpt-5.6-luna/medium, 08:00 daily, failed-runs-only notifications.
+Daily token usage is unavailable through the task interface and is not invented.
+This small first sample proves migration, not superior quality over DeepSeek;
+seven-day coverage/readability/cost observation remains ongoing.
+
 状态说明：`DONE`、`NEXT`、`PLANNED`、`BLOCKED`。一个 Agent 一次只认领一个任务；每个任务完成后追加证据路径，不删除历史记录。
 
 ## M0 — 统一事实源

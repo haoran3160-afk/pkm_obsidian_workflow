@@ -1,4 +1,11 @@
-# PKM Workflow v7.4 MVP Specification
+# PKM Workflow Specification
+
+> 2026-09-08 当前 AI Daily 契约以 [Luna runbook](../ai-daily-luna.md) 为准。
+> 用户已批准当前项目 Codex 定时运行、Luna 生成 + 独立 Luna 审核及 create-new
+> 写入 30-Daily/AI-Daily-YYYY-MM-DD.md。来源目录和已批准上下文继续复用。
+> 下方 v7.4 原生资格、DeepSeek-only 和多 Task 条款保留为历史，不进入此次调用图。
+
+# Historical PKM Workflow v7.4 MVP Specification
 
 状态：`READY_FOR_DEVELOPMENT`
 

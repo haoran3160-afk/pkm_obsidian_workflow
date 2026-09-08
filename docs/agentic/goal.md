@@ -1,4 +1,20 @@
-# Active Goal — T1.5 DeepSeek API Generator/Reviewer pipeline
+# Active Goal — Luna AI Daily
+
+状态：COMPLETE（2026-09-08，真实 Luna 双审、发布与自动化配置回读完成）
+
+完成 GPT-5.6 Luna 生成与独立 Luna Reviewer，交付真实日报、验证 create-new 发布，
+将现有 ai-daily-obsidian 绑定当前 obsidian_workflow 项目并恢复每日 08:00。
+不设 token 预算；实际平台 token 不可用时记为未知。
+
+当前执行规格见 [Luna runbook](../ai-daily-luna.md)。本任务取代下方旧开发 Goal，
+历史文件和 DeepSeek provider 保留，但旧 CLI 模型命令不得触发 API。
+
+验收为真实 Luna 双审与可读产物、公共三阶段接口负向测试、发布与幂等、
+Ruff/Mypy/pytest、实际自动化配置回读。七天趋势属于后续运营观察。
+
+---
+
+# Historical Goal — T1.5 DeepSeek API Generator/Reviewer pipeline
 
 状态：`NEXT / SHADOW_ONLY / PRODUCTION_BLOCKED`
 
