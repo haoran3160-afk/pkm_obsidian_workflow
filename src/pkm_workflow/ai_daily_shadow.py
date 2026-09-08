@@ -192,13 +192,12 @@ def _collect_v75_sources(content_date: date) -> CollectionResult:
     )
 
 
+class LunaAutomationRequired(RuntimeError):
+    """Legacy live entry is retired; explicit offline ports remain testable."""
+
+
 def _default_ports() -> ShadowPorts:
-    return ShadowPorts(
-        collect=_collect_v75_sources,
-        provider=DeepSeekShadowProvider(),
-        runtime_root=Path(r"D:\personal\obsidian_workflow-runtime"),
-        load_user_context=lambda: load_approved_user_context_v75().model_payload(),
-    )
+    raise LunaAutomationRequired("LUNA_AUTOMATION_REQUIRED")
 
 
 def _canonical(value: object) -> bytes:
