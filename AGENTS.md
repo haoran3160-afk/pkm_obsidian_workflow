@@ -9,9 +9,13 @@ checkout by absolute path. Both content roles use gpt-5.6-luna / medium.
 
 ## Required behavior
 
-- Six modules, one article each: agent/harness research, AI practice/frontier,
+- Six modules, one article each: primary-paper research (Agent/harness plus RL/DL exploration), AI practice/frontier,
   builders/solo business, AI venture/industry, cognition/growth, GitHub project.
 - Keep author attribution, source dates, evidence bindings and independent review.
+- GitHub recommendations need dated observed Star counts and concrete self-use
+  scenarios. Personal recommendation stars express reader priority, not quality.
+- Research explains the paper's gap, method, experimental scope, lineage and open
+  questions. Never substitute institutional news or invent venue acceptance.
 - Missing module evidence or a rejected mandatory section returns an explicit
   incomplete status; never fill a section with invented or irrelevant material.
 - Existing source catalog/context remain the source of configuration.
