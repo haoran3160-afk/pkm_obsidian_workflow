@@ -108,6 +108,10 @@ _CANDIDATE_EVIDENCE_MAX_CHARS = 4_000
 _SECTION_TERMS = {
     "github": ("agent", "eval", "harness", "install", "usage", "example", "limitation", "license", "readme"),
     "research": (
+        "related work",
+        "prior work",
+        "future work",
+        "open problem",
         "method",
         "experiment",
         "benchmark",
@@ -198,7 +202,7 @@ _SECTION_TERMS = {
 }
 
 
-def _evidence_segments(value: str) -> list[str]:
+def _evidence_segments(value: str, *, preserve_rates: bool = False) -> list[str]:
     segments: list[str] = []
     for raw_line in value.splitlines():
         line = re.sub(r"\s+", " ", raw_line).strip()
@@ -207,7 +211,7 @@ def _evidence_segments(value: str) -> list[str]:
         pieces = re.split(r"(?<=[。！？])\s*|(?<=[.!?])\s+", line)
         for raw_piece in pieces:
             piece = raw_piece.strip()
-            if _has_unscoped_rate(piece):
+            if not preserve_rates and _has_unscoped_rate(piece):
                 continue
             while len(piece) > 600:
                 cut = piece.rfind(" ", 0, 600)
@@ -234,11 +238,15 @@ def _section_aware_excerpt(
     max_chars: int,
     context_terms: set[str],
 ) -> str:
-    raw_segments = _evidence_segments(candidate.summary)
+    primary_paper = candidate.evidence_role == "PAPER_PRIMARY"
+    # arXiv HTML often wraps a sentence across source lines. Rank whole sentences,
+    # not isolated keyword-bearing fragments from the middle of those sentences.
+    source_text = re.sub(r"\s+", " ", candidate.summary) if primary_paper else candidate.summary
+    raw_segments = _evidence_segments(source_text, preserve_rates=primary_paper)
     segments = [
         safe
         for segment in raw_segments
-        if (safe := _safe_evidence_segment(segment))
+        if (safe := segment if primary_paper else _safe_evidence_segment(segment))
     ]
     if not segments:
         return _RATE_PATTERN.sub("reported rate", candidate.summary)[:max_chars].rstrip()
@@ -276,7 +284,7 @@ def _section_aware_excerpt(
         used += len(segment) + 1
     ordered = [segments[index] for index in sorted(selected)]
     excerpt = "\n".join(ordered)
-    safe = _model_safe_summary(excerpt)
+    safe = excerpt if primary_paper else _model_safe_summary(excerpt)
     return safe[:max_chars].rstrip()
 
 
@@ -325,17 +333,17 @@ def _model_candidate_payloads(
             ),
         )
     )
-    per_candidate = min(
-        _CANDIDATE_EVIDENCE_MAX_CHARS,
-        _GENERATOR_EVIDENCE_CHARS // len(candidates),
-    )
+    paper_count = sum(c.evidence_role == "PAPER_PRIMARY" for c in candidates)
+    paper_budget = min(4000, _GENERATOR_EVIDENCE_CHARS // max(1, paper_count))
+    other_budget = min(4000, (_GENERATOR_EVIDENCE_CHARS - paper_count * paper_budget)
+                       // max(1, len(candidates) - paper_count))
     context_terms = _semantic_terms(
         json.dumps(context, ensure_ascii=False, sort_keys=True)
     )
     return tuple(
         _model_candidate_payload(
             candidate,
-            max_chars=per_candidate,
+            max_chars=paper_budget if candidate.evidence_role == "PAPER_PRIMARY" else other_budget,
             context_terms=context_terms,
         )
         for candidate in ordered_candidates

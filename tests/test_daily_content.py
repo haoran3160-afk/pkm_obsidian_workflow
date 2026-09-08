@@ -28,3 +28,29 @@ def test_author_survives_excerpt_budget_even_when_feed_names_someone_else():
     )
     payload = _model_candidate_payloads((candidate,), {"fields": {}})[0]
     assert payload["observed_author"] == "Craig Shapiro"
+
+
+def test_primary_paper_keeps_reported_metrics_for_review_with_their_context():
+    paper = Candidate(
+        evidence_id="paper", source="arXiv", title="Agent evaluation",
+        link="https://arxiv.org/abs/2405.15793", published="2024-05-06",
+        content_type="paper", fulltext_enriched=True, story_type="research",
+        evidence_role="PAPER_PRIMARY",
+        summary="Experimental setup: 2294 SWE-bench test tasks.\nResults: the model resolves 12.47% of the benchmark.\nLimitations: the evaluation is limited to Python repositories.",
+    )
+    result = _model_candidate_payloads((paper,), {"fields": {}})[0]["summary"]
+    assert "12.47%" in result
+    assert "2294" in result
+    assert "Python repositories" in result
+
+
+def test_paper_line_wraps_do_not_turn_method_evidence_into_fragments():
+    paper = Candidate(
+        evidence_id="paper", source="arXiv", title="Verbal feedback",
+        link="https://arxiv.org/abs/2303.11366", published="2023-03-20",
+        content_type="paper", fulltext_enriched=True, story_type="research",
+        evidence_role="PAPER_PRIMARY",
+        summary="The evaluation signal is\nconverted into verbal feedback stored in memory.\nThis method does not update model weights.",
+    )
+    result = _model_candidate_payloads((paper,), {"fields": {}})[0]["summary"]
+    assert "signal is converted into verbal feedback stored in memory." in result

@@ -30,7 +30,7 @@ production mode with --confirm-vault-write, without another model call.
 
 Exactly one substantive item in each module:
 
-- research: Agent, harness and trustworthy evaluation/research.
+- research: original research papers, primarily Agent/harness with RL and deep-learning exploration.
 - ai_practice: useful AI methods, practical experience and frontier capabilities.
 - builder: product choices, distribution, pricing and one-person businesses.
 - vc: AI investment, industry structure, economics and contrary evidence.
@@ -53,6 +53,33 @@ reason in the personal connection. It is not a paper-quality or popularity score
 GitHub stargazers_count is a separate dated, deterministic metadata display;
 missing data says unknown, never zero. Recommendations explain one or two concrete
 self-use scenarios, inputs/outputs, integration effort and known cost prerequisites.
+
+## Paper reading, not institutional news
+
+The research slot now accepts only PAPER_PRIMARY evidence. A dedicated small
+arXiv reader runs one keyword query (at most eight metadata results), preferring
+the last thirty days. If unavailable, one official RSS fetch provides up to four
+topic-matched discoveries; original submission dates are verified on abstract
+pages, not inferred from RSS announcement dates. Its exploration cadence is four Agent/harness days, two RL
+days and one deep-learning day per week; this is topic rotation, not a requirement
+to call every paper frontier work. Missing/limited search falls back to unread
+verified classics, even older than one year. ReAct and SWE-bench are already read
+and are not in the initial classic pool. The catalog's existing arXiv entry is
+activated; total source rows stay 100 and operational RSS Coverage is unchanged.
+
+At most four primary-paper fulltext attempts, at most two paper candidates, and
+up to 4,000 evidence characters per paper inside the unchanged 24,000 total budget.
+Other article fulltext attempts are capped at fourteen, keeping eighteen total.
+Abstract-only pages cannot support a paper deep read. Rate limits and missing
+bodies stay visible; a successful classic fallback does not prove current-news
+coverage. arXiv is not a peer-review/venue verification service.
+
+The reading target is 500–800 Chinese characters for the paper item: its place in
+the research lineage, prior gap, core method, actual experiment/baseline and scope,
+what remains open, and a concrete section to read next. Only source-supported
+predecessors are named. Proposed follow-up experiments are hypotheses to check,
+not claims of novelty or promises of a top-conference paper. The approved private
+context records the user's exploratory stage and long-term publication goal.
 
 ## Collection and quality
 

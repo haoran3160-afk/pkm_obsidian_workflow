@@ -48,6 +48,7 @@ RUNTIME = Path(r"D:\personal\obsidian_workflow-runtime")
 SHANGHAI = timezone(timedelta(hours=8))
 STRATEGY_HASH = editorial._digest({
     "selection_policy": "six_complete_modules_public_evidence_v1",
+    "paper_evidence": "primary_paper_complete_sentences_v1",
     "contract": CONTRACT, "model": MODEL, "reasoning": "medium",
     "generator_prompt": GENERATOR_PROMPT, "reviewer_prompt": REVIEWER_PROMPT,
     "generator_schema": json.loads(mvp_generator_output_schema()),

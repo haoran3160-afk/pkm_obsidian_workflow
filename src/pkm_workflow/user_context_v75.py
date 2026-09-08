@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 APPROVED_USER_CONTEXT_V75_HASH = (
-    "sha256:4e8005feb3f48b4087a16c0d24374ba465a0fd2c519095b4b806d825e81a2528"
+    "sha256:765e289b8832c986833962edca66ff8cf1e2bfc7e66610f911b79a17675e2521"
 )
 PRIVATE_CONTEXT_PATH = Path(
     r"D:\personal\obsidian_workflow\UserContextContract-v7.5.json"

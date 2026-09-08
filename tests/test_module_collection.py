@@ -8,7 +8,12 @@ from pkm_workflow.daily_brief import SECTIONS
 from pkm_workflow.module_collection import GITHUB_REPOS, collect_modules, github_candidates
 from pkm_workflow.source_catalog import load_source_catalog
 from pkm_workflow.user_context_v75 import load_approved_user_context_v75
-from pkm_workflow.v75_collection import CollectionPorts, MetadataItem, MetadataObservation
+from pkm_workflow.v75_collection import (
+    Candidate,
+    CollectionPorts,
+    MetadataItem,
+    MetadataObservation,
+)
 
 DAY = date(2026, 9, 8)
 CATALOG = Path(r"D:\personal\obsidian_workflow\Source-Manifest-v7.5.json")
@@ -95,6 +100,13 @@ def test_each_reader_module_gets_evidence_and_evergreen_is_labelled():
         DAY, catalog=load_source_catalog(CATALOG), user_context=load_approved_user_context_v75(),
         used_urls=set(), ports=CollectionPorts(metadata, lambda _url: "Concrete source evidence with method and limitations. " * 30),
         get_github=github_response,
+        get_papers=lambda _day, _used: ([Candidate(
+            evidence_id="paper-2405.15793", source="arXiv", title="Agent interfaces",
+            link="https://arxiv.org/abs/2405.15793", published="2024-05-06",
+            summary="Method and experiment with limitations. " * 100,
+            content_type="evergreen", fulltext_enriched=True, story_type="research",
+            evidence_role="PAPER_PRIMARY",
+        )], {"fulltext_attempts": 1}),
     )
     assert {candidate.story_type for candidate in result.candidates} == set(SECTIONS)
     assert result.audit["missing_modules"] == []

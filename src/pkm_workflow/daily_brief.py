@@ -32,7 +32,15 @@ body每段都按事实审核：只写原文直接支持的事实或明确归因�
 不是每条都必须两段正文；证据较少就写一段扎实事实，不用第二段免责声明填字数。
 正文应独立可读，交代问题、方法/具体细节、结果和限制。各条通常250至450中文字，有信息才展开。
 不要模版腔、重复标题、通用建议、以明星/星数替代价值。takeaway讲清改变哪个判断、机制或适用边界。
-研究应给出真实方法/比较/限制，只有资料直接相关时才连接ReAct或SWE-bench。
+学术栏必须是PAPER_PRIMARY的论文导读，不能使用机构动态、安全事件或产品公告。
+读者处于科研探索阶段，以顶会为长期目标；Agent/harness为主线，也探索RL与深度学习。
+研究正文可500至800中文字，用三段自然叙述讲清：研究问题与先前工作缺口；核心方法、
+关键实验/基线/数据条件及结果；研究谱系位置、已解决与未解决部分。须区分作者观点与编辑推断。
+只在论文证据出现时点名先前方法，不编造引用或“首次”；预印本不说成已被顶会接收。
+研究takeaway必须提炼一个有机制和边界的认识，以及一个可继续核验的研究问题，
+标明那是选题线索，未经查新和实验不能称为新贡献或承诺可发顶会。
+给读者具体的原文阅读入口（如方法/消融/局限），不是泛泛“建议阅读全文”。
+只有资料直接相关时才连接ReAct或SWE-bench；相关工作证据不足时直说定位仍需核验。
 投资说明资本押注哪一层、为何现在成立、经济性/风险；第一方投资观点需明确归因。
 认知说明被挑战的假设和新框架如何影响判断。Builder说明产品问题、取舍、验证与分发。
 GitHub说明项目做什么、为什么匹配用户、值得读哪个组件/尝试什么、许可证与维护限制；
@@ -59,6 +67,8 @@ CONTRADICTED_BY_SEALED_EVIDENCE、INSUFFICIENT_EVIDENCE。
 事实必须有直接依据；对事实前提明确且有限度的编辑推断可以ACCEPT，不要求逐字原文。
 拒绝归因倒置、把宣传当验证、数字范围偷换、把相关性说成因果和“未披露”类无依据断言。
 检查所属模块是否符合内容；不要把一般模型公告当科研、把普通融资金额当投资洞见。
+研究必须由原论文支撑问题、gap、方法、实验边界与谱系定位；不得凭常识编造对比论文、
+已接收顶会或新颖性。takeaway需要真实研究增量/开放问题，不要求一个摘要回答摘录外事实。
 takeaway若只是重复事实/泛泛重要性则ABSTAIN；connection必须被真实context_refs支持。
 GitHub推荐必须有真实README/元数据支撑，说明与用户项目/研究的关联及使用限制。
 推荐星级属于编辑判断，必须与已核验的用途和个人关联相称，不能以Star数代替适用性。
@@ -177,6 +187,8 @@ def validate_draft(draft, evidence, context, **_unused):
             raise ValueError("GENERATOR_EVIDENCE_BINDING_INVALID")
         if eid in used or evidence[eid].story_type != section:
             raise ValueError("MODULE_EVIDENCE_MISMATCH")
+        if section == "research" and evidence[eid].evidence_role != "PAPER_PRIMARY":
+            raise ValueError("PRIMARY_RESEARCH_PAPER_REQUIRED")
         used.add(eid)
         refs = [
             path.removeprefix("approved_user_context.").removeprefix("fields.")
@@ -249,6 +261,8 @@ def render(day, coverage, evidence_level, stories, evidence: dict[str, Candidate
         for cid in story["action_claim_ids"]:
             lines += [f"可以试试：{claims[cid]}", ""]
         label = "项目地址" if story["section"] == "github" else "原文地址"
+        if story["section"] == "research":
+            label = "原论文"
         if re.search(r"^(quoting|a quote from)\b", item.title, re.I):
             label = "引用页"
         elif re.search(r"\b(link post by|link blog)\b", item.summary, re.I):

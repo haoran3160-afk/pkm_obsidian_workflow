@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from .daily_brief import SECTIONS
+from .paper_collection import paper_candidates
 from .source_catalog import SourceCatalog
 from .v75_collection import (
     Candidate,
@@ -120,22 +121,15 @@ def _module(source, item, candidate):
     primary = PILLAR_SECTION[source.pillars[0]]
     if primary in {"vc", "cognition", "builder"}:
         return primary
-    if item.content_type == "paper":
-        return "research"
-    if source.evidence_role == "RESEARCH_PRIMARY":
-        research = re.search(r"benchmark|evaluat|experiment|paper|measur|基准|评测|论文",
-                             f"{item.title} {item.summary}", re.I)
-        return "research" if research else "ai_practice"
-    if primary == "ai_practice":
-        return "ai_practice"
-    return candidate.story_type
+    # Research is populated exclusively by verified primary-paper collection.
+    return "ai_practice"
 
 
 def collect_modules(
     day: date, *, catalog: SourceCatalog, user_context, used_urls: set[str],
-    ports: CollectionPorts, get_github=github_json, evergreen=True,
+    ports: CollectionPorts, get_github=github_json, get_papers=paper_candidates, evergreen=True,
 ) -> CollectionResult:
-    sources = [s for s in catalog.sources if _is_due(s, day)]
+    sources = [s for s in catalog.sources if _is_due(s, day) and s.adapter_kind != "ARXIV_QUERY"]
     def fetch(source):
         try:
             return source.source_id, ports.fetch_metadata(source, day)
@@ -171,7 +165,7 @@ def collect_modules(
     )}
     def consume(rows, *, classics=False):
         for row in rows:
-            if audit["fulltext_attempt_count"] >= 18:
+            if audit["fulltext_attempt_count"] >= 14:
                 break
             preliminary = _candidate(row, row.item.summary, "CANONICAL_EXCERPT")
             module = _module(row.source, row.item, preliminary)
@@ -219,6 +213,11 @@ def collect_modules(
         consume(older, classics=True)
     projects, failures = github_candidates(day, used_urls, get_json=get_github)
     buckets["github"] = projects
+    if any(s.adapter_kind == "ARXIV_QUERY" and s.operational_status == "ACTIVE" for s in catalog.sources):
+        papers, paper_audit = get_papers(day, used_urls)
+        buckets["research"] = papers
+        audit["paper_collection"] = paper_audit
+        audit["fulltext_attempt_count"] += paper_audit["fulltext_attempts"]
     audit["exclusions"].extend(failures)
     audit["module_candidates"] = {key: len(value) for key, value in buckets.items()}
     audit["missing_modules"] = [key for key, value in buckets.items() if not value]

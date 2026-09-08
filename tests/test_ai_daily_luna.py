@@ -25,6 +25,7 @@ def workflow(tmp_path):
         summary="The agent reuses browser tool calls and reports failure states.",
         content_type="research", fulltext_enriched=True, source_complete=True,
         story_type=section,
+        evidence_role="PAPER_PRIMARY" if section == "research" else "PRIMARY_OR_EXPERT",
     ) for section in SECTIONS)
     context = {"fields": {"projects": ["Agent research"]}, "user_context_hash": "sha256:" + "a" * 64}
     def call(stage, **kwargs):
@@ -231,6 +232,23 @@ def test_bad_evidence_is_not_repaired_or_published(workflow):
     result = call("review", run_id=prepared["run_id"])
     assert result["status"] == "GENERATOR_EVIDENCE_BINDING_INVALID"
     assert not list(vault.glob("*.md"))
+
+
+def test_research_slot_rejects_institutional_news_even_when_keywords_match():
+    from dataclasses import replace
+
+    from pkm_workflow.daily_brief import validate_draft
+    candidates = {section: Candidate(
+        evidence_id=f"evidence-{section}", source="Research institute", title="Agent benchmark security update",
+        link=f"https://example.com/{section}", published=DAY.isoformat(), summary="Agent evaluation",
+        content_type="news", fulltext_enriched=True, story_type=section,
+    ) for section in SECTIONS}
+    context = {"fields": {"projects": ["Agent research"]}}
+    evidence = {row.evidence_id: row for row in candidates.values()}
+    with pytest.raises(ValueError, match="PRIMARY_RESEARCH_PAPER_REQUIRED"):
+        validate_draft(draft()["draft"], evidence, context)
+    evidence["evidence-research"] = replace(candidates["research"], evidence_role="PAPER_PRIMARY")
+    assert len(validate_draft(draft()["draft"], evidence, context)) == 6
 
 
 def test_old_cli_never_calls_provider():
