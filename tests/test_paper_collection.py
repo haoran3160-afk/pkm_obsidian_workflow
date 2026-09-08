@@ -62,3 +62,22 @@ def test_official_rss_fallback_verifies_original_submission_not_feed_date():
     assert candidates[0].published == "2026-09-03"
     assert candidates[0].content_type == "paper"
     assert audit["discovery_error"] == "ARXIV_HTTP_429"
+
+
+def test_recent_html_failures_leave_budget_for_unread_classics():
+    xml = '<feed xmlns="http://www.w3.org/2005/Atom">' + ''.join(
+        f'<entry><id>http://arxiv.org/abs/2609.0123{i}</id><title>Agent</title><published>2026-09-03T00:00:00Z</published></entry>'
+        for i in range(4)
+    ) + '</feed>'
+    def get(url):
+        if "api/query" in url:
+            return xml
+        return '<meta name="citation_title" content="Classic agent"><meta name="citation_date" content="2024/05/06">'
+    calls = []
+    def body(url):
+        calls.append(url)
+        return "" if "2609." in url else "Method and results with limitations. " * 100
+    candidates, audit = paper_candidates(date(2026, 9, 8), set(), get_text=get, fulltext=body)
+    assert candidates and all(c.content_type == "evergreen" for c in candidates)
+    assert audit["fulltext_attempts"] <= 4
+    assert any("2609." not in url for url in calls)

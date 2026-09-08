@@ -132,6 +132,9 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
         consume(*row)
         if len(found) == 2:
             break
+        if not found and audit["fulltext_attempts"] >= 2:
+            # Keep the other two attempts for classics when fresh HTML is missing.
+            break
     for identifier in CLASSICS[topic]:
         if len(found) == 2 or audit["fulltext_attempts"] >= 4:
             break
