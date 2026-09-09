@@ -26,6 +26,7 @@ from .v75_collection import (
     _is_due,
     _is_paid_learning_promotion,
     _is_public_fulltext,
+    _normalize_url,
     _policy_mapping,
     _ranked_metadata,
 )
@@ -125,11 +126,25 @@ def _module(source, item, candidate):
     return "ai_practice"
 
 
+def _due_for_reading_day(source, day, requested):
+    if source.operational_status != "ACTIVE":
+        return False
+    if source.cadence == "WEEKLY" and len(requested) == 2:
+        # Slow sources must be checked on their first paired reading day, not
+        # Sunday, when we only synthesize already-published material.
+        return day.weekday() < 3 and _module(source, None, None) in requested
+    return _is_due(source, day)
+
+
 def collect_modules(
     day: date, *, catalog: SourceCatalog, user_context, used_urls: set[str],
     ports: CollectionPorts, get_github=github_json, get_papers=paper_candidates, evergreen=True,
+    requested_sections=None,
 ) -> CollectionResult:
-    sources = [s for s in catalog.sources if _is_due(s, day) and s.adapter_kind != "ARXIV_QUERY"]
+    requested = tuple(requested_sections or SECTIONS)
+    used_urls = {_normalize_url(url) for url in used_urls}
+    sources = [s for s in catalog.sources if _due_for_reading_day(s, day, requested) and s.adapter_kind != "ARXIV_QUERY"
+               and _module(s, None, None) in requested]
     def fetch(source):
         try:
             return source.source_id, ports.fetch_metadata(source, day)
@@ -138,8 +153,10 @@ def collect_modules(
     with ThreadPoolExecutor(max_workers=6) as pool:
         observations = dict(pool.map(fetch, sources))
     core = [s for s in sources if s.coverage_member and s.selection_role == "CORE_DAILY"]
-    healthy = sum(observations[s.source_id].healthy for s in core)
-    coverage = _coverage_level(healthy, len(core), a_bps=8500, b_bps=7000)
+    health_sources = core or sources
+    healthy = sum(observations[s.source_id].healthy for s in health_sources)
+    coverage = (_coverage_level(healthy, len(health_sources), a_bps=8500, b_bps=7000)
+                if health_sources else CoverageLevel.A)
     audit: dict[str, Any] = {
         "source_observations": [
             {"source_id": s.source_id, "healthy": observations[s.source_id].healthy,
@@ -147,17 +164,18 @@ def collect_modules(
             for s in sources
         ],
         "fulltext_attempt_count": 0, "metadata_qualified_count": 0, "exclusions": [],
+        "coverage_scope": "DUE_RSS_FOR_REQUESTED_MODULES",
         "selection_policy": "ONE_STORY_PER_READER_MODULE",
     }
     if coverage is CoverageLevel.INSUFFICIENT:
-        return CollectionResult(coverage, len(core), healthy, (), audit=audit)
+        return CollectionResult(coverage, len(health_sources), healthy, (), audit=audit)
     ranked = _ranked_metadata(
         observations=observations, sources={s.source_id: s for s in sources},
         content_date=day, user_context=user_context,
         source_quality_scores=_policy_mapping(catalog.policies, "source_quality_scores"),
         quality_threshold=5000, used_urls=used_urls, balanced_modules=True,
     )
-    buckets: dict[str, list[Candidate]] = {key: [] for key in SECTIONS}
+    buckets: dict[str, list[Candidate]] = {key: [] for key in requested}
     attempted = set()
     origins = set()
     assessment = {s.source_id for s in core if observations[s.source_id].healthy and (
@@ -196,14 +214,14 @@ def collect_modules(
     # Visit one item in each module before its backup.
     ordered = []
     for turn in range(2):
-        for module in list(SECTIONS)[:-1]:
+        for module in [key for key in requested if key not in {"research", "github"}]:
             matches = [row for row in ranked if _module(
                 row.source, row.item, _candidate(row, row.item.summary, "CANONICAL_EXCERPT")
             ) == module]
             if len(matches) > turn:
                 ordered.append(matches[turn])
     consume(ordered + list(ranked))
-    if evergreen and any(not buckets[key] for key in list(SECTIONS)[:-1]):
+    if evergreen and any(not buckets[key] for key in requested if key not in {"research", "github"}):
         older = _ranked_metadata(
             observations=observations, sources={s.source_id: s for s in sources},
             content_date=day, user_context=user_context,
@@ -211,21 +229,25 @@ def collect_modules(
             quality_threshold=5000, used_urls=used_urls, balanced_modules=True, max_age_days=365,
         )
         consume(older, classics=True)
-    projects, failures = github_candidates(day, used_urls, get_json=get_github)
-    buckets["github"] = projects
-    if any(s.adapter_kind == "ARXIV_QUERY" and s.operational_status == "ACTIVE" for s in catalog.sources):
+    if "github" in requested:
+        projects, failures = github_candidates(day, used_urls, get_json=get_github)
+        buckets["github"] = projects
+        audit["exclusions"].extend(failures)
+    if "research" in requested and any(s.adapter_kind == "ARXIV_QUERY" and s.operational_status == "ACTIVE" for s in catalog.sources):
         papers, paper_audit = get_papers(day, used_urls)
         buckets["research"] = papers
         audit["paper_collection"] = paper_audit
         audit["fulltext_attempt_count"] += paper_audit["fulltext_attempts"]
-    audit["exclusions"].extend(failures)
     audit["module_candidates"] = {key: len(value) for key, value in buckets.items()}
     audit["missing_modules"] = [key for key, value in buckets.items() if not value]
     evidence_core = len({s.source_id for s in core} & assessment)
     audit["legacy_core_evidence_sources"] = evidence_core
     available_modules = sum(bool(value) for value in buckets.values())
     audit["evidence_availability_scope"] = "SIX_MODULES_WITH_VERIFIED_FREE_BODY"
-    evidence_level = _coverage_level(available_modules, 6, a_bps=10000, b_bps=8000)
+    # Some pairs have no CORE_DAILY RSS: availability of their own evidence is the gate.
+    if not health_sources:
+        coverage = CoverageLevel.A if available_modules == len(requested) else CoverageLevel.INSUFFICIENT
+    evidence_level = _coverage_level(available_modules, len(requested), a_bps=10000, b_bps=8000)
     candidates = tuple(candidate for values in buckets.values() for candidate in values)
-    return CollectionResult(coverage, len(core), healthy, candidates,
+    return CollectionResult(coverage, len(health_sources), healthy, candidates,
                             evidence_level, len({c.source_id for c in candidates}), audit)

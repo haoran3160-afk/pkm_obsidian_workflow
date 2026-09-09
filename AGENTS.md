@@ -9,8 +9,10 @@ checkout by absolute path. Both content roles use gpt-5.6-luna / medium.
 
 ## Required behavior
 
-- Six modules, one article each: primary-paper research (Agent/harness plus RL/DL exploration), AI practice/frontier,
-  builders/solo business, AI venture/industry, cognition/growth, GitHub project.
+- Mon/Thu: research + AI practice; Tue/Fri: builders + venture; Wed/Sat:
+  cognition + GitHub. Exactly two daily modules. Sunday: six-module weekly
+  synthesis from verified daily history, no extra daily. Follow returned edition
+  and requested_sections; never fill unscheduled modules.
 - Keep author attribution, source dates, evidence bindings and independent review.
 - GitHub recommendations need dated observed Star counts and concrete self-use
   scenarios. Personal recommendation stars express reader priority, not quality.
@@ -38,3 +40,7 @@ content-contract changes. Verify the actual six-module output as well as tests.
 Run pytest for affected behavior, Ruff on src/tests and Mypy on src/pkm_workflow.
 Frozen historical docs under docs/agentic describe earlier designs and are not
 instructions to reintroduce retired components.
+
+The clean development baseline is https://github.com/haoran3160-afk/AI_Daily_workflow.
+This checkout is the existing local deployment; private configuration and runtime
+remain external and must never be pushed with the public project.

@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 from pkm_workflow.ai_daily_luna import MODEL, run_luna_stage
+from pkm_workflow.cadence import sections_for
 from pkm_workflow.daily_brief import SECTIONS
 from pkm_workflow.v75_collection import Candidate, CollectionResult, CoverageLevel
 
-DAY = date(2026, 9, 8)
+DAY = date(2026, 9, 7)
+DAILY_SECTIONS = sections_for(DAY, "daily")
 GENERATOR_ID = "11111111-1111-4111-8111-111111111111"
 REVIEWER_ID = "22222222-2222-4222-8222-222222222222"
 
@@ -26,7 +28,7 @@ def workflow(tmp_path):
         content_type="research", fulltext_enriched=True, source_complete=True,
         story_type=section,
         evidence_role="PAPER_PRIMARY" if section == "research" else "PRIMARY_OR_EXPERT",
-    ) for section in SECTIONS)
+    ) for section in DAILY_SECTIONS)
     context = {"fields": {"projects": ["Agent research"]}, "user_context_hash": "sha256:" + "a" * 64}
     def call(stage, **kwargs):
         return run_luna_stage(
@@ -48,7 +50,7 @@ def draft():
          "takeaway": "复用边界同时包含成功和失败，调用者才能少写重复处理。",
          "connection": "这一接口划分可以帮助理解 Agent 研究中的工具边界。",
          "context_refs": ["projects[0]"], "action": None, "priority": "USEFUL"}
-        for section in SECTIONS
+        for section in DAILY_SECTIONS
     ]}}
 
 
@@ -84,11 +86,11 @@ def test_luna_stages_render_and_publish_without_provider(workflow, monkeypatch):
     assert shadow["vault_write"] is False
     assert "浏览器工具开始复用" in Path(shadow["markdown_path"]).read_text(encoding="utf-8")
     markdown = Path(shadow["markdown_path"]).read_text(encoding="utf-8")
-    assert shadow["story_count"] == 6
-    assert markdown.count("\n## ") == 6
-    assert all(label in markdown for label in SECTIONS.values())
+    assert shadow["story_count"] == 2
+    assert markdown.count("\n## ") == 2
+    assert all(SECTIONS[key] in markdown for key in DAILY_SECTIONS)
     assert "★★★★☆" in markdown
-    assert "🧪" in markdown and "🧰" in markdown
+    assert "🧪" in markdown and "🛠️" in markdown
     final = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
     assert final["vault_write"] is True
     assert (vault / f"AI-Daily-{DAY}.md").exists()
@@ -102,7 +104,7 @@ def test_unread_classics_exclude_verified_history_older_than_thirty_days(workflo
     published = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
     assert published["vault_write"] is True
     assert _published_urls(tmp_path, vault, DAY + timedelta(days=61)) == {
-        f"https://example.com/{section}" for section in SECTIONS
+        f"https://example.com/{section}" for section in DAILY_SECTIONS
     }
 
 
@@ -270,6 +272,20 @@ def test_single_structure_repair_budget(workflow):
     assert exhausted["status"] == "SCHEMA_REPAIR_EXHAUSTED"
 
 
+def test_delivered_schema_describes_full_role_envelope_and_bare_draft_can_repair_once(workflow):
+    from pkm_workflow.daily_brief import matches_schema
+    call, _ = workflow
+    prepared = call("prepare")
+    schema = json.loads(Path(prepared["schema_path"]).read_text(encoding="utf-8"))
+    assert matches_schema(draft(), schema)
+    assert not matches_schema(draft()["draft"], schema)
+    save(prepared["draft_path"], draft()["draft"])
+    repair = call("review", run_id=prepared["run_id"])
+    assert repair["status"] == "SCHEMA_REPAIR_REQUIRED"
+    save(repair["output_path"], draft())
+    assert call("review", run_id=prepared["run_id"])["status"] == "REVIEWER_READY"
+
+
 def test_model_name_cannot_stand_in_for_real_role_identity(workflow):
     call, _ = workflow
     prepared = call("prepare")
@@ -308,9 +324,9 @@ def test_research_slot_rejects_institutional_news_even_when_keywords_match():
     context = {"fields": {"projects": ["Agent research"]}}
     evidence = {row.evidence_id: row for row in candidates.values()}
     with pytest.raises(ValueError, match="PRIMARY_RESEARCH_PAPER_REQUIRED"):
-        validate_draft(draft()["draft"], evidence, context)
+        validate_draft(draft()["draft"], evidence, context, requested_sections=DAILY_SECTIONS)
     evidence["evidence-research"] = replace(candidates["research"], evidence_role="PAPER_PRIMARY")
-    assert len(validate_draft(draft()["draft"], evidence, context)) == 6
+    assert len(validate_draft(draft()["draft"], evidence, context, requested_sections=DAILY_SECTIONS)) == 2
 
 
 def test_old_cli_never_calls_provider():

@@ -1,8 +1,3 @@
-"""PKM Workflow v7.3 production contracts.
+"""Personal rotating AI Daily and evidence-backed Weekly workflow."""
 
-The package is additive while the legacy flat-module entry point remains
-available for compatibility.  Production activation is deliberately handled
-outside this module and defaults to shadow.
-"""
-
-__version__ = "7.3.0-shadow"
+__version__ = "0.2.0"

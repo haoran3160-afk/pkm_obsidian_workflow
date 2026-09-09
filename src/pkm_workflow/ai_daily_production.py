@@ -161,13 +161,13 @@ def _write_receipt(path: Path, payload: dict[str, object]) -> Path:
 
 
 def _paths(
-    runtime_root: Path, content_date: date, run_id: str
+    runtime_root: Path, content_date: date, run_id: str, *, edition: str = "daily"
 ) -> tuple[Path, Path, Path]:
     backing = (
         runtime_root
         / "durable"
         / "backing"
-        / "ai-daily"
+        / f"ai-{edition}"
         / content_date.isoformat()
         / f"{run_id}.md"
     )
@@ -175,15 +175,15 @@ def _paths(
         runtime_root
         / "durable"
         / "reports"
-        / "ai-daily"
+        / f"ai-{edition}"
         / content_date.isoformat()
         / f"{run_id}.json"
     )
-    return backing, report, runtime_root / "durable" / "receipts" / "ai-daily"
+    return backing, report, runtime_root / "durable" / "receipts" / f"ai-{edition}"
 
 
-def _receipt_paths(runtime_root: Path, content_date: date) -> tuple[Path, Path]:
-    receipt_root = runtime_root / "durable" / "receipts" / "ai-daily"
+def _receipt_paths(runtime_root: Path, content_date: date, *, edition: str = "daily") -> tuple[Path, Path]:
+    receipt_root = runtime_root / "durable" / "receipts" / f"ai-{edition}"
     stem = content_date.isoformat()
     return receipt_root / f"{stem}.prepared.json", receipt_root / f"{stem}.published.json"
 
@@ -213,12 +213,13 @@ def _prepared_payload(
     shadow_report: Path,
     backing_facts: _FileFacts,
     destination: Path,
+    *, edition: str = "daily",
 ) -> dict[str, object]:
     return _seal(
         {
             "schema": RECEIPT_SCHEMA,
             "status": "PREPARED",
-            "workflow": "ai",
+            "workflow": "ai" if edition == "daily" else "ai-weekly",
             "content_date": content_date.isoformat(),
             "run_id": run_id,
             "request_count": request_count,
@@ -236,6 +237,7 @@ def _load_prepared(
     runtime_root: Path,
     content_date: date,
     destination: Path,
+    *, edition: str = "daily",
 ) -> _Prepared:
     payload = _read_sealed(path)
     if set(payload) != _PREPARED_FIELDS:
@@ -244,7 +246,7 @@ def _load_prepared(
     if (
         payload.get("schema") != RECEIPT_SCHEMA
         or payload.get("status") != "PREPARED"
-        or payload.get("workflow") != "ai"
+        or payload.get("workflow") != ("ai" if edition == "daily" else "ai-weekly")
         or payload.get("content_date") != content_date.isoformat()
         or not isinstance(run_id, str)
         or _RUN_ID.fullmatch(run_id) is None
@@ -252,7 +254,7 @@ def _load_prepared(
         or type(payload.get("request_count")) is not int
     ):
         raise ValueError("PREPARED_BINDING_INVALID")
-    backing, shadow_report, _ = _paths(runtime_root, content_date, run_id)
+    backing, shadow_report, _ = _paths(runtime_root, content_date, run_id, edition=edition)
     backing_facts = _file_facts(backing)
     report_facts = _file_facts(shadow_report)
     stored_identity = payload.get("backing_identity")
@@ -365,8 +367,9 @@ def _reconcile(
     runtime_root: Path,
     content_date: date,
     destination: Path,
+    *, edition: str = "daily",
 ) -> ProductionResult | None:
-    prepared_path, published_path = _receipt_paths(runtime_root, content_date)
+    prepared_path, published_path = _receipt_paths(runtime_root, content_date, edition=edition)
     if published_path.exists():
         if not prepared_path.exists() or not destination.exists():
             return _conflict(
@@ -377,7 +380,7 @@ def _reconcile(
             )
         try:
             published_prepared = _load_prepared(
-                prepared_path, runtime_root, content_date, destination
+                prepared_path, runtime_root, content_date, destination, edition=edition
             )
             _validate_published(
                 published_path, published_prepared, prepared_path, destination
@@ -402,7 +405,7 @@ def _reconcile(
         prepared: _Prepared | None = None
         try:
             prepared = _load_prepared(
-                prepared_path, runtime_root, content_date, destination
+                prepared_path, runtime_root, content_date, destination, edition=edition
             )
             if not destination.exists():
                 destination.hardlink_to(prepared.backing)
@@ -479,7 +482,10 @@ def run_ai_daily_production(
     vault_daily_dir: Path = VAULT_DAILY_DIR,
     coordination_path: Path = PRODUCTION_LOCK_PATH,
     shadow_runner: Callable[[date | None], ShadowResult],
+    edition: str = "daily",
 ) -> ProductionResult:
+    if edition not in {"daily", "weekly"}:
+        raise ValueError("EDITION_INVALID")
     selected_date = content_date or date.today()
     try:
         daily_dir = vault_daily_dir.resolve(strict=True)
@@ -495,7 +501,7 @@ def run_ai_daily_production(
             0,
             "VAULT_PATH_INVALID",
         )
-    destination = daily_dir / f"AI-Daily-{selected_date.isoformat()}.md"
+    destination = daily_dir / f"AI-{edition.title()}-{selected_date.isoformat()}.md"
     try:
         lock_handle = acquire_production_lock(lock_path)
     except OSError:
@@ -509,7 +515,7 @@ def run_ai_daily_production(
     wrote_target = False
     target_verified = False
     try:
-        reconciled = _reconcile(runtime_root, selected_date, destination)
+        reconciled = _reconcile(runtime_root, selected_date, destination, edition=edition)
         if reconciled is not None:
             return reconciled
         shadow = shadow_runner(selected_date)
@@ -525,17 +531,17 @@ def run_ai_daily_production(
                 shadow_report_path=shadow.report_path,
             )
         run_id, shadow_markdown, shadow_report = _shadow_run(shadow, runtime_root)
-        backing, durable_report, _ = _paths(runtime_root, selected_date, run_id)
+        backing, durable_report, _ = _paths(runtime_root, selected_date, run_id, edition=edition)
         _write_or_verify(durable_report, shadow_report.read_bytes())
         markdown = shadow_markdown.read_text(encoding="utf-8")
         production = (
-            markdown.replace("type: ai-daily-shadow", "type: ai-daily", 1)
+            markdown.replace(f"type: ai-{edition}-shadow", f"type: ai-{edition}", 1)
             .replace("production: false", "production: true", 1)
             .encode("utf-8")
         )
         backing_facts = _write_or_verify(backing, production)
         prepared_path, published_path = _receipt_paths(
-            runtime_root, selected_date
+            runtime_root, selected_date, edition=edition
         )
         _write_receipt(
             prepared_path,
@@ -546,10 +552,11 @@ def run_ai_daily_production(
                 durable_report,
                 backing_facts,
                 destination,
+                edition=edition,
             ),
         )
         prepared = _load_prepared(
-            prepared_path, runtime_root, selected_date, destination
+            prepared_path, runtime_root, selected_date, destination, edition=edition
         )
         destination.hardlink_to(backing)
         wrote_target = True

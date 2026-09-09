@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from enum import Enum
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .source_catalog import SourceCatalog, SourceDefinition
 from .user_context_v75 import UserContextBundle
@@ -75,6 +75,7 @@ class Candidate:
     pillar_exposure: bool = False
     editorial_score: int = 5000
     github_stars: int | None = None
+    source_links: tuple[tuple[str, str], ...] = ()
 
     def model_payload(self) -> dict[str, object]:
         return {
@@ -267,12 +268,14 @@ def _is_due(source: SourceDefinition, content_date: date) -> bool:
 
 def _normalize_url(value: str) -> str:
     parts = urlsplit(value.strip())
+    query = urlencode([(key, val) for key, val in parse_qsl(parts.query, keep_blank_values=True)
+                       if not key.lower().startswith("utm_") and key.lower() not in {"fbclid", "gclid"}])
     return urlunsplit(
         (
             parts.scheme.lower(),
             parts.netloc.lower(),
             parts.path.rstrip("/"),
-            parts.query,
+            query,
             "",
         )
     )

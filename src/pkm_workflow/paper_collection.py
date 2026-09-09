@@ -10,7 +10,11 @@ from xml.etree import ElementTree
 
 from .v75_collection import Candidate
 
-TOPICS = ("agents", "agents", "rl", "agents", "deep_learning", "agents", "rl")
+
+def research_topic(day):
+    # Research is scheduled Mon/Thu: retain an Agent anchor and rotate the second
+    # slot, otherwise restricting collection days would silently eliminate RL/DL.
+    return ("rl", "deep_learning", "agents")[day.isocalendar().week % 3] if day.weekday() == 3 else "agents"
 QUERIES = {
     "agents": 'ti:agentic OR ti:harness OR (ti:agent AND (abs:evaluation OR abs:tool OR abs:reasoning))',
     "rl": 'ti:"reinforcement learning" AND (abs:language OR abs:reasoning OR abs:agent)',
@@ -53,7 +57,7 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
         from fetcher import _fetch_article_fulltext
         def fulltext(url):
             return _fetch_article_fulltext(url, max_chars=120_000)
-    topic = TOPICS[day.weekday()]
+    topic = research_topic(day)
     used = {_paper_id(url) for url in used_urls}
     audit = {"topic": topic, "discovery_error": None, "fulltext_attempts": 0, "excluded": []}
     rows = []

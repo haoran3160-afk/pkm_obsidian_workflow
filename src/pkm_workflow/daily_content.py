@@ -295,6 +295,11 @@ def _model_candidate_payload(
     context_terms: set[str] | None = None,
 ) -> dict[str, object]:
     payload = candidate.model_payload()
+    if candidate.content_type == "weekly_excerpt":
+        # Preserve per-source dates and interpretation labels; do not re-rank
+        # sentences across different days and accidentally lose their attribution.
+        payload["summary"] = candidate.summary[:max_chars]
+        return payload
     byline = re.search(
         r"\bby\s+([A-Z][A-Za-z'-]+(?:[ \t]+[A-Z][A-Za-z'-]+){1,3})\b",
         candidate.summary[:2000],
@@ -312,6 +317,7 @@ def _model_candidate_payload(
 def _model_candidate_payloads(
     candidates: tuple[Candidate, ...],
     context: Mapping[str, object],
+    *, total_chars: int = _GENERATOR_EVIDENCE_CHARS,
 ) -> tuple[dict[str, object], ...]:
     if not candidates:
         return ()
@@ -334,8 +340,8 @@ def _model_candidate_payloads(
         )
     )
     paper_count = sum(c.evidence_role == "PAPER_PRIMARY" for c in candidates)
-    paper_budget = min(4000, _GENERATOR_EVIDENCE_CHARS // max(1, paper_count))
-    other_budget = min(4000, (_GENERATOR_EVIDENCE_CHARS - paper_count * paper_budget)
+    paper_budget = min(4000, total_chars // max(1, paper_count))
+    other_budget = min(4000, (total_chars - paper_count * paper_budget)
                        // max(1, len(candidates) - paper_count))
     context_terms = _semantic_terms(
         json.dumps(context, ensure_ascii=False, sort_keys=True)

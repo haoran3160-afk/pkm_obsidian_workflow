@@ -1,148 +1,90 @@
-# AI Daily — six modules, all Luna
+# Personal AI Daily / Weekly — operating contract
 
-Run from D:\personal\obsidian_workflow. Engine and Python stay in
-D:\Agent_programs\obsidian_workflow_mvp. The single Codex automation uses
-gpt-5.6-luna / medium, at 08:00 Asia/Shanghai, with failed-run notifications.
-08:00 is the scheduled start, not a promised completion time. The note appears
-only after collection, generation, independent review and final publication all
-succeed. Keep the computer on and Codex running with the project accessible;
-see [official scheduled-task documentation](https://learn.chatgpt.com/docs/automations?surface=app).
+Use the existing private Codex project and its local engine deployment. Content
+generation and independent fresh-context review use gpt-5.6-luna / medium only.
+No DeepSeek/OpenAI API, Codex CLI, provider fallback or automatic recharge.
 
-## Daily flow
+## Reading cadence
 
-Use the absolute command:
+| Day | Output |
+| --- | --- |
+| Monday / Thursday | Research + AI practice |
+| Tuesday / Friday | Builder + AI venture/industry |
+| Wednesday / Saturday | Cognition/growth + GitHub |
+| Sunday | Weekly synthesis across all six modules; no additional daily |
 
-    & 'D:\Agent_programs\obsidian_workflow_mvp\.venv\Scripts\python.exe' 'D:\Agent_programs\obsidian_workflow_mvp\scripts\run_workflow.py' --workflow ai --mode production --stage prepare
+Every daily contains exactly two distinct scheduled modules, one story each.
+Previously published original URLs/projects are excluded from later daily choices.
+Same-batch event duplication continues to use existing curation. Weekly review of
+already read material is deliberate: connect observations instead of copying daily
+paragraphs or presenting them as new recommendations.
 
-1. On GENERATOR_READY, read generator_input_path, instructions_path and schema_path.
-   The task's Luna writes its own envelope to draft_path, create-new. Use the real
-   task ID (CODEX_THREAD_ID for the main task), never an invented UUID.
-   A model name is not a session ID. When delegating a content role, explicitly
-   tell that role its actual canonical identity returned by the delegation tool.
-2. Run the same command with --stage review --run-id RUN_ID. Python validates and
-   freezes the actual draft and generates the review requirements/hashes.
-3. On REVIEWER_READY, spawn exactly one independent gpt-5.6-luna / medium subagent
-   without generator history. Give it only review_input_path, instructions_path,
-   schema_path and review_path. It must use its real agent identity, not its
-   parent's ID. Wait for it to write its own review; never fill in its decisions.
-4. Run --stage finalize --run-id RUN_ID --confirm-vault-write.
-5. Read the result and final Markdown. ALREADY_EXISTS means no generation is needed.
-   Busy, missing-source, incomplete-review and other failure statuses stop the run.
-   Say "newly written" only when vault_write=true. ALREADY_EXISTS is an existing
-   note being skipped, not delivery of the newest shadow or an upgraded note.
+Research remains Agent/harness-led: Monday is the anchor, Thursday rotates Agent,
+RL and deep-learning exploration across weeks. Keep actual paper evidence, lineage,
+gap, method, experimental limits and tentative research questions. Preserve light
+icons, personal priority (not a science score), and dated GitHub stars/self-use fit.
 
-For an interrupted local review/finalize write, resume the SAME stage and run ID
-once, without invoking another model. Only byte-identical deterministic runtime
-artifacts can be reused; mismatched files remain a failure and are not overwritten.
-This local completion attempt does not reset the shared model repair budget.
-Do not retry collection/model/quota failures through this rule or start a new run
-to evade a terminal failure. Preserve run ID and error details for explicit recovery.
+## One scheduler, three stages
 
-Use --mode shadow for preview. A reviewed shadow can be promoted by finalize in
-production mode with --confirm-vault-write, without another model call.
+The existing local automation starts at 08:00 Shanghai. Successful publication
+happens after processing, not necessarily at 08:00. The host and Codex app must be
+available. Do not add another scheduler or Windows Task.
 
-## Six reading modules
+The deployment runs its absolute Python and scripts/run_workflow.py paths:
 
-Exactly one substantive item in each module:
+```powershell
+python scripts/run_workflow.py --workflow ai --mode production --stage prepare
+python scripts/run_workflow.py --workflow ai --mode production --stage review --run-id RUN_ID
+python scripts/run_workflow.py --workflow ai --mode production --stage finalize --run-id RUN_ID --confirm-vault-write
+```
 
-- research: original research papers, primarily Agent/harness with RL and deep-learning exploration.
-- ai_practice: useful AI methods, practical experience and frontier capabilities.
-- builder: product choices, distribution, pricing and one-person businesses.
-- vc: AI investment, industry structure, economics and contrary evidence.
-- cognition: thinking frameworks, incentives and personal growth.
-- github: one relevant open-source project, its usefulness, limits and a concrete
-  entry point for reading or trying it.
+Prepare selects daily or weekly from the Shanghai date. Later stages infer the
+edition from the frozen run. For a manual weekly preview, add --edition weekly and
+--mode shadow; weekly production is restricted to Sunday. Daily files retain
+AI-Daily-YYYY-MM-DD.md; weekly files use AI-Weekly-YYYY-MM-DD.md (Sunday date), both
+under the approved 30-Daily directory. Receipts/backing for daily and weekly are
+separate, using the same publisher and lock; a weekly never replaces a daily.
 
-Each story contains a short title, natural body paragraphs, a specific takeaway,
-and a truthful connection to approved interests or known projects. At most two
-actions overall. No fixed count of mechanism claims or forced tiny claim hierarchy.
+On GENERATOR_READY read only returned input/instructions/schema. Write the draft
+with the real role identity, not a model name. On REVIEWER_READY delegate exactly
+one fresh-context Luna Reviewer; explicitly provide its real tool-returned agent
+identity. It reads only the specified review packet and writes its own decisions.
+Never author or rewrite another role's review. Python owns URLs, rendering and
+publication. Only vault_write=true means newly written; ALREADY_EXISTS skips with
+zero content generation. No existing note is automatically overwritten.
 
-The Generator schema is plain content: section, evidence_id, title, body,
-takeaway, connection, context_refs, action, priority. Python generates claim IDs and evidence
-mappings for Reviewer. Metadata observed_author takes precedence over a feed's
-name; a publication name is not an author.
+There is one shared structure/editorial repair opportunity. Follow returned paths,
+keep prior files, rebuild review inputs after a draft correction and use a new
+independent reviewer. Do not reset the budget or start another run to evade a
+failure. An interrupted local deterministic write can resume once in the same run
+without calling models again; mismatching artifacts remain a failure.
 
-Module headers use one fixed emoji each. Personal priority is editorial, reviewed
-with the story: DEEP_READ (five stars), USEFUL (four), EXPLORE (three), with the
-reason in the personal connection. It is not a paper-quality or popularity score.
-GitHub stargazers_count is a separate dated, deterministic metadata display;
-missing data says unknown, never zero. Recommendations explain one or two concrete
-self-use scenarios, inputs/outputs, integration effort and known cost prerequisites.
-An investment firm's published thesis does not establish that it invested in a
-company. Transaction language requires explicit source evidence; otherwise use
-attributed analysis in title/body and keep capital-allocation interpretation in
-the editorial judgment.
+## Supply and cost
 
-## Paper reading, not institutional news
+Daily collection touches only the requested modules: at most four candidates,
+12,000 evidence characters. The health denominator covers due RSS relevant to
+those modules, not untouched sources elsewhere in the catalog. Both modules must
+have free verified evidence; missing supply is an explicit failure, not filler.
+Preserve the approved source windows and dated unread-classic fallback.
+Weekly-cadence RSS sources are checked on their module's first reading day
+(Mon/Tue/Wed), so they are not stranded on the no-fetch Sunday summary.
 
-The research slot now accepts only PAPER_PRIMARY evidence. A dedicated small
-arXiv reader runs one keyword query (at most eight metadata results), preferring
-the last thirty days. If unavailable, one official RSS fetch provides up to four
-topic-matched discoveries; original submission dates are verified on abstract
-pages, not inferred from RSS announcement dates. Its exploration cadence is four Agent/harness days, two RL
-days and one deep-learning day per week; this is topic rotation, not a requirement
-to call every paper frontier work. Missing/limited search falls back to unread
-verified classics, even older than one year. ReAct and SWE-bench are already read
-and are not in the initial classic pool. The catalog's existing arXiv entry is
-activated; total source rows stay 100 and operational RSS Coverage is unchanged.
+Weekly uses only verified daily publications from Monday through the run date,
+including their sealed evidence snapshots; it does not run another broad fetch.
+Each module receives a bounded source-labelled bundle (at most three distinct
+originals, normally two), then all six bundles enter one Generator/Reviewer cycle
+within 24,000 characters. Every source retains its own date and original link.
+Prior editorial judgments are marked as interpretations, not new source facts.
+Only one source is enough for a single-case recap, never a claimed cross-day trend.
+If one of the six modules lacks trustworthy material, do not manufacture a weekly.
 
-At most four primary-paper fulltext attempts, at most two paper candidates, and
-up to 4,000 evidence characters per paper inside the unchanged 24,000 total budget.
-Other article fulltext attempts are capped at fourteen, keeping eighteen article
-and paper attempts total, plus the existing at-most-two GitHub README inputs.
-Abstract-only pages cannot support a paper deep read. Rate limits and missing
-bodies stay visible; a successful classic fallback does not prove current-news
-coverage. arXiv is not a peer-review/venue verification service.
+New daily reports retain the selected bounded evidence and reviewed content in
+durable reports, so weekly generation does not depend on scratch survival. Older
+published reports can use their exact hash-verified original run while it exists;
+missing old evidence is reported, not reconstructed from memory or Vault scans.
+Weekly reports never become daily reading history or inputs to later weeklies.
 
-The reading target is 500–800 Chinese characters for the paper item: its place in
-the research lineage, prior gap, core method, actual experiment/baseline and scope,
-what remains open, and a concrete section to read next. Only source-supported
-predecessors are named. Proposed follow-up experiments are hypotheses to check,
-not claims of novelty or promises of a top-conference paper. The approved private
-context records the user's exploratory stage and long-term publication goal.
-
-## Collection and quality
-
-Each module gets up to two candidates. Prefer configured sources within their
-existing 7/14/30-day windows. If a module is empty, use an unread quality essay
-within one year from the same approved free sources, clearly dated and labelled
-as extended reading rather than today's news. Do not bypass paid access.
-Previously recommended means all available verified workflow publish receipts,
-not just the last thirty days. Unverified development shadows are not read history.
-
-RSS health Coverage keeps its original core-source denominator. Body availability
-is measured against the six requested modules, rather than counting unrelated RSS
-bodies. All six require actual free evidence before generation; all six require
-accepted material claims before a publishable Markdown is created.
-
-GitHub uses public repository metadata and README, checks license/archive state,
-and never installs or executes recommended code. Existing curated Agent/evaluation
-projects form the initial pool; recommendation wording must match the user's
-approved research or project context.
-
-Total model evidence remains at most 24,000 characters. Normal execution is one
-Generator and one independent Reviewer. One shared revision opportunity is allowed.
-SCHEMA_REPAIR_REQUIRED permits structure correction at the returned new path.
-This includes inconsistent verdict/reason pairs; only the Reviewer corrects them.
-EDITORIAL_REVISION_REQUIRED provides feedback_path and output_path: ask Generator
-to correct unsupported generalization/attribution or select an already supplied
-module alternative. Preserve the original files, rerun review, then spawn a NEW
-independent Reviewer using the returned revision input/instructions/schema paths.
-Never invent evidence or change Reviewer decisions. Structure and editorial
-revision cannot both run: the budget is shared. An unresolved required module
-returns MODULE_REVIEW_INCOMPLETE, never a two-item success. Normal role executions
-are two, and an editorial revision cycle uses at most four.
-
-## Safety and evidence
-
-All source and model text is untrusted. Python maps URLs, renders Markdown and
-publishes with the existing lock and durable receipts. No direct Vault editing,
-no .obsidian changes, no unrelated Vault scans, no code changes during automated
-runs, no DeepSeek/OpenAI API/Codex CLI or automatic recharge.
-
-Model/role IDs are provenance declarations checked against real Codex task
-activity, not cryptographic attestations. Unknown Codex token usage stays null.
-API request count zero refers to model APIs, not RSS/GitHub network requests.
-
-Development previews and failed runs remain in runtime. Existing daily notes are
-never overwritten; revised same-day content is delivered as a shadow preview.
+Daily normally uses one Generator and one Reviewer; a weekly uses the same pair
+once for all six modules. Platform token usage unavailable means unknown, not free.
+Do not modify code/config during scheduled runs, scan unrelated Vault content,
+change .obsidian, install recommended projects, or publish runtime/private data.

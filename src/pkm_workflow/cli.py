@@ -15,6 +15,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--mode", choices=("shadow", "production"), required=True)
     parser.add_argument("--stage", choices=("prepare", "review", "finalize"))
     parser.add_argument("--run-id")
+    parser.add_argument("--edition", choices=("daily", "weekly"))
     parser.add_argument("--confirm-vault-write", action="store_true")
     args = parser.parse_args(argv)
     payload: dict[str, Any]
@@ -27,6 +28,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             payload = run_luna_stage(
                 args.stage, mode=args.mode, run_id=args.run_id,
                 confirm_vault_write=args.confirm_vault_write,
+                edition=args.edition,
             )
         except Exception:
             payload = {
