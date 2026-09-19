@@ -40,13 +40,39 @@ def test_only_selected_modules_fetch_and_published_slash_variant_is_not_recommen
     assert "cognition" in result.audit["missing_modules"]
 
 
-def test_weekly_sources_are_not_stranded_on_summary_only_sunday():
+def test_weekly_sources_are_available_on_both_module_reading_days():
     source = SourceDefinition("slow", "Slow essay", "slow", "RSS_ATOM", ("https://example.com/rss",),
                               "ACTIVE", "COGNITIVE_WEEKLY", False, "WEEKLY", ("COGNITION",),
                               "EXPERT", "FREE_ENTRY_REQUIRED", (), (), "slow", "KEEP", "APPROVED")
     assert _due_for_reading_day(source, date(2026, 9, 9), ("cognition", "github"))
-    assert not _due_for_reading_day(source, date(2026, 9, 12), ("cognition", "github"))
+    assert _due_for_reading_day(source, date(2026, 9, 12), ("cognition", "github"))
     assert not _due_for_reading_day(source, date(2026, 9, 8), ("builder", "vc"))
+
+
+@pytest.mark.parametrize("day,pillar,section,pair", [
+    (date(2026, 9, 11), "VC", "vc", ("builder", "vc")),
+    (date(2026, 9, 12), "COGNITION", "cognition", ("cognition", "github")),
+])
+def test_second_reading_day_fetches_weekly_source_instead_of_inventing_shortage(day, pillar, section, pair):
+    source = SourceDefinition("slow", "Slow source", "slow", "RSS_ATOM", ("https://example.com/feed",),
+                              "ACTIVE", "VC_WEEKLY" if section == "vc" else "COGNITIVE_WEEKLY",
+                              False, "WEEKLY", (pillar,), "EXPERT", "FREE_ENTRY_REQUIRED", (), (),
+                              "slow", "KEEP", "APPROVED")
+    catalog = SourceCatalog("test", (source,), {"source_quality_scores": {"EXPERT": 2000}}, {"slow": source})
+    context = UserContextBundle("hash", {}, (Pillar(pillar, 1500),), (), ())
+    calls = []
+    def metadata(item, content_date):
+        calls.append(item.source_id)
+        title = "AI venture market investment economics" if section == "vc" else "Thinking framework incentives decisions"
+        return MetadataObservation(True, False, "OK", (MetadataItem(
+            "item", title, "https://example.com/unused", str(content_date), (title + ". ") * 20, "essay"),))
+    def no_github(_endpoint):
+        raise ValueError("OFFLINE_TEST")
+    result = collect_modules(day, catalog=catalog, user_context=context, used_urls=set(),
+                             ports=CollectionPorts(metadata, lambda _: "Detailed framework, investment economics and limitations. " * 30),
+                             get_github=no_github, requested_sections=pair)
+    assert calls == ["slow"]
+    assert any(candidate.story_type == section for candidate in result.candidates)
 
 
 def test_url_dedup_keeps_semantic_query_parameters():

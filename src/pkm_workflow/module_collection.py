@@ -130,9 +130,9 @@ def _due_for_reading_day(source, day, requested):
     if source.operational_status != "ACTIVE":
         return False
     if source.cadence == "WEEKLY" and len(requested) == 2:
-        # Slow sources must be checked on their first paired reading day, not
-        # Sunday, when we only synthesize already-published material.
-        return day.weekday() < 3 and _module(source, None, None) in requested
+        # There is no cross-day candidate cache: skipping the second reading day
+        # makes weekly-only modules empty by construction. Fetch on either slot.
+        return _module(source, None, None) in requested
     return _is_due(source, day)
 
 

@@ -66,8 +66,9 @@ Daily collection touches only the requested modules: at most four candidates,
 those modules, not untouched sources elsewhere in the catalog. Both modules must
 have free verified evidence; missing supply is an explicit failure, not filler.
 Preserve the approved source windows and dated unread-classic fallback.
-Weekly-cadence RSS sources are checked on their module's first reading day
-(Mon/Tue/Wed), so they are not stranded on the no-fetch Sunday summary.
+Weekly-cadence RSS sources are checked whenever their module is scheduled
+(both paired reading days). There is no cross-day candidate cache; checking only
+the first day would leave the second day's module empty. Sunday remains no-fetch.
 
 Weekly uses only verified daily publications from Monday through the run date,
 including their sealed evidence snapshots; it does not run another broad fetch.
