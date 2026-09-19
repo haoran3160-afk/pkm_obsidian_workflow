@@ -59,6 +59,26 @@ independent reviewer. Do not reset the budget or start another run to evade a
 failure. An interrupted local deterministic write can resume once in the same run
 without calling models again; mismatching artifacts remain a failure.
 
+Collection has a separate bound: one initial attempt and at most one explicit
+`prepare --run-id RUN_ID` retry after an I/O failure/timeout, on the same day.
+This includes transient source failures reported by collection, not just exceptions
+escaping the collector. Healthy zero yield, invalid data and unavailable/paid bodies
+are not retryable. A temporary source failure matters only when coverage or a
+requested module is missing; a successful evidence packet is never recollected.
+When prepare returns COLLECTION_FAILED with retryable=true, the scheduled runner
+must call prepare once with that run ID before generating. Never retry a terminal
+shortage, reset the date claim, or start another run. This recovery happens before
+model handoff and does not consume or reset the shared editorial repair opportunity.
+The claim points to sealed collection state before fetching. Failed attempts
+remain on disk; retrying never creates a new run or resets model/repair budgets.
+Attempt markers and failure records must agree. Missing, damaged or mismatched
+records return COLLECTION_ATTEMPT_STATE_INVALID instead of granting another fetch.
+Calling prepare without a run ID reports the recorded collection failure rather
+than retrying. Invalid collection data, exhausted attempts or partial model-input
+files are not recollected. Once prepared, normal same-run resume performs no fetch.
+Pre-upgrade failed runs without sealed collection state are not automatically
+migrated; do not remove their claims or infer missing bindings to force a retry.
+
 ## Supply and cost
 
 Daily collection touches only the requested modules: at most four candidates,
@@ -66,6 +86,12 @@ Daily collection touches only the requested modules: at most four candidates,
 those modules, not untouched sources elsewhere in the catalog. Both modules must
 have free verified evidence; missing supply is an explicit failure, not filler.
 Preserve the approved source windows and dated unread-classic fallback.
+GitHub selection ranks at most six unread repository metadata records by approved
+project/prior-knowledge and interest terms before fetching README evidence. Stars
+and date rotation do not determine relevance; only two verified candidates reach
+the model. A metadata match is a selection hint, not proof of personal usefulness.
+Generator instructions contain common evidence rules plus only the requested
+modules' editorial guidance; research requirements do not leak into cognition.
 Weekly-cadence RSS sources are checked whenever their module is scheduled
 (both paired reading days). There is no cross-day candidate cache; checking only
 the first day would leave the second day's module empty. Sunday remains no-fetch.
@@ -75,6 +101,9 @@ including their sealed evidence snapshots; it does not run another broad fetch.
 Each module receives a bounded source-labelled bundle (at most three distinct
 originals, normally two), then all six bundles enter one Generator/Reviewer cycle
 within 24,000 characters. Every source retains its own date and original link.
+Within each source, reuse section-aware excerpt selection rather than taking the
+first characters. Preserve source labels and prioritize mechanisms and limits;
+past editorial judgments help select passages but never become primary facts.
 Prior editorial judgments are marked as interpretations, not new source facts.
 Only one source is enough for a single-case recap, never a claimed cross-day trend.
 If one of the six modules lacks trustworthy material, do not manufacture a weekly.
@@ -83,6 +112,12 @@ New daily reports retain the selected bounded evidence and reviewed content in
 durable reports, so weekly generation does not depend on scratch survival. Older
 published reports can use their exact hash-verified original run while it exists;
 missing old evidence is reported, not reconstructed from memory or Vault scans.
+Daily dedup and weekly inputs verify the durable prepared/published receipt pair
+and its independent report snapshot, including their recorded publication binding.
+They do not require the current Vault note or its hardlinked backing to stay
+unchanged. Editing or deleting a note does not undo its publication history.
+Live publication/reconciliation still verifies the current file and reports a
+conflict after edits/deletion; it never overwrites or recreates that note.
 Weekly reports never become daily reading history or inputs to later weeklies.
 
 Daily normally uses one Generator and one Reviewer; a weekly uses the same pair

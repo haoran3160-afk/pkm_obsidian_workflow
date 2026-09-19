@@ -31,9 +31,10 @@ def workflow(tmp_path):
     ) for section in DAILY_SECTIONS)
     context = {"fields": {"projects": ["Agent research"]}, "user_context_hash": "sha256:" + "a" * 64}
     def call(stage, **kwargs):
+        collector = kwargs.pop("collect", lambda _day: CollectionResult(CoverageLevel.A, 14, 14, candidates))
         return run_luna_stage(
             stage, runtime_root=tmp_path, vault_daily_dir=vault, today=DAY,
-            collect=lambda _day: CollectionResult(CoverageLevel.A, 14, 14, candidates),
+            collect=collector,
             context_loader=lambda: context, **kwargs,
         )
     return call, vault
@@ -113,6 +114,163 @@ def test_duplicate_prepare_is_busy(workflow):
     first = call("prepare")
     assert call("prepare")["status"] == "PRODUCTION_BUSY"
     assert call("prepare", run_id=first["run_id"])["run_id"] == first["run_id"]
+
+
+@pytest.mark.parametrize("save_mode", ["inplace", "replace", "delete"])
+def test_published_history_survives_note_edits(workflow, tmp_path, save_mode):
+    from pkm_workflow.ai_daily_luna import _published_urls
+    from pkm_workflow.weekly_collection import collect_weekly
+
+    call, vault = workflow
+    prepared, _, _ = ready(workflow)
+    result = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
+    assert result["vault_write"]
+    note = Path(result["vault_path"])
+    annotated = note.read_text(encoding="utf-8") + "\nMy private annotation\n"
+    if save_mode == "inplace":
+        note.write_text(annotated, encoding="utf-8")
+    elif save_mode == "replace":
+        replacement = tmp_path / "replacement.md"
+        replacement.write_text(annotated, encoding="utf-8")
+        replacement.replace(note)
+    else:
+        note.unlink()
+    assert _published_urls(tmp_path, vault, DAY + timedelta(days=1)) == {
+        f"https://example.com/{section}" for section in DAILY_SECTIONS
+    }
+    weekly = collect_weekly(DAY + timedelta(days=6), tmp_path, vault)
+    assert len(weekly.candidates) == 2
+    assert not weekly.audit["exclusions"]
+    assert all("My private annotation" not in c.summary for c in weekly.candidates)
+    assert call("prepare", mode="production")["status"] == "CONFLICT"
+    if save_mode != "delete":
+        assert note.read_text(encoding="utf-8") == annotated
+
+
+@pytest.mark.parametrize("damage", ["prepared_only", "report", "receipt", "binding"])
+def test_history_still_rejects_unpublished_or_damaged_evidence(workflow, tmp_path, damage):
+    from pkm_workflow import ai_daily_production as publishing
+    from pkm_workflow.ai_daily_luna import _published_urls
+    from pkm_workflow.weekly_collection import collect_weekly
+
+    call, vault = workflow
+    prepared, _, _ = ready(workflow)
+    result = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
+    _, receipt = publishing._receipt_paths(tmp_path, DAY)
+    if damage == "prepared_only":
+        receipt.unlink()
+    elif damage == "report":
+        Path(result["shadow_report_path"]).write_text("{}", encoding="utf-8")
+    elif damage == "receipt":
+        receipt.write_text("{}", encoding="utf-8")
+    else:
+        value = publishing._read_sealed(receipt)
+        value.pop("payload_hash")
+        value["target_sha256"] = "sha256:" + "0" * 64
+        receipt.write_bytes(publishing._canonical_json(publishing._seal(value)))
+    assert not _published_urls(tmp_path, vault, DAY + timedelta(days=1))
+    assert not collect_weekly(DAY + timedelta(days=6), tmp_path, vault).candidates
+
+
+@pytest.mark.parametrize("retry_fails", [False, True])
+def test_collection_failure_has_one_same_run_retry(tmp_path, retry_fails):
+    calls = []
+
+    def collect(day):
+        calls.append(day)
+        if len(calls) == 1 or retry_fails:
+            raise TimeoutError("temporary collection outage")
+        # A successful collection with insufficient supply must terminate normally,
+        # not acquire an extra model or collection budget.
+        return CollectionResult(CoverageLevel.INSUFFICIENT, 0, 0, ())
+
+    def call(**kwargs):
+        return run_luna_stage("prepare", runtime_root=tmp_path, vault_daily_dir=tmp_path,
+                              today=DAY, collect=collect,
+                              context_loader=lambda: {"fields": {}, "user_context_hash": "sha256:" + "a" * 64},
+                              **kwargs)
+
+    first = call()
+    assert first["status"] == "COLLECTION_FAILED"
+    run = tmp_path / "scratch" / "runs" / first["run_id"]
+    error = (run / "collection-error.json").read_bytes()
+    assert call()["status"] == "COLLECTION_FAILED"
+    second = call(run_id=first["run_id"])
+    assert second["status"] == ("COLLECTION_RETRY_EXHAUSTED" if retry_fails else "COVERAGE_INSUFFICIENT")
+    assert second["run_id"] == first["run_id"]
+    assert (run / "collection-error.json").read_bytes() == error
+    third = call(run_id=first["run_id"])
+    assert third["status"] == second["status"]
+    assert len(calls) == 2
+    assert not (run / "repair.json").exists()
+    assert len(list((tmp_path / "scratch" / "runs").iterdir())) == 1
+
+
+def test_recovered_collection_keeps_normal_review_and_publication_budget(workflow):
+    call, vault = workflow
+
+    def timeout(_day):
+        raise TimeoutError("temporary outage")
+
+    failed = call("prepare", collect=timeout)
+    prepared = call("prepare", run_id=failed["run_id"])
+    assert prepared["status"] == "GENERATOR_READY"
+    assert call("prepare", run_id=prepared["run_id"], collect=timeout)["status"] == "GENERATOR_READY"
+    # ready() resumes the same run rather than creating a new generation.
+    def resumed(stage, **kwargs):
+        if stage == "prepare":
+            kwargs["run_id"] = prepared["run_id"]
+        return call(stage, **kwargs)
+
+    ready((resumed, vault))
+    result = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
+    assert result["status"] == "PUBLISHED"
+    assert result["role_execution_count"] == 2
+    assert result["repair_count"] == 0
+    assert result["vault_write"]
+
+
+@pytest.mark.parametrize("problem", ["invalid_collection", "partial_handoff"])
+def test_collection_recovery_does_not_retry_invalid_or_partially_prepared_runs(workflow, problem):
+    call, _ = workflow
+    calls = []
+
+    def failed(_day):
+        calls.append(1)
+        if problem == "invalid_collection":
+            raise ValueError("invalid source configuration")
+        raise TimeoutError("temporary outage")
+
+    first = call("prepare", collect=failed)
+    if problem == "partial_handoff":
+        (Path(first["report_path"]).parent / "generator-input.json").write_text("{}", encoding="utf-8")
+    result = call("prepare", run_id=first["run_id"], collect=failed)
+    assert result["status"] == ("COLLECTION_FAILED" if problem == "invalid_collection" else "COLLECTION_PREPARATION_INCOMPLETE")
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("attempts,damage", [(1, "missing"), (2, "missing"), (1, "corrupt")])
+def test_collection_attempt_damage_never_replenishes_budget(workflow, attempts, damage):
+    call, _ = workflow
+    calls = []
+
+    def failed(_day):
+        calls.append(1)
+        raise TimeoutError("temporary outage")
+
+    result = call("prepare", collect=failed)
+    run_id = result["run_id"]
+    for _ in range(attempts - 1):
+        result = call("prepare", run_id=run_id, collect=failed)
+    marker = Path(result["report_path"]).parent / f"collection-attempt-{attempts}.json"
+    if damage == "missing":
+        marker.unlink()
+    else:
+        marker.write_text("{}", encoding="utf-8")
+    for kwargs in ({"run_id": run_id}, {}, {"run_id": run_id}):
+        blocked = call("prepare", collect=failed, **kwargs)
+        assert blocked["status"] == "COLLECTION_ATTEMPT_STATE_INVALID"
+    assert len(calls) == attempts
 
 
 def test_interrupted_review_handoff_resumes_without_rewriting_input(workflow, monkeypatch):

@@ -1055,6 +1055,6 @@ def default_collection_ports(catalog: SourceCatalog) -> CollectionPorts:
     return CollectionPorts(
         fetch_metadata=fetch_metadata,
         fetch_fulltext=lambda url: fetcher._fetch_article_fulltext(
-            url, max_chars=access_probe_limit
+            url, max_chars=access_probe_limit, raise_transient=True
         ),
     )

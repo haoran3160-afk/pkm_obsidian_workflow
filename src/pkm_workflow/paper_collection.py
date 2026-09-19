@@ -30,7 +30,12 @@ ARXIV_ID = re.compile(r"(\d{4}\.\d{4,5})(?:v\d+)?$")
 
 def public_text(url):
     import requests
-    response = requests.get(url, timeout=15, headers={"User-Agent": "Personal-AI-Daily/1.0"})
+    try:
+        response = requests.get(url, timeout=15, headers={"User-Agent": "Personal-AI-Daily/1.0"})
+    except requests.exceptions.SSLError as error:
+        raise ValueError("ARXIV_TLS_ERROR") from error
+    if response.status_code == 429 or response.status_code >= 500:
+        raise OSError("ARXIV_NETWORK_ERROR")
     if response.status_code != 200:
         raise ValueError(f"ARXIV_HTTP_{response.status_code}")
     return response.text
@@ -56,10 +61,10 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
     if fulltext is None:
         from fetcher import _fetch_article_fulltext
         def fulltext(url):
-            return _fetch_article_fulltext(url, max_chars=120_000)
+            return _fetch_article_fulltext(url, max_chars=120_000, raise_transient=True)
     topic = research_topic(day)
     used = {_paper_id(url) for url in used_urls}
-    audit = {"topic": topic, "discovery_error": None, "fulltext_attempts": 0, "excluded": []}
+    audit = {"topic": topic, "discovery_error": None, "fulltext_attempts": 0, "excluded": [], "retryable": False}
     rows = []
     query = urlencode({"search_query": QUERIES[topic], "max_results": 8,
                        "sortBy": "submittedDate", "sortOrder": "descending"})
@@ -72,6 +77,7 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
             if identifier and 0 <= (day - date.fromisoformat(published)).days <= 30:
                 rows.append((identifier, entry.findtext("a:title", "", ns).strip(), published, False))
     except (OSError, ValueError, ElementTree.ParseError) as error:
+        audit["retryable"] |= isinstance(error, OSError)
         audit["discovery_error"] = str(error)[:120]
 
     def metadata(identifier, classic):
@@ -100,9 +106,11 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
                         row = metadata(identifier, False)
                         if row:
                             rows.append(row)
-                    except (OSError, ValueError, KeyError):
+                    except (OSError, ValueError, KeyError) as error:
+                        audit["retryable"] |= isinstance(error, OSError)
                         continue
         except (OSError, ValueError) as error:
+            audit["retryable"] |= isinstance(error, OSError)
             audit["rss_error"] = str(error)[:120]
 
     found = []
@@ -114,7 +122,8 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
         audit["fulltext_attempts"] += 1
         try:
             text = fulltext(f"https://arxiv.org/html/{identifier}")
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
+            audit["retryable"] |= isinstance(error, OSError)
             text = ""
         # Abstract-only responses and error pages cannot support a research takeaway.
         if len(text.strip()) < 3000 or not re.search(r"method|experiment|results|theorem", text, re.I):
@@ -148,6 +157,7 @@ def paper_candidates(day, used_urls, *, get_text=public_text, fulltext=None):
             row = metadata(identifier, True)
             if row:
                 consume(*row)
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError) as error:
+            audit["retryable"] |= isinstance(error, OSError)
             audit["excluded"].append({"paper_id": identifier, "reason": "PAPER_METADATA_UNAVAILABLE"})
     return found, audit

@@ -53,6 +53,7 @@ STRATEGY_HASH = editorial._digest({
     "weekly_provenance": "per_source_author_v1",
     "contract": CONTRACT, "model": MODEL, "reasoning": "medium",
     "generator_prompt": GENERATOR_PROMPT, "reviewer_prompt": REVIEWER_PROMPT,
+    "editorial_guidance": brief.EDITORIAL_GUIDANCE, "weekly_guidance": brief.WEEKLY_GUIDANCE,
     "generator_schema": json.loads(mvp_generator_output_schema()),
     "reviewer_schema": json.loads(mvp_reviewer_output_schema()),
 })
@@ -111,14 +112,9 @@ def _published_urls(runtime: Path, vault: Path, day: date) -> set[str]:
             continue
         if old_day >= day:
             continue
-        prepared_path, published_path = publishing._receipt_paths(runtime, old_day)
-        if not published_path.is_file():
-            continue
         destination = vault / f"AI-Daily-{old_day}.md"
         try:
-            prepared = publishing._load_prepared(prepared_path, runtime, old_day, destination)
-            publishing._validate_published(published_path, prepared, prepared_path, destination)
-            report = _read(prepared.shadow_report)
+            report = _read(publishing.load_published_report(runtime, old_day, destination))
         except (OSError, ValueError):
             continue
         urls.update(report.get("audit", {}).get("selected_urls", []))
@@ -146,19 +142,94 @@ def _prepare(runtime, vault, day, mode, collect, context_loader, edition):
             return _result(prior.status, prior.exit_code) | prior.payload()
     claim_path = runtime / "locks" / f"ai-{edition}-{STRATEGY_HASH[-12:]}-{day}.json"
     if claim_path.exists():
-        return _result("PRODUCTION_BUSY", 4, **_read(claim_path))
+        claim = _read(claim_path)
+        claimed_run = runtime / "scratch" / "runs" / claim["run_id"]
+        if (claimed_run / "collection-state.json").exists() and not (claimed_run / "state.json").exists():
+            claimed_run, _ = _load(runtime, claim["run_id"], day)
+            return _collection_status(claimed_run)
+        return _result("PRODUCTION_BUSY", 4, **claim)
     run_id = uuid4().hex
     run = runtime / "scratch" / "runs" / run_id
     run.mkdir(parents=True)
+    state = {
+        "run_id": run_id, "content_date": str(day), "mode": mode,
+        "edition": edition, "sections": list(requested),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "contract": CONTRACT, "strategy_hash": STRATEGY_HASH,
+    }
+    # The claim must always point to recoverable state, even before collection.
+    _sealed_write(run / "collection-state.json", state)
     _write(claim_path, {"run_id": run_id, "content_date": str(day)})
+    return _prepare_collection(run, state, runtime, vault, collect, context_loader)
+
+
+def _collection_attempts(run):
+    """Missing/corrupt markers must never replenish a recorded attempt budget."""
+    count = 0
+    try:
+        for attempt in (1, 2):
+            marker = run / f"collection-attempt-{attempt}.json"
+            error = run / ("collection-error.json" if attempt == 1 else "collection-error-2.json")
+            if marker.exists():
+                if count != attempt - 1 or _sealed_read(marker) != {"run_id": run.name, "attempt": attempt}:
+                    raise ValueError("INVALID_ATTEMPT_MARKER")
+                count = attempt
+            if error.exists():
+                failure = _sealed_read(error)
+                if (count != attempt or failure.get("run_id") != run.name
+                        or failure.get("collection_attempt_count") != attempt):
+                    raise ValueError("INVALID_ATTEMPT_FAILURE")
+    except (OSError, ValueError) as error:
+        raise StageError("COLLECTION_ATTEMPT_STATE_INVALID") from error
+    return count
+
+
+def _collection_status(run):
+    attempts = _collection_attempts(run)
+    for attempt in (2, 1):
+        error = run / ("collection-error.json" if attempt == 1 else "collection-error-2.json")
+        if error.exists():
+            failure = _sealed_read(error)
+            if attempts == 2:
+                failure |= {"status": "COLLECTION_RETRY_EXHAUSTED", "retryable": False,
+                            "collection_attempt_count": attempts}
+            return failure
+    return _result("COLLECTION_INTERRUPTED", 4, run_id=run.name)
+
+
+def _prepare_collection(run, state, runtime, vault, collect, context_loader):
+    # Never recollect evidence after any model handoff, repair or partial input.
+    allowed = {"collection-state.json", "collection-error.json", "collection-error-2.json",
+               "collection-attempt-1.json", "collection-attempt-2.json"}
+    if any(p.name not in allowed and not p.name.startswith("stage-error-") for p in run.iterdir()):
+        raise StageError("COLLECTION_PREPARATION_INCOMPLETE")
+    attempts = _collection_attempts(run)
+    first_error = run / "collection-error.json"
+    if first_error.exists() and not _sealed_read(first_error)["retryable"]:
+        return _collection_status(run)
+    if attempts == 2:
+        return _result("COLLECTION_RETRY_EXHAUSTED", 4, run_id=run.name, retryable=False)
+    attempt = attempts + 1
+    # Create-new before the call: a crash cannot silently replenish attempts.
+    _sealed_write(run / f"collection-attempt-{attempt}.json", {"run_id": run.name, "attempt": attempt})
+    day = date.fromisoformat(state["content_date"])
+    edition = state["edition"]
+    requested = state["sections"]
+    collected = None
     try:
         collected = collect(day) if collect else _collect(day, runtime, vault, edition)
-    except (OSError, ValueError, TimeoutError):
+        if collected.audit.get("retryable_collection_failure"):
+            raise OSError("TRANSIENT_SOURCE_FAILURE")
+    except (OSError, ValueError, TimeoutError) as error:
+        error_path = run / ("collection-error.json" if attempt == 1 else "collection-error-2.json")
         failure = _result(
-            "COLLECTION_FAILED", 4, error_code="COLLECTION_FAILED", run_id=run_id,
-            report_path=str(run / "collection-error.json"),
+            "COLLECTION_FAILED" if attempt == 1 else "COLLECTION_RETRY_EXHAUSTED",
+            4, error_code="COLLECTION_FAILED", run_id=run.name,
+            report_path=str(error_path), collection_attempt_count=attempt,
+            retryable=attempt == 1 and isinstance(error, OSError),
+            collection_audit=dict(collected.audit) if collected is not None else {},
         )
-        _write(run / "collection-error.json", failure)
+        _sealed_write(error_path, failure)
         return failure
     context = editorial._validate_user_context(context_loader())
     candidates = editorial._attach_profile_refs(collected.candidates, context)
@@ -169,13 +240,10 @@ def _prepare(runtime, vault, day, mode, collect, context_loader, edition):
                        "period_end": str(day),
                        "published_days": collected.audit.get("published_days", [])}
     _write(run / "generator-input.json", generator_input)
-    publishing._write_new(run / "generator-instructions.txt", GENERATOR_PROMPT.encode("utf-8"))
+    instructions = brief.generator_instructions(requested, edition)
+    publishing._write_new(run / "generator-instructions.txt", instructions.encode("utf-8"))
     publishing._write_new(run / "generator-schema.json", brief.role_envelope_schema("generator"))
-    state = {
-        "run_id": run_id, "content_date": str(day), "mode": mode,
-        "edition": edition, "sections": list(requested),
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "contract": CONTRACT, "strategy_hash": STRATEGY_HASH,
+    state = state | {
         "coverage": collected.coverage.value, "evidence_level": collected.evidence_level.value,
         "evidence_healthy_sources": collected.evidence_healthy_sources,
         "candidates": [asdict(candidate) for candidate in candidates],
@@ -213,7 +281,8 @@ def _load(runtime: Path, run_id: str, day: date):
     run = runtime / "scratch" / "runs" / run_id
     if not run.resolve(strict=True).is_relative_to(runtime.resolve(strict=True)):
         raise StageError("RUNTIME_PATH_ESCAPE")
-    state = _sealed_read(run / "state.json")
+    ready = (run / "state.json").exists()
+    state = _sealed_read(run / ("state.json" if ready else "collection-state.json"))
     if state["run_id"] != run_id or state["contract"] != CONTRACT:
         raise StageError("RUN_BINDING_MISMATCH")
     if state["content_date"] != day.isoformat():
@@ -225,7 +294,7 @@ def _load(runtime: Path, run_id: str, day: date):
         ("generator-instructions.txt", "instructions_hash"),
         ("generator-schema.json", "schema_hash"),
     ):
-        if _file_hash(run / file) != state[key]:
+        if ready and _file_hash(run / file) != state[key]:
             raise StageError("INPUT_CHANGED")
     claim = _read(runtime / "locks" / f"ai-{state['edition']}-{STRATEGY_HASH[-12:]}-{day}.json")
     if claim["run_id"] != run_id:
@@ -589,6 +658,10 @@ def run_luna_stage(
             raise StageError("WEEKLY_NOT_DUE")
         if mode == "production" and state["edition"] == "daily" and day.weekday() == 6:
             raise StageError("DAILY_NOT_DUE")
+        if not (run / "state.json").exists():
+            if stage != "prepare":
+                return _result("COLLECTION_NOT_READY", 4, run_id=run_id)
+            return _prepare_collection(run, state, runtime, vault, collect, context_loader)
         if stage == "prepare":
             if (run / "run-report.json").exists():
                 return _finalize(run, state, "shadow", False, runtime, vault)

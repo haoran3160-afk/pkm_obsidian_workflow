@@ -2,6 +2,8 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 from pkm_workflow.ai_daily_luna import MODEL, run_luna_stage
 from pkm_workflow.cadence import sections_for
 from pkm_workflow.v75_collection import Candidate, CollectionResult, CoverageLevel
@@ -15,7 +17,8 @@ def test_weekly_without_verified_daily_history_cannot_invent_six_modules(tmp_pat
     assert len(result.audit["missing_modules"]) == 6
 
 
-def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_output(tmp_path, monkeypatch):
+@pytest.mark.parametrize("long_evidence", [False, True])
+def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_output(tmp_path, monkeypatch, long_evidence):
     vault = tmp_path / "vault"
     vault.mkdir()
     context = {"fields": {"projects": ["Agent research"]}, "user_context_hash": "sha256:" + "a" * 64}
@@ -47,7 +50,10 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
         candidates = tuple(Candidate(
             evidence_id=f"{section}-{day}", source="Primary source", title=f"{section} {day}",
             link=f"https://example.com/{section}/{day}", published=str(day),
-            summary=f"by Jane Doe\nOriginal evidence from {day}: the experiment records tool failures.",
+            summary=(f"by Jane Doe\nOriginal evidence from {day}: the experiment records tool failures."
+                     + ("\nBackground narrative about the organization. " * 50
+                        + "\nThe experiment limitation: context evaluation failed outside the tested environment."
+                        if long_evidence else "")),
             content_type="paper" if section == "research" else "news", fulltext_enriched=True,
             story_type=section, evidence_role="PAPER_PRIMARY" if section == "research" else "PRIMARY_OR_EXPERT",
         ) for section in sections_for(day, "daily"))
@@ -69,6 +75,10 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
         collection = collect_weekly(sunday, tmp_path, vault)
     assert all(len(candidate.source_links) == 2 for candidate in collection.candidates)
     assert all("Verified author: Jane Doe" in candidate.summary for candidate in collection.candidates)
+    if long_evidence:
+        assert all("outside the tested environment." in candidate.summary for candidate in collection.candidates)
+    packet = json.loads(Path(weekly["generator_input_path"]).read_text(encoding="utf-8"))
+    assert sum(len(row["summary"]) for row in packet["candidates"]) <= 24000
     assert len(collection.audit["published_days"]) == 6
     result = complete(weekly, sunday)
     assert result["vault_write"] is True

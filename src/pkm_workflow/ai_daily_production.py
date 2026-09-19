@@ -232,13 +232,13 @@ def _prepared_payload(
     )
 
 
-def _load_prepared(
+def _prepared_record(
     path: Path,
     runtime_root: Path,
     content_date: date,
     destination: Path,
     *, edition: str = "daily",
-) -> _Prepared:
+) -> tuple[dict[str, Any], Path, Path]:
     payload = _read_sealed(path)
     if set(payload) != _PREPARED_FIELDS:
         raise ValueError("PREPARED_FIELDS_INVALID")
@@ -255,19 +255,70 @@ def _load_prepared(
     ):
         raise ValueError("PREPARED_BINDING_INVALID")
     backing, shadow_report, _ = _paths(runtime_root, content_date, run_id, edition=edition)
+    if _file_facts(shadow_report).sha256 != payload.get("shadow_report_sha256"):
+        raise ValueError("PREPARED_ARTIFACT_MISMATCH")
+    return payload, backing, shadow_report
+
+
+def _load_prepared(
+    path: Path,
+    runtime_root: Path,
+    content_date: date,
+    destination: Path,
+    *, edition: str = "daily",
+) -> _Prepared:
+    payload, backing, shadow_report = _prepared_record(
+        path, runtime_root, content_date, destination, edition=edition
+    )
     backing_facts = _file_facts(backing)
-    report_facts = _file_facts(shadow_report)
     stored_identity = payload.get("backing_identity")
     if (
         backing_facts.size != payload.get("backing_size")
         or backing_facts.sha256 != payload.get("backing_sha256")
-        or report_facts.sha256 != payload.get("shadow_report_sha256")
         or not isinstance(stored_identity, dict)
         or backing_facts.identity["st_dev"] != stored_identity.get("st_dev")
         or backing_facts.identity["st_ino"] != stored_identity.get("st_ino")
     ):
         raise ValueError("PREPARED_ARTIFACT_MISMATCH")
     return _Prepared(payload, backing, shadow_report, backing_facts)
+
+
+def load_published_report(
+    runtime_root: Path, content_date: date, destination: Path, *, edition: str = "daily"
+) -> Path:
+    """Validate durable publication evidence, independent of the editable note.
+
+    This is a historical read, never authorization to publish or reconcile. The
+    report is an independent copy; backing and Vault may share mutable bytes.
+    """
+    before, after = _receipt_paths(runtime_root, content_date, edition=edition)
+    payload, backing, report = _prepared_record(
+        before, runtime_root, content_date, destination, edition=edition
+    )
+    published = _read_sealed(after)
+    stored = payload.get("backing_identity")
+    target = published.get("target_identity")
+    if (
+        not isinstance(stored, dict) or not isinstance(target, dict)
+        or set(stored) != {"st_dev", "st_ino", "st_nlink"}
+        or set(target) != set(stored)
+        or any(type(value) is not int for value in (*stored.values(), *target.values()))
+        or target["st_dev"] != stored["st_dev"]
+        or target["st_ino"] != stored["st_ino"]
+        or stored["st_nlink"] < 1 or target["st_nlink"] < 2
+        or type(payload["backing_size"]) is not int or payload["backing_size"] < 0
+        or not isinstance(payload["backing_sha256"], str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", payload["backing_sha256"]) is None
+    ):
+        raise ValueError("PUBLISHED_EVIDENCE_INVALID")
+    facts = _FileFacts(payload["backing_size"], payload["backing_sha256"], stored)
+    prepared = _Prepared(payload, backing, report, facts)
+    expected = _published_payload(
+        prepared, before, _FileFacts(facts.size, facts.sha256, target)
+    )
+    if published != expected:
+        raise ValueError("PUBLISHED_RECEIPT_MISMATCH")
+    return report
 
 
 def _verify_target(prepared: _Prepared, destination: Path) -> _FileFacts:

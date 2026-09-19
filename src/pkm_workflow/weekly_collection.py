@@ -7,19 +7,21 @@ from datetime import timedelta
 
 from . import ai_daily_production as publishing
 from .daily_brief import SECTIONS
+from .daily_content import _section_aware_excerpt, _semantic_terms
 from .v75_collection import Candidate, CollectionResult, CoverageLevel
 
 
-def _material(prepared, runtime, run_id):
+def _material(report_path, runtime):
     from . import ai_daily_luna as luna
-    report = luna._sealed_read(prepared.shadow_report)
+    report = luna._sealed_read(report_path)
     snapshot = report.get("reviewed_material")
     if snapshot is not None:
         return snapshot
     # Compatibility for previously published six-module dailies. Read only that
     # receipt's exact sealed run; do not scan notes or treat arbitrary shadows as read.
+    run_id = report_path.stem
     run = runtime / "scratch" / "runs" / run_id
-    if luna._file_hash(run / "run-report.json") != luna._file_hash(prepared.shadow_report):
+    if luna._file_hash(run / "run-report.json") != luna._file_hash(report_path):
         raise ValueError("HISTORICAL_REPORT_MISMATCH")
     state = luna._sealed_read(run / "state.json")
     if state["run_id"] != run_id or luna._file_hash(run / "generator-input.json") != state["generator_input_hash"]:
@@ -41,14 +43,13 @@ def collect_weekly(day, runtime, vault):
     exclusions = []
     for offset in range((day - start).days + 1):
         published_day = start + timedelta(days=offset)
-        before, receipt = publishing._receipt_paths(runtime, published_day)
+        _, receipt = publishing._receipt_paths(runtime, published_day)
         if not receipt.is_file():
             continue
         destination = vault / f"AI-Daily-{published_day}.md"
         try:
-            prepared = publishing._load_prepared(before, runtime, published_day, destination)
-            publishing._validate_published(receipt, prepared, before, destination)
-            material = _material(prepared, runtime, prepared.payload["run_id"])
+            report_path = publishing.load_published_report(runtime, published_day, destination)
+            material = _material(report_path, runtime)
             candidates = {row["evidence_id"]: row for row in material["candidates"]}
             for story in material["stories"]:
                 section = story["section"]
@@ -61,8 +62,8 @@ def collect_weekly(day, runtime, vault):
                         continue
                     judgments = [c["statement"] for c in story["claims"] if c["claim_kind"] == "editorial_inference"]
                     buckets[section].append((published_day, row, judgments))
-            reports.append({"date": str(published_day), "run_id": prepared.payload["run_id"],
-                            "report_sha256": luna._file_hash(prepared.shadow_report)})
+            reports.append({"date": str(published_day), "run_id": report_path.stem,
+                            "report_sha256": luna._file_hash(report_path)})
         except (OSError, ValueError, KeyError, TypeError) as error:
             exclusions.append({"date": str(published_day), "reason": type(error).__name__})
     assembled = []
@@ -79,10 +80,16 @@ def collect_weekly(day, runtime, vault):
         links = []
         excerpt_chars = max(400, 3800 // len(items) - 500)
         for published_day, row, judgments in items:
+            original = Candidate(**{key: value for key, value in row.items() if key != "observed_author"})
+            excerpt = _section_aware_excerpt(
+                original, max_chars=excerpt_chars,
+                context_terms=_semantic_terms(" ".join(judgments))
+                | {"limitation", "limitations", "risk", "boundary", "counterexample"},
+            )
             passages.append(
                 f"Daily publication: {published_day}; original date: {row['published']}; source: {row['source']}.\n"
                 f"Verified author: {row.get('observed_author') or 'not recorded; do not infer from source name'}.\n"
-                f"Original evidence excerpt:\n{row['summary'][:excerpt_chars]}\n"
+                f"Original evidence excerpt:\n{excerpt}\n"
                 f"Prior editorial interpretation (not primary fact): {' '.join(judgments)[:240]}"
             )
             links.append((f"{row['source']} · {row['published']}", row["link"]))
