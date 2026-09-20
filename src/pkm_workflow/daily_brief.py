@@ -66,11 +66,13 @@ GitHub的connection必须面向个人自用，选1至2个真实适用场景（�
 写明上手前提和资源/API成本边界，不编造免费可跑、硬件要求或安装成功。""",
     "ai_practice": """说明真实使用场景、具体方法、效果和限制；区分作者经验与已验证能力。""",
 }
-WEEKLY_GUIDANCE = """日报恰好两条；周报按六个模块综合这一周已有材料，不把日报逐条粘贴，不把旧资讯当新发布。
+WEEKLY_GUIDANCE = """周报按六个模块综合已有材料，并包含仅为缺失方向补取的新阅读；不把日报逐条粘贴，不把旧资讯当新发布。
 周报每模块约200至350中文字，归纳主要观察、证据间的联系/差异、仍需观察的问题；
 只有一条材料就坦诚这是单例，不编造跨日趋势。weekly_excerpt标有原日期，事实来自原始摘录，旧判断仅作线索。
 周报的个人署名逐条以Verified author为准；not recorded时标题和正文只称“原文/该案例”，
-不能从来源名或旧解读补出人名。周报研究栏也遵守精炼的1至3段，不套用日报长篇篇幅。"""
+不能从来源名或旧解读补出人名。周报研究栏也遵守精炼的1至3段，不套用日报长篇篇幅。
+weekly_excerpt是本周已读回顾；其他候选是本周新增阅读，不得声称已经在本周日报推荐过。
+新增资料保留原文日期，evergreen按经典延伸阅读介绍，不称本周新发布。"""
 
 
 def generator_instructions(requested_sections, edition):
@@ -279,14 +281,14 @@ def render(day, coverage, evidence_level, stories, evidence: dict[str, Candidate
              "---", "", f"# {title} · {day}"]
     if edition == "weekly":
         from datetime import timedelta
-        lines += ["", f"本周回顾 · {day - timedelta(days=day.weekday())} 至 {day} · 来源为已发布日报，非新增新闻"]
+        lines += ["", f"本周回顾 · {day - timedelta(days=day.weekday())} 至 {day} · 区分已读回顾与补充阅读，保留原文日期"]
     for story in stories:
         claims = {row["claim_id"]: row["statement"] for row in story["claims"]}
         item = evidence[story["claims"][0]["evidence_ids"][0]]
         lines += ["", f"## {ICONS[story['section']]} {SECTIONS[story['section']]}", "", f"### {claims[story['title_claim_id']]}", ""]
         if "priority_claim_id" in story:
             lines += [f"个人推荐 · {claims[story['priority_claim_id']]}", ""]
-        if story["section"] == "github" and edition != "weekly":
+        if story["section"] == "github" and item.content_type != "weekly_excerpt":
             stars = f"{item.github_stars:,}" if item.github_stars is not None else "未取得"
             lines += [f"⭐ GitHub Stars · {stars}（{day} 核验，仅表示关注度）", ""]
         for cid in story["event_claim_ids"]:

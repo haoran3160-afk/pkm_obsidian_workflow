@@ -109,6 +109,54 @@ def test_unread_classics_exclude_verified_history_older_than_thirty_days(workflo
     }
 
 
+def test_partial_week_supplements_only_missing_sections_and_remembers_new_links(workflow, tmp_path):
+    from pkm_workflow.ai_daily_luna import _published_urls
+    from pkm_workflow.weekly_collection import collect_weekly
+    call, vault = workflow
+    daily, _, _ = ready(workflow)
+    assert call("finalize", mode="production", run_id=daily["run_id"], confirm_vault_write=True)["vault_write"]
+    requested = []
+    def supplement(sections):
+        requested.append(sections)
+        return CollectionResult(CoverageLevel.A, 4, 4, tuple(Candidate(
+            evidence_id=section, source="Approved source", title="New reading",
+            link=f"https://example.com/new/{section}", published=str(DAY),
+            summary="Original product methodology and limitations. " * 100,
+            content_type="evergreen", fulltext_enriched=True, story_type=section,
+        ) for section in sections))
+    sunday = DAY + timedelta(days=6)
+    collection = collect_weekly(sunday, tmp_path, vault, supplement=supplement)
+    assert requested == [("builder", "vc", "cognition", "github")]
+    assert len(collection.candidates) == 6
+    def stage(name, **kwargs):
+        return run_luna_stage(name, today=sunday, runtime_root=tmp_path, vault_daily_dir=vault,
+                              collect=lambda _: collection,
+                              context_loader=lambda: {"fields": {"projects": ["Agent research"]},
+                                                      "user_context_hash": "sha256:" + "a" * 64}, **kwargs)
+    prepared = stage("prepare", mode="production")
+    packet = json.loads(Path(prepared["generator_input_path"]).read_text(encoding="utf-8"))
+    assert sum(len(row["summary"]) for row in packet["candidates"]) <= 24000
+    stories = []
+    for candidate in packet["candidates"]:
+        story = dict(draft()["draft"]["stories"][0])
+        story.update(section=candidate["story_type"], evidence_id=candidate["evidence_id"])
+        stories.append(story)
+    save(prepared["draft_path"], {"model": MODEL, "session_id": GENERATOR_ID, "draft": {"stories": stories}})
+    review = stage("review", run_id=prepared["run_id"])
+    rubric = json.loads(Path(review["review_input_path"]).read_text(encoding="utf-8"))["rubric"]
+    save(review["review_path"], {"model": MODEL, "session_id": REVIEWER_ID,
+        "review_request_hash": review["review_request_hash"], "decisions": [
+            {**{key: row[key] for key in ("claim_id", "evidence_ids", "review_requirement_hash")},
+             "decision": "ACCEPT", "reason_code": "SUPPORTED_BY_SEALED_EVIDENCE"}
+            for row in rubric["requirements"]]})
+    final = stage("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
+    assert final["vault_write"] is True
+    assert "本周新增阅读" in Path(final["vault_path"]).read_text(encoding="utf-8")
+    assert stage("prepare", mode="production")["status"] == "ALREADY_EXISTS"
+    assert {f"https://example.com/new/{section}" for section in requested[0]} <= _published_urls(
+        tmp_path, vault, sunday + timedelta(days=1))
+
+
 def test_duplicate_prepare_is_busy(workflow):
     call, _ = workflow
     first = call("prepare")

@@ -3,9 +3,9 @@ requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "obsidian-pkm-workflow"
-version = "7.3.0.dev0"
-description = "Local-first AI digest workflow that streams RSS feeds, arXiv papers, and YouTube videos into your Obsidian Vault."
+name = "ai-daily-workflow"
+version = "0.2.0"
+description = "Personal AI daily and weekly briefs generated and reviewed in Codex, then written to Obsidian."
 authors = [{ name = "obsidian-pkm contributors" }]
 license = { text = "MIT" }
 readme = "README.md"
@@ -22,30 +22,20 @@ classifiers = [
     "Topic :: Office/Business :: Scheduling",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
-dependencies = []
-
-[project.optional-dependencies]
-legacy = [
+dependencies = [
     "requests>=2.32.3",
     "feedparser>=6.0.11",
-    "python-dotenv>=1.0.1",
-    "schedule>=1.2.2",
     "tenacity>=8.5.0",
-    "Jinja2>=3.1.4",
     "pydantic>=2.7.0",
-    "rich>=13.7.0",
-    "structlog>=24.1.0",
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
 ]
 
 [project.scripts]
 pkm = "pkm_workflow.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
-Repository = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
-Issues = "https://github.com/haoran3160-afk/pkm_obsidian_workflow/issues"
+Homepage = "https://github.com/haoran3160-afk/AI_Daily_workflow"
+Repository = "https://github.com/haoran3160-afk/AI_Daily_workflow"
+Issues = "https://github.com/haoran3160-afk/AI_Daily_workflow/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -26,7 +26,9 @@ icons, personal priority (not a science score), and dated GitHub stars/self-use 
 
 ## One scheduler, three stages
 
-The existing local automation starts at 08:00 Shanghai. Successful publication
+The existing local automation starts at 08:00 Shanghai when the host is online.
+If missed, open Codex and click Run now on the same task once; this is not an
+app-start trigger and does not use hourly polling. Successful publication
 happens after processing, not necessarily at 08:00. The host and Codex app must be
 available. Do not add another scheduler or Windows Task.
 
@@ -94,10 +96,12 @@ Generator instructions contain common evidence rules plus only the requested
 modules' editorial guidance; research requirements do not leak into cognition.
 Weekly-cadence RSS sources are checked whenever their module is scheduled
 (both paired reading days). There is no cross-day candidate cache; checking only
-the first day would leave the second day's module empty. Sunday remains no-fetch.
+the first day would leave the second day's module empty.
 
-Weekly uses only verified daily publications from Monday through the run date,
-including their sealed evidence snapshots; it does not run another broad fetch.
+Weekly first uses verified daily publications from Monday through the run date,
+including their sealed evidence snapshots. Only missing sections are collected
+from approved sources, with at most two candidates per missing section and one
+selected original per section. Do not recollect sections already covered.
 Each module receives a bounded source-labelled bundle (at most three distinct
 originals, normally two), then all six bundles enter one Generator/Reviewer cycle
 within 24,000 characters. Every source retains its own date and original link.
@@ -106,7 +110,10 @@ first characters. Preserve source labels and prioritize mechanisms and limits;
 past editorial judgments help select passages but never become primary facts.
 Prior editorial judgments are marked as interpretations, not new source facts.
 Only one source is enough for a single-case recap, never a claimed cross-day trend.
-If one of the six modules lacks trustworthy material, do not manufacture a weekly.
+Label supplements as 本周新增阅读 and classics as extended reading, retaining the
+original date. Only verified free bodies qualify. New weekly links become reading
+history for later dailies; recap links are not new recommendations.
+If one of the six modules still lacks trustworthy material, do not manufacture a weekly.
 
 New daily reports retain the selected bounded evidence and reviewed content in
 durable reports, so weekly generation does not depend on scratch survival. Older
@@ -118,7 +125,8 @@ They do not require the current Vault note or its hardlinked backing to stay
 unchanged. Editing or deleting a note does not undo its publication history.
 Live publication/reconciliation still verifies the current file and reports a
 conflict after edits/deletion; it never overwrites or recreates that note.
-Weekly reports never become daily reading history or inputs to later weeklies.
+Only newly introduced weekly URLs join daily deduplication. Weekly reports do
+not become inputs to later weeklies.
 
 Daily normally uses one Generator and one Reviewer; a weekly uses the same pair
 once for all six modules. Platform token usage unavailable means unknown, not free.

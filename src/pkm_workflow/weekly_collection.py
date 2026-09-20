@@ -8,7 +8,7 @@ from datetime import timedelta
 from . import ai_daily_production as publishing
 from .daily_brief import SECTIONS
 from .daily_content import _section_aware_excerpt, _semantic_terms
-from .v75_collection import Candidate, CollectionResult, CoverageLevel
+from .v75_collection import AccessState, Candidate, CollectionResult, CoverageLevel, _normalize_url
 
 
 def _material(report_path, runtime):
@@ -35,7 +35,7 @@ def _material(report_path, runtime):
     ]}
 
 
-def collect_weekly(day, runtime, vault):
+def collect_weekly(day, runtime, vault, *, supplement=None):
     from . import ai_daily_luna as luna
     start = day - timedelta(days=day.weekday())
     buckets = {section: [] for section in SECTIONS}
@@ -98,7 +98,6 @@ def collect_weekly(day, runtime, vault):
         latest["pillars"] = tuple(latest["pillars"])
         latest["profile_refs"] = tuple(latest["profile_refs"])
         latest["source_links"] = tuple(links)
-        from .v75_collection import AccessState
         latest["access_state"] = AccessState(latest["access_state"])
         candidate = Candidate(**latest)
         assembled.append(replace(
@@ -109,8 +108,38 @@ def collect_weekly(day, runtime, vault):
             github_stars=None, source_links=tuple(links),
         ))
     missing = [section for section in SECTIONS if not buckets[section]]
+    supplemented = []
+    supplement_audit = {}
+    used = {_normalize_url(url) for candidate in assembled
+            for url in (candidate.link, *(link for _, link in candidate.source_links))}
+    if missing and supplement is not None:
+        extra = supplement(tuple(missing))
+        supplement_audit = dict(extra.audit)
+        if extra.coverage is not CoverageLevel.INSUFFICIENT and extra.evidence_level is not CoverageLevel.INSUFFICIENT:
+            for section in missing:
+                options = sorted(
+                    (candidate for candidate in extra.candidates if candidate.story_type == section
+                     and candidate.access_state is AccessState.FULL_FREE
+                     and candidate.fulltext_enriched
+                     and (section != "research" or candidate.evidence_role == "PAPER_PRIMARY")),
+                    key=lambda candidate: (-candidate.editorial_score, candidate.evidence_id),
+                )[:2]
+                selected = next((candidate for candidate in options if _normalize_url(candidate.link) not in used), None)
+                if selected is not None:
+                    used.add(_normalize_url(selected.link))
+                    assembled.append(replace(selected, source_links=((
+                        f"本周新增阅读 · {selected.source} · {selected.published}"
+                        + (" · 经典延伸阅读" if selected.content_type == "evergreen" else ""),
+                        selected.link,
+                    ),)))
+                    supplemented.append(section)
+        missing = [section for section in missing if section not in supplemented]
     coverage = CoverageLevel.A if not missing else CoverageLevel.INSUFFICIENT
     return CollectionResult(coverage, len(SECTIONS), len(assembled), tuple(assembled), coverage,
                             len(assembled), {"period_start": str(start), "period_end": str(day),
                             "published_days": reports, "missing_modules": missing,
-                            "exclusions": exclusions, "source_policy": "VERIFIED_DAILY_HISTORY_ONLY"})
+                            "exclusions": exclusions, "source_policy": "VERIFIED_HISTORY_WITH_TARGETED_SUPPLEMENT",
+                            "supplemented_sections": supplemented,
+                            "supplemented_urls": [c.link for c in assembled if c.story_type in supplemented],
+                            "supplement_collection": supplement_audit,
+                            "retryable_collection_failure": bool(missing and supplement_audit.get("retryable_collection_failure"))})
