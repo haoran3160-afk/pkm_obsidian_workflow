@@ -26,7 +26,7 @@ def _material(report_path, runtime):
     state = luna._sealed_read(run / "state.json")
     if state["run_id"] != run_id or luna._file_hash(run / "generator-input.json") != state["generator_input_hash"]:
         raise ValueError("HISTORICAL_INPUT_MISMATCH")
-    stories, _, _, _ = luna._check_review(run, state)
+    stories, _, _, _ = luna._check_review(run, state, archived_model=report["model"])
     candidates = luna._candidates(state)
     packet = luna._read(run / "generator-input.json")["candidates"]
     return {"stories": list(stories), "candidates": [

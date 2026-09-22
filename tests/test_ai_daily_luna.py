@@ -164,6 +164,80 @@ def test_duplicate_prepare_is_busy(workflow):
     assert call("prepare", run_id=first["run_id"])["run_id"] == first["run_id"]
 
 
+def test_model_migration_preserves_prepared_evidence_and_rejects_started_roles(workflow, monkeypatch):
+    from pkm_workflow import ai_daily_luna as engine
+    call, _ = workflow
+    with monkeypatch.context() as legacy:
+        legacy.setattr(engine, "STRATEGY_HASH", "sha256:f5c08d9f980e8510e7adee79812892c4c30725087458ca1bcf76b7118aa93e6d")
+        prepared = call("prepare")
+    root = Path(prepared["draft_path"]).parent
+    original = {name: (root / name).read_bytes() for name in (
+        "state.json", "generator-input.json", "generator-instructions.txt", "generator-schema.json")}
+    blocked = call("prepare")
+    assert blocked["status"] == "MODEL_MIGRATION_REQUIRED"
+    assert blocked["run_id"] == prepared["run_id"]
+    (root / "draft.json").write_text("{}", encoding="utf-8")
+    assert call("migrate-model", run_id=prepared["run_id"])["status"] == "MODEL_MIGRATION_ALREADY_STARTED"
+    (root / "draft.json").unlink()
+    migrated = call("migrate-model", run_id=prepared["run_id"])
+    assert migrated["status"] == "GENERATOR_READY"
+    assert migrated["run_id"] == prepared["run_id"]
+    assert Path(migrated["generator_input_path"]).read_bytes() == original["generator-input.json"]
+    assert all((root / name).read_bytes() == content for name, content in original.items())
+    assert "gpt-5.6-sol" in Path(migrated["schema_path"]).read_text(encoding="utf-8")
+    assert call("prepare")["status"] == "PRODUCTION_BUSY"
+    assert call("prepare", run_id=prepared["run_id"])["instructions_path"] == migrated["instructions_path"]
+    assert call("migrate-model", run_id=prepared["run_id"])["status"] == "MODEL_MIGRATION_ALREADY_APPLIED"
+    def resumed(stage, **kwargs):
+        if stage == "prepare":
+            kwargs["run_id"] = prepared["run_id"]
+        return call(stage, **kwargs)
+    ready((resumed, workflow[1]))
+    final = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
+    assert final["vault_write"] is True
+    assert final["model"] == "gpt-5.6-sol"
+    assert final["role_execution_count"] == 2
+    assert final["repair_count"] == 0
+
+
+@pytest.mark.parametrize("damage", ["original_state", "original_input", "new_instructions"])
+def test_model_migration_still_binds_original_and_new_artifacts(workflow, monkeypatch, damage):
+    from pkm_workflow import ai_daily_luna as engine
+    call, _ = workflow
+    with monkeypatch.context() as legacy:
+        legacy.setattr(engine, "STRATEGY_HASH", engine.LEGACY_LUNA_STRATEGY)
+        prepared = call("prepare")
+    assert call("migrate-model", run_id=prepared["run_id"])["status"] == "GENERATOR_READY"
+    root = Path(prepared["draft_path"]).parent
+    path = root / {"original_state": "state.json", "original_input": "generator-input.json",
+                   "new_instructions": "generator-instructions-sol.txt"}[damage]
+    path.write_bytes(path.read_bytes() + b"\nchanged")
+    result = call("prepare", run_id=prepared["run_id"])
+    assert result["exit_code"] == 4
+    assert result["vault_write"] is False
+    assert not list(workflow[1].glob("*.md"))
+
+
+def test_archived_luna_review_does_not_weaken_live_sol_validation(workflow, tmp_path):
+    from pkm_workflow import ai_daily_luna as engine
+    from pkm_workflow.weekly_collection import _material
+    call, _ = workflow
+    prepared, reviewed, response = ready(workflow)
+    response["model"] = "gpt-5.6-luna"
+    save(reviewed["review_path"], response)
+    rejected = call("finalize", run_id=prepared["run_id"])
+    assert rejected["status"] == "CONFIGURED_MODEL_REQUIRED"
+    root = Path(prepared["draft_path"]).parent
+    # A legacy report has no embedded reviewed_material; its review model is
+    # taken from the sealed historical report, not the current execution policy.
+    engine._sealed_write(root / "run-report.json", {"model": "gpt-5.6-luna"})
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    report = archive / (prepared["run_id"] + ".json")
+    report.write_bytes((root / "run-report.json").read_bytes())
+    assert len(_material(report, tmp_path)["stories"]) == 2
+
+
 @pytest.mark.parametrize("save_mode", ["inplace", "replace", "delete"])
 def test_published_history_survives_note_edits(workflow, tmp_path, save_mode):
     from pkm_workflow.ai_daily_luna import _published_urls

@@ -13,7 +13,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pkm")
     parser.add_argument("--workflow", choices=("ai",), required=True)
     parser.add_argument("--mode", choices=("shadow", "production"), required=True)
-    parser.add_argument("--stage", choices=("prepare", "review", "finalize"))
+    parser.add_argument("--stage", choices=("prepare", "review", "finalize", "migrate-model"))
     parser.add_argument("--run-id")
     parser.add_argument("--edition", choices=("daily", "weekly"))
     parser.add_argument("--confirm-vault-write", action="store_true")

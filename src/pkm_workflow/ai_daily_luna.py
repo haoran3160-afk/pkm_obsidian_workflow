@@ -43,7 +43,8 @@ from .v75_collection import (
     default_collection_ports,
 )
 
-MODEL = "gpt-5.6-luna"
+MODEL = "gpt-5.6-sol"
+LEGACY_LUNA_STRATEGY = "sha256:f5c08d9f980e8510e7adee79812892c4c30725087458ca1bcf76b7118aa93e6d"
 CONTRACT = "pkm.ai-daily-luna.v3"
 RUNTIME = Path(r"D:\personal\obsidian_workflow-runtime")
 SHANGHAI = timezone(timedelta(hours=8))
@@ -140,6 +141,11 @@ def _prepare(runtime, vault, day, mode, collect, context_loader, edition):
         if prior is not None:
             return _result(prior.status, prior.exit_code) | prior.payload()
     claim_path = runtime / "locks" / f"ai-{edition}-{STRATEGY_HASH[-12:]}-{day}.json"
+    legacy_claim = runtime / "locks" / f"ai-{edition}-{LEGACY_LUNA_STRATEGY[-12:]}-{day}.json"
+    if not claim_path.exists() and legacy_claim.exists():
+        prior_run_id = _read(legacy_claim)["run_id"]
+        _load(runtime, prior_run_id, day, legacy=True)
+        return _result("MODEL_MIGRATION_REQUIRED", 4, run_id=prior_run_id)
     if claim_path.exists():
         claim = _read(claim_path)
         claimed_run = runtime / "scratch" / "runs" / claim["run_id"]
@@ -265,51 +271,105 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
 def _generator_ready(run, state):
     return _result(
         "GENERATOR_READY", run_id=state["run_id"], content_date=state["content_date"],
+        required_model=MODEL, required_reasoning="medium",
         generator_input_path=str(run / "generator-input.json"),
-        instructions_path=str(run / "generator-instructions.txt"),
-        schema_path=str(run / "generator-schema.json"),
+        instructions_path=str(run / ("generator-instructions-sol.txt" if state.get("model_migration") else "generator-instructions.txt")),
+        schema_path=str(run / ("generator-schema-sol.json" if state.get("model_migration") else "generator-schema.json")),
         draft_path=str(_output_path(run, "generator")),
         candidate_count=len(state["candidates"]),
         edition=state["edition"], requested_sections=state["sections"],
     )
 
 
-def _load(runtime: Path, run_id: str, day: date):
+def _load(runtime: Path, run_id: str, day: date, *, legacy=False):
     if not re.fullmatch(r"[0-9a-f]{32}", run_id):
         raise StageError("RUN_ID_INVALID")
     run = runtime / "scratch" / "runs" / run_id
     if not run.resolve(strict=True).is_relative_to(runtime.resolve(strict=True)):
         raise StageError("RUNTIME_PATH_ESCAPE")
     ready = (run / "state.json").exists()
-    state = _sealed_read(run / ("state.json" if ready else "collection-state.json"))
+    migrated = not legacy and (run / "state-sol.json").exists()
+    state = _sealed_read(run / ("state-sol.json" if migrated else "state.json" if ready else "collection-state.json"))
+    strategy = LEGACY_LUNA_STRATEGY if legacy else STRATEGY_HASH
+    if migrated:
+        original = _sealed_read(run / "state.json")
+        if original["strategy_hash"] != LEGACY_LUNA_STRATEGY or state != _sol_state(run, original):
+            raise StageError("MODEL_MIGRATION_BINDING_MISMATCH")
+        old_claim = _read(runtime / "locks" / f"ai-{state['edition']}-{LEGACY_LUNA_STRATEGY[-12:]}-{day}.json")
+        if old_claim["run_id"] != run_id:
+            raise StageError("RUN_OWNERSHIP_MISMATCH")
+        for file, key in (("generator-input.json", "generator_input_hash"),
+                          ("generator-instructions.txt", "instructions_hash"), ("generator-schema.json", "schema_hash")):
+            if _file_hash(run / file) != original[key]:
+                raise StageError("INPUT_CHANGED")
     if state["run_id"] != run_id or state["contract"] != CONTRACT:
         raise StageError("RUN_BINDING_MISMATCH")
     if state["content_date"] != day.isoformat():
         raise StageError("RUN_DATE_EXPIRED")
-    if state["strategy_hash"] != STRATEGY_HASH:
+    if state["strategy_hash"] != strategy:
         raise StageError("STRATEGY_CHANGED")
     for file, key in (
         ("generator-input.json", "generator_input_hash"),
-        ("generator-instructions.txt", "instructions_hash"),
-        ("generator-schema.json", "schema_hash"),
+        ("generator-instructions-sol.txt" if migrated else "generator-instructions.txt", "instructions_hash"),
+        ("generator-schema-sol.json" if migrated else "generator-schema.json", "schema_hash"),
     ):
         if ready and _file_hash(run / file) != state[key]:
             raise StageError("INPUT_CHANGED")
-    claim = _read(runtime / "locks" / f"ai-{state['edition']}-{STRATEGY_HASH[-12:]}-{day}.json")
+    claim = _read(runtime / "locks" / f"ai-{state['edition']}-{strategy[-12:]}-{day}.json")
     if claim["run_id"] != run_id:
         raise StageError("RUN_OWNERSHIP_MISMATCH")
     return run, state
 
 
-def _role_output(path: Path, role: str):
+def _sol_state(run, original):
+    return original | {
+        "strategy_hash": STRATEGY_HASH,
+        "instructions_hash": _file_hash(run / "generator-instructions-sol.txt"),
+        "schema_hash": _file_hash(run / "generator-schema-sol.json"),
+        "source_state_sha256": _file_hash(run / "state.json"),
+        "model_migration": {"from": "gpt-5.6-luna", "to": MODEL, "reason": "USER_APPROVED_MODEL_MIGRATION"},
+    }
+
+
+def _migrate_model(runtime, run_id, day):
+    run, original = _load(runtime, run_id, day, legacy=True)
+    if (run / "state-sol.json").exists():
+        _load(runtime, run_id, day)
+        return _result("MODEL_MIGRATION_ALREADY_APPLIED", run_id=run_id)
+    allowed = {"state.json", "collection-state.json", "collection-attempt-1.json",
+               "collection-attempt-2.json", "collection-error.json", "collection-error-2.json",
+               "generator-input.json", "generator-instructions.txt", "generator-schema.json",
+               "generator-instructions-sol.txt", "generator-schema-sol.json"}
+    if not (run / "state.json").exists() or any(
+        path.name not in allowed and not path.name.startswith("stage-error-") for path in run.iterdir()
+    ):
+        raise StageError("MODEL_MIGRATION_ALREADY_STARTED")
+    if (original["coverage"] == "INSUFFICIENT" or original["evidence_level"] == "INSUFFICIENT"
+            or set(original["sections"]) - {c["story_type"] for c in original["candidates"]}):
+        raise StageError("MODEL_MIGRATION_INCOMPLETE")
+    new_claim = runtime / "locks" / f"ai-{original['edition']}-{STRATEGY_HASH[-12:]}-{day}.json"
+    if new_claim.exists() and _read(new_claim).get("run_id") != run_id:
+        raise StageError("MODEL_MIGRATION_DATE_BUSY")
+    publishing._write_or_verify(
+        run / "generator-instructions-sol.txt",
+        brief.generator_instructions(original["sections"], original["edition"]).encode("utf-8"),
+    )
+    publishing._write_or_verify(run / "generator-schema-sol.json", brief.role_envelope_schema("generator"))
+    publishing._write_or_verify(new_claim, editorial._canonical({"run_id": run_id, "content_date": str(day)}) + b"\n")
+    _sealed_write(run / "state-sol.json", _sol_state(run, original))
+    run, state = _load(runtime, run_id, day)
+    return _generator_ready(run, state)
+
+
+def _role_output(path: Path, role: str, *, expected_model=None):
     envelope = _read(path)
     expected = {"model", "session_id", "draft"} if role == "generator" else {
         "model", "session_id", "review_request_hash", "decisions",
     }
     if set(envelope) != expected:
         raise StageError("ROLE_ENVELOPE_INVALID", repairable=role == "generator" and set(envelope) == {"stories"})
-    if envelope["model"] != MODEL:
-        raise StageError("LUNA_MODEL_REQUIRED")
+    if envelope["model"] != (expected_model or MODEL):
+        raise StageError("CONFIGURED_MODEL_REQUIRED")
     if not isinstance(envelope["session_id"], str) or not re.fullmatch(
         r"(?:[0-9a-fA-F-]{36}|/root/[a-z0-9_/]+)", envelope["session_id"]
     ):
@@ -400,6 +460,7 @@ def _review(run, state):
 def _reviewer_ready(run, state, frozen):
     return _result(
         "REVIEWER_READY", run_id=state["run_id"],
+        required_model=MODEL, required_reasoning="medium",
         review_input_path=str(_review_file(run, "review-input")),
         instructions_path=str(_review_file(run, "reviewer-instructions", ".txt")),
         schema_path=str(_review_file(run, "reviewer-schema")),
@@ -409,14 +470,16 @@ def _reviewer_ready(run, state, frozen):
     )
 
 
-def _check_review(run, state):
+def _check_review(run, state, *, archived_model=None):
     frozen = _sealed_read(_review_file(run, "review-state"))
     if (
         _file_hash(run / frozen["draft_filename"]) != frozen["draft_file_hash"]
         or _file_hash(_review_file(run, "review-input")) != frozen["review_input_hash"]
     ):
         raise StageError("DRAFT_OR_REVIEW_INPUT_CHANGED")
-    envelope, structured = _role_output(_output_path(run, "reviewer"), "reviewer")
+    if archived_model is not None and archived_model not in {"gpt-5.6-luna", MODEL}:
+        raise StageError("HISTORICAL_MODEL_INVALID")
+    envelope, structured = _role_output(_output_path(run, "reviewer"), "reviewer", expected_model=archived_model)
     if envelope["session_id"] == frozen["generator_session_id"]:
         raise StageError("INDEPENDENT_REVIEWER_REQUIRED")
     if _review_file(run, "review") != run / "review.json" and (run / "review.json").exists():
@@ -506,6 +569,7 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         + (2 if repair.exists() and _read(repair).get("error_code") == "EDITORIAL_REVISION_REQUIRED" else int(repair.exists())),
         "repair_count": int(repair.exists()),
         "generator_session_id": generator["session_id"] if generator else None,
+        "model_migration": state.get("model_migration"),
         "reviewer_session_id": reviewer["session_id"] if reviewer else None,
         "model_identity_source": "CODEX_SESSION_DECLARATION",
         "evidence_chars": sum(len(row["summary"]) for row in packet),
@@ -634,7 +698,7 @@ def run_luna_stage(
     try:
         runtime = runtime_root.resolve(strict=True)
         vault = vault_daily_dir.resolve(strict=True)
-        if mode not in {"shadow", "production"} or stage not in {"prepare", "review", "finalize"}:
+        if mode not in {"shadow", "production"} or stage not in {"prepare", "review", "finalize", "migrate-model"}:
             raise StageError("STAGE_OR_MODE_INVALID")
         if stage == "finalize" and mode == "production" and not confirm_vault_write:
             raise StageError("CONFIRM_VAULT_WRITE_REQUIRED")
@@ -651,6 +715,8 @@ def run_luna_stage(
             return _prepare(runtime, vault, day, mode, collect, context_loader, selected_edition)
         if not run_id:
             raise StageError("RUN_ID_REQUIRED")
+        if stage == "migrate-model":
+            return _migrate_model(runtime, run_id, day)
         run, state = _load(runtime, run_id, day)
         if edition is not None and edition != state["edition"]:
             raise StageError("EDITION_MISMATCH")
