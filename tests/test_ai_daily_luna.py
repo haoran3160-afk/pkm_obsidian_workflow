@@ -164,6 +164,36 @@ def test_duplicate_prepare_is_busy(workflow):
     assert call("prepare", run_id=first["run_id"])["run_id"] == first["run_id"]
 
 
+def test_current_roles_require_luna6_max(workflow):
+    from pkm_workflow import daily_brief
+    call, _ = workflow
+    prepared, reviewed, _ = ready(workflow)
+    for result in (prepared, reviewed):
+        assert result["required_model"] == "gpt-6-luna"
+        assert result["required_reasoning"] == "max"
+        schema = json.loads(Path(result["schema_path"]).read_text(encoding="utf-8"))
+        assert schema["properties"]["model"]["enum"] == ["gpt-6-luna"]
+    assert "gpt-6-luna" in daily_brief.GENERATOR_PROMPT
+    assert "gpt-6-luna" in daily_brief.REVIEWER_PROMPT
+    report = call("finalize", run_id=prepared["run_id"])
+    assert report["model"] == "gpt-6-luna"
+    assert report["reasoning"] == "max"
+
+
+def test_model_upgrade_never_bypasses_an_existing_date_claim(workflow, monkeypatch):
+    from pkm_workflow import ai_daily_luna as engine
+    call, _ = workflow
+    with monkeypatch.context() as old:
+        old.setattr(engine, "STRATEGY_HASH", "sha256:" + "9" * 64)
+        prepared = call("prepare")
+    def forbidden_collection(_):
+        pytest.fail("Changing model must not create a second run or collect again")
+    blocked = call("prepare", collect=forbidden_collection)
+    assert blocked["status"] == "STRATEGY_CHANGED"
+    assert blocked["run_id"] == prepared["run_id"]
+    assert blocked["vault_write"] is False
+
+
 def test_model_migration_preserves_prepared_evidence_and_rejects_started_roles(workflow, monkeypatch):
     from pkm_workflow import ai_daily_luna as engine
     call, _ = workflow
@@ -184,7 +214,7 @@ def test_model_migration_preserves_prepared_evidence_and_rejects_started_roles(w
     assert migrated["run_id"] == prepared["run_id"]
     assert Path(migrated["generator_input_path"]).read_bytes() == original["generator-input.json"]
     assert all((root / name).read_bytes() == content for name, content in original.items())
-    assert "gpt-5.6-sol" in Path(migrated["schema_path"]).read_text(encoding="utf-8")
+    assert MODEL in Path(migrated["schema_path"]).read_text(encoding="utf-8")
     assert call("prepare")["status"] == "PRODUCTION_BUSY"
     assert call("prepare", run_id=prepared["run_id"])["instructions_path"] == migrated["instructions_path"]
     assert call("migrate-model", run_id=prepared["run_id"])["status"] == "MODEL_MIGRATION_ALREADY_APPLIED"
@@ -195,7 +225,7 @@ def test_model_migration_preserves_prepared_evidence_and_rejects_started_roles(w
     ready((resumed, workflow[1]))
     final = call("finalize", mode="production", run_id=prepared["run_id"], confirm_vault_write=True)
     assert final["vault_write"] is True
-    assert final["model"] == "gpt-5.6-sol"
+    assert final["model"] == MODEL
     assert final["role_execution_count"] == 2
     assert final["repair_count"] == 0
 
@@ -218,19 +248,20 @@ def test_model_migration_still_binds_original_and_new_artifacts(workflow, monkey
     assert not list(workflow[1].glob("*.md"))
 
 
-def test_archived_luna_review_does_not_weaken_live_sol_validation(workflow, tmp_path):
+@pytest.mark.parametrize("archived_model", ["gpt-5.6-luna", "gpt-5.6-sol"])
+def test_archived_review_does_not_weaken_live_model_validation(workflow, tmp_path, archived_model):
     from pkm_workflow import ai_daily_luna as engine
     from pkm_workflow.weekly_collection import _material
     call, _ = workflow
     prepared, reviewed, response = ready(workflow)
-    response["model"] = "gpt-5.6-luna"
+    response["model"] = archived_model
     save(reviewed["review_path"], response)
     rejected = call("finalize", run_id=prepared["run_id"])
     assert rejected["status"] == "CONFIGURED_MODEL_REQUIRED"
     root = Path(prepared["draft_path"]).parent
     # A legacy report has no embedded reviewed_material; its review model is
     # taken from the sealed historical report, not the current execution policy.
-    engine._sealed_write(root / "run-report.json", {"model": "gpt-5.6-luna"})
+    engine._sealed_write(root / "run-report.json", {"model": archived_model})
     archive = tmp_path / "archive"
     archive.mkdir()
     report = archive / (prepared["run_id"] + ".json")

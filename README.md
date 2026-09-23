@@ -1,7 +1,7 @@
 # PKM Obsidian Workflow
 
 > [!IMPORTANT]
-> 当前运行指南是 [六模块 Luna 日报](docs/ai-daily-luna.md)。Codex 每日定时触发，Python 抓取与准备证据，Luna 生成并独立审核，确定性渲染后 create-new 写入 Obsidian。每期包含研究、AI 实践、Builder、创投、认知、个性化 GitHub 推荐各一条。旧原生/模型/activation 框架已退役，见 [精简记录](docs/workflow-simplification.md)。
+> 当前运行指南是 [AI Daily / Weekly](docs/ai-daily-luna.md)。Codex 每日定时触发，Python 抓取与准备证据，GPT-6 Luna / max 生成并独立审核，确定性渲染后 create-new 写入 Obsidian。周一至周六每天两个轮换模块，周日汇总六个模块。旧原生/模型/activation 框架已退役，见 [精简记录](docs/workflow-simplification.md)。
 
 > [!CAUTION]
 > 以下保留旧产品说明供历史参考。当前入口仅为 `scripts/run_workflow.py --workflow ai --mode shadow|production --stage prepare|review|finalize`；不要运行旧 `main.py`、REST/UI writer 或旧 Task installer。
