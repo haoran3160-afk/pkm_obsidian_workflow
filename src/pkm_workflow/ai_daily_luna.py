@@ -20,6 +20,8 @@ from . import daily_content as editorial
 from .cadence import edition_for, sections_for
 from .daily_brief import (
     GENERATOR_PROMPT,
+    MODEL,
+    REASONING,
     REVIEWER_PROMPT,
     _strict_json_loads,
 )
@@ -43,7 +45,6 @@ from .v75_collection import (
     default_collection_ports,
 )
 
-MODEL = "gpt-5.6-sol"
 LEGACY_LUNA_STRATEGY = "sha256:f5c08d9f980e8510e7adee79812892c4c30725087458ca1bcf76b7118aa93e6d"
 CONTRACT = "pkm.ai-daily-luna.v3"
 RUNTIME = Path(r"D:\personal\obsidian_workflow-runtime")
@@ -52,7 +53,7 @@ STRATEGY_HASH = editorial._digest({
     "selection_policy": "rotating_two_daily_six_weekly_normalized_history_v2",
     "paper_evidence": "primary_paper_complete_sentences_v1",
     "weekly_provenance": "per_source_author_v1",
-    "contract": CONTRACT, "model": MODEL, "reasoning": "medium",
+    "contract": CONTRACT, "model": MODEL, "reasoning": REASONING,
     "generator_prompt": GENERATOR_PROMPT, "reviewer_prompt": REVIEWER_PROMPT,
     "editorial_guidance": brief.EDITORIAL_GUIDANCE, "weekly_guidance": brief.WEEKLY_GUIDANCE,
     "generator_schema": json.loads(mvp_generator_output_schema()),
@@ -153,6 +154,10 @@ def _prepare(runtime, vault, day, mode, collect, context_loader, edition):
             claimed_run, _ = _load(runtime, claim["run_id"], day)
             return _collection_status(claimed_run)
         return _result("PRODUCTION_BUSY", 4, **claim)
+    # A model/prompt upgrade must not bypass an earlier same-day occupancy.
+    for prior_claim in sorted((runtime / "locks").glob(f"ai-{edition}-*-{day}.json")):
+        claim = _read(prior_claim)
+        return _result("STRATEGY_CHANGED", 4, run_id=claim["run_id"])
     run_id = uuid4().hex
     run = runtime / "scratch" / "runs" / run_id
     run.mkdir(parents=True)
@@ -271,7 +276,7 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
 def _generator_ready(run, state):
     return _result(
         "GENERATOR_READY", run_id=state["run_id"], content_date=state["content_date"],
-        required_model=MODEL, required_reasoning="medium",
+        required_model=MODEL, required_reasoning=REASONING,
         generator_input_path=str(run / "generator-input.json"),
         instructions_path=str(run / ("generator-instructions-sol.txt" if state.get("model_migration") else "generator-instructions.txt")),
         schema_path=str(run / ("generator-schema-sol.json" if state.get("model_migration") else "generator-schema.json")),
@@ -460,7 +465,7 @@ def _review(run, state):
 def _reviewer_ready(run, state, frozen):
     return _result(
         "REVIEWER_READY", run_id=state["run_id"],
-        required_model=MODEL, required_reasoning="medium",
+        required_model=MODEL, required_reasoning=REASONING,
         review_input_path=str(_review_file(run, "review-input")),
         instructions_path=str(_review_file(run, "reviewer-instructions", ".txt")),
         schema_path=str(_review_file(run, "reviewer-schema")),
@@ -477,7 +482,7 @@ def _check_review(run, state, *, archived_model=None):
         or _file_hash(_review_file(run, "review-input")) != frozen["review_input_hash"]
     ):
         raise StageError("DRAFT_OR_REVIEW_INPUT_CHANGED")
-    if archived_model is not None and archived_model not in {"gpt-5.6-luna", MODEL}:
+    if archived_model is not None and archived_model not in {"gpt-5.6-luna", "gpt-5.6-sol", MODEL}:
         raise StageError("HISTORICAL_MODEL_INVALID")
     envelope, structured = _role_output(_output_path(run, "reviewer"), "reviewer", expected_model=archived_model)
     if envelope["session_id"] == frozen["generator_session_id"]:
@@ -555,7 +560,7 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         "schema": "pkm.ai-daily-luna.run.v3", "contract": CONTRACT,
         "edition": state["edition"], "requested_sections": state["sections"],
         "git_head": editorial._git_head(), "strategy_hash": STRATEGY_HASH,
-        "model": MODEL, "reasoning": "medium", "content_date": state["content_date"],
+        "model": MODEL, "reasoning": REASONING, "content_date": state["content_date"],
         "started_at": state["started_at"], "created_at": datetime.now(timezone.utc).isoformat(),
         "elapsed_seconds": int((datetime.now(timezone.utc) -
                                datetime.fromisoformat(state["started_at"])).total_seconds()),

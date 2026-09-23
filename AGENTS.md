@@ -1,11 +1,11 @@
 # Personal AI Daily
 
-Current workflow: Python collection → Sol Generator → independent Sol Reviewer
+Current workflow: Python collection → Luna Generator → independent Luna Reviewer
 → deterministic Markdown → create-new Obsidian publication.
 
 Read docs/ai-daily-luna.md for the three stage commands and content contract.
 The Codex scheduled task runs in D:\personal\obsidian_workflow and invokes this
-checkout by absolute path. Both content roles use gpt-5.6-sol / medium.
+checkout by absolute path. Both content roles use gpt-6-luna / max.
 
 ## Required behavior
 

@@ -1,7 +1,7 @@
 # Personal AI Daily / Weekly — operating contract
 
 Use the existing private Codex project and its local engine deployment. Content
-generation and independent fresh-context review use gpt-5.6-sol / medium only.
+generation and independent fresh-context review use gpt-6-luna / max only.
 No DeepSeek/OpenAI API, Codex CLI, provider fallback or automatic recharge.
 
 ## Reading cadence
@@ -27,7 +27,7 @@ icons, personal priority (not a science score), and dated GitHub stars/self-use 
 ## One scheduler, three stages
 
 The scheduler coordinates; it does not author either role output. Before fetching,
-explicitly request gpt-5.6-sol/medium fresh-context Generator and Reviewer agents.
+explicitly request gpt-6-luna/max fresh-context Generator and Reviewer agents.
 Their initial readiness checks must not read evidence or write outputs. Use the
 host-returned identities and explicit accepted model request, not a self-guessed
 model name. If delegation is unavailable, stop before collection and report the
@@ -36,8 +36,10 @@ only the sealed review packet to the already independent Reviewer after review.
 
 An operator-approved migrate-model stage can migrate a same-day, prepared-only
 Luna run from the pinned pre-Sol strategy. It preserves the original state/input,
-appends Sol instructions/schema/state, and keeps both claims bound to the same
-run. Started drafts/reviews/reports, unknown strategies and inadequate evidence
+appends current-model instructions/schema/state (legacy Sol filenames retained), and keeps both claims bound to the same
+run. Published historical artifacts are not migrated. Other earlier strategies
+return STRATEGY_CHANGED with their run ID, never silently refetch.
+Started drafts/reviews/reports, unknown strategies and inadequate evidence
 are rejected. Never use migration as a retry or repair-budget reset.
 The legacy module/contract names remain compatibility identifiers, not model claims.
 
@@ -64,7 +66,7 @@ separate, using the same publisher and lock; a weekly never replaces a daily.
 
 On GENERATOR_READY read only returned input/instructions/schema. Write the draft
 with the real role identity, not a model name. On REVIEWER_READY delegate exactly
-one fresh-context Sol Reviewer; explicitly provide its real tool-returned agent
+one fresh-context Luna Reviewer; explicitly provide its real tool-returned agent
 identity. It reads only the specified review packet and writes its own decisions.
 Never author or rewrite another role's review. Python owns URLs, rendering and
 publication. Only vault_write=true means newly written; ALREADY_EXISTS skips with
