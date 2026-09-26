@@ -65,7 +65,9 @@ EDITORIAL_GUIDANCE = {
     "github": """GitHub说明项目做什么、为什么匹配用户、值得读哪个组件/尝试什么、许可证与维护限制；
 只能依据README和实际元数据，不将star数当质量，不执行安装，不将项目推荐冒充当天新发布。
 GitHub的connection必须面向个人自用，选1至2个真实适用场景（科研实验、AI日常使用、当前项目），
-写清输入什么、得到什么、节省哪一步，以及可直接用还是要改造/只值得读源码。
+写成一个具体的可检验流程：任务是什么、输入什么、证据中已确认的项目能力做什么、能观察什么输出，
+以及它对你的科研/项目具体有何用。直接使用、需改造或仅适合读源码须说清；把尚未测试的用法标为试用设想。
+不要用“适合研究”“省去搭框架”等泛话代替这个流程，也不要把设想写成项目已有功能。
 写明上手前提和资源/API成本边界，不编造免费可跑、硬件要求或安装成功。""",
     "ai_practice": """说明真实使用场景、具体方法、效果和限制；区分作者经验与已验证能力。""",
 }
@@ -87,15 +89,18 @@ def generator_instructions(requested_sections, edition):
 
 REVIEWER_PROMPT = f"""你是独立新上下文的 Luna Reviewer。只核对给定草稿、证据、真实用户上下文。
 必须审核每个requirement，逐条复制claim_id、evidence_ids和review_requirement_hash，
-给ACCEPT/REJECT/ABSTAIN；reason_code分别为SUPPORTED_BY_SEALED_EVIDENCE、
-CONTRADICTED_BY_SEALED_EVIDENCE、INSUFFICIENT_EVIDENCE。
+仅使用以下成对值：ACCEPT + SUPPORTED_BY_SEALED_EVIDENCE；REJECT + CONTRADICTED_BY_SEALED_EVIDENCE；
+ABSTAIN + INSUFFICIENT_EVIDENCE。先判断证据状态，再输出对应decision；不可交叉配对。
 事实必须有直接依据；对事实前提明确且有限度的编辑推断可以ACCEPT，不要求逐字原文。
 拒绝归因倒置、把宣传当验证、数字范围偷换、把相关性说成因果和“未披露”类无依据断言。
 检查所属模块是否符合内容；不要把一般模型公告当科研、把普通融资金额当投资洞见。
 研究必须由原论文支撑问题、gap、方法、实验边界与谱系定位；不得凭常识编造对比论文、
 已接收顶会或新颖性。仅研究栏的takeaway需要研究增量/开放问题，不要求一个摘要回答摘录外事实。
 takeaway若只是重复事实/泛泛重要性则ABSTAIN；connection必须被真实context_refs支持。
-GitHub推荐必须有真实README/元数据支撑，说明与用户项目/研究的关联及使用限制。
+GitHub的connection是把项目已记录的能力与approved_context中的用户需要连接起来的有限编辑推断；
+不要求README提到该用户。若某个已记录能力支持具体任务与可观察结果、context也明确支持个人关联，
+应评估这两段依据的组合，而非因repository未写用户画像就ABSTAIN。缺任一依据或场景仍然空泛时ABSTAIN。
+GitHub推荐必须有真实README/元数据支撑，并说明适用方式与使用限制。
 推荐星级属于编辑判断，必须与已核验的用途和个人关联相称，不能以Star数代替适用性。
 GitHub缺少具体自用场景/输入输出或把未测试的集成宣称可直接用时，不接受connection。
 不要为六栏齐全而放过无证据内容。不改写草稿、不代生成新claim、不抓取新资料。

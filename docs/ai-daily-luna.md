@@ -109,6 +109,12 @@ GitHub selection ranks at most six unread repository metadata records by approve
 project/prior-knowledge and interest terms before fetching README evidence. Stars
 and date rotation do not determine relevance; only two verified candidates reach
 the model. A metadata match is a selection hint, not proof of personal usefulness.
+The recommendation must state one concrete use flow: task, input, documented
+project capability, observable output, and why that output helps the user's
+research or project. Mark untested use as a trial idea. Review may accept the
+bounded connection when README evidence supports the capability and approved
+context supports the user's interest; README need not name the user. Missing
+either side or a vague use flow remains a reason to abstain.
 Generator instructions contain common evidence rules plus only the requested
 modules' editorial guidance; research requirements do not leak into cognition.
 Weekly-cadence RSS sources are checked whenever their module is scheduled
