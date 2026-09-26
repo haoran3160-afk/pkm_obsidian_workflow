@@ -13,11 +13,15 @@ No DeepSeek/OpenAI API, Codex CLI, provider fallback or automatic recharge.
 | Wednesday / Saturday | Cognition/growth + GitHub |
 | Sunday | Weekly synthesis across all six modules; no additional daily |
 
-Every daily contains exactly two distinct scheduled modules, one story each.
+Every daily requests two distinct scheduled modules, one story each.
 Previously published original URLs/projects are excluded from later daily choices.
 Same-batch event duplication continues to use existing curation. Weekly review of
 already read material is deliberate: connect observations instead of copying daily
 paragraphs or presenting them as new recommendations.
+Each story is reviewed independently. If one module still has no approved story
+after the single editorial correction, publish the approved story as a partial
+daily and name the omitted module near the top; never add an empty section or
+weaken the review. If no story passes, do not create a note.
 
 Research remains Agent/harness-led: Monday is the anchor, Thursday rotates Agent,
 RL and deep-learning exploration across weeks. Keep actual paper evidence, lineage,

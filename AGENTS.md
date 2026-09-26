@@ -10,9 +10,13 @@ checkout by absolute path. Both content roles use gpt-6-luna / max.
 ## Required behavior
 
 - Mon/Thu: research + AI practice; Tue/Fri: builders + venture; Wed/Sat:
-  cognition + GitHub. Exactly two daily modules. Sunday: six-module weekly
+  cognition + GitHub. Request two daily modules. Sunday: six-module weekly
   synthesis from verified daily history, no extra daily. Follow returned edition
   and requested_sections; never fill unscheduled modules.
+- Review each story independently. If a requested module remains unapproved
+  after the editorial correction, publish the approved stories as a partial
+  daily and identify omitted modules. If none pass, publish nothing. Never fill
+  omitted modules or weaken review.
 - Keep author attribution, source dates, evidence bindings and independent review.
 - GitHub recommendations need dated observed Star counts and concrete self-use
   scenarios. Personal recommendation stars express reader priority, not quality.

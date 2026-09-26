@@ -282,11 +282,16 @@ def accepted_stories(stories, decisions, _evidence):
     return tuple(result)
 
 
-def render(day, coverage, evidence_level, stories, evidence: dict[str, Candidate], *, edition="daily"):
+def render(day, coverage, evidence_level, stories, evidence: dict[str, Candidate], *,
+           edition="daily", missing_modules=()):
     title = "AI Weekly" if edition == "weekly" else "AI Daily"
     lines = ["---", f"date: {day}", f"type: ai-{edition}-shadow", "production: false",
              f"operational_coverage: {coverage.value}", f"evidence_availability: {evidence_level.value}",
+             f"edition_status: {'partial' if missing_modules else 'complete'}",
              "---", "", f"# {title} · {day}"]
+    if missing_modules:
+        omitted = "、".join(SECTIONS[section] for section in missing_modules)
+        lines += ["", f"本期只收录通过审核的内容；未收录模块：{omitted}。"]
     if edition == "weekly":
         from datetime import timedelta
         lines += ["", f"本周回顾 · {day - timedelta(days=day.weekday())} 至 {day} · 区分已读回顾与补充阅读，保留原文日期"]

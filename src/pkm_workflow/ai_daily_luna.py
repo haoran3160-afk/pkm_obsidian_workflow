@@ -286,7 +286,7 @@ def _generator_ready(run, state):
     )
 
 
-def _load(runtime: Path, run_id: str, day: date, *, legacy=False):
+def _load(runtime: Path, run_id: str, day: date, *, legacy=False, allow_report_recovery=False):
     if not re.fullmatch(r"[0-9a-f]{32}", run_id):
         raise StageError("RUN_ID_INVALID")
     run = runtime / "scratch" / "runs" / run_id
@@ -296,6 +296,19 @@ def _load(runtime: Path, run_id: str, day: date, *, legacy=False):
     migrated = not legacy and (run / "state-sol.json").exists()
     state = _sealed_read(run / ("state-sol.json" if migrated else "state.json" if ready else "collection-state.json"))
     strategy = LEGACY_LUNA_STRATEGY if legacy else STRATEGY_HASH
+    if not legacy and state["strategy_hash"] != strategy and allow_report_recovery:
+        report = _sealed_read(run / "run-report.json")
+        if (
+            report.get("contract") != CONTRACT
+            or report.get("strategy_hash") != state["strategy_hash"]
+            or report.get("content_date") != state["content_date"]
+            or report.get("status") != "MODULE_REVIEW_INCOMPLETE"
+            or report.get("markdown_path") is not None
+            or report.get("vault_write") is not False
+            or report.get("story_count", 0) < 1
+        ):
+            raise StageError("PARTIAL_RECOVERY_NOT_ALLOWED")
+        strategy = state["strategy_hash"]
     if migrated:
         original = _sealed_read(run / "state.json")
         if original["strategy_hash"] != LEGACY_LUNA_STRATEGY or state != _sol_state(run, original):
@@ -517,18 +530,20 @@ def _check_review(run, state, *, archived_model=None):
     return accepted, structured, frozen, envelope
 
 
-def _report(run, state, accepted, decisions, status, code, *, generator=None, reviewer=None):
+def _report(run, state, accepted, decisions, status, code, *, generator=None, reviewer=None,
+            report_filename="run-report.json", source_strategy_hash=None):
     evidence = _candidates(state)
     packet = _read(run / "generator-input.json")["candidates"]
     selected = sorted({evidence[eid].link for story in accepted for claim in story["claims"]
                        for eid in claim["evidence_ids"]})
     markdown_path = None
     markdown = None
-    if status == "PUBLISHED" and accepted:
+    missing_modules = [key for key in state["sections"] if key not in {story["section"] for story in accepted}]
+    if status in {"PUBLISHED", "PUBLISHED_PARTIAL"} and accepted:
         markdown = brief.render(
             date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
             CoverageLevel(state["evidence_level"]), accepted, evidence,
-            edition=state["edition"],
+            edition=state["edition"], missing_modules=missing_modules,
         )
         markdown_path = run / f"AI-{state['edition'].title()}-{state['content_date']}-shadow.md"
     repair = run / "repair.json"
@@ -560,6 +575,7 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         "schema": "pkm.ai-daily-luna.run.v3", "contract": CONTRACT,
         "edition": state["edition"], "requested_sections": state["sections"],
         "git_head": editorial._git_head(), "strategy_hash": STRATEGY_HASH,
+        "source_strategy_hash": source_strategy_hash or state["strategy_hash"],
         "model": MODEL, "reasoning": REASONING, "content_date": state["content_date"],
         "started_at": state["started_at"], "created_at": datetime.now(timezone.utc).isoformat(),
         "elapsed_seconds": int((datetime.now(timezone.utc) -
@@ -593,10 +609,11 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
                            if row["evidence_id"] in selected_ids],
         },
     }
-    _sealed_write(run / "run-report.json", report)
+    report_path = run / report_filename
+    _sealed_write(report_path, report)
     if markdown_path is not None and markdown is not None:
         _complete_shadow(run, report, markdown)
-    return _report_result(run, report)
+    return _report_result(run, report, report_path)
 
 
 def _complete_shadow(run, report, markdown):
@@ -615,7 +632,7 @@ def _complete_shadow(run, report, markdown):
         raise StageError("RENDERED_CONTENT_CHANGED")
 
 
-def _report_result(run, report):
+def _report_result(run, report, report_path=None):
     fields = (
         "content_date", "model", "reasoning", "coverage", "evidence_level",
         "candidate_count", "story_count", "markdown_path", "repair_count",
@@ -625,25 +642,66 @@ def _report_result(run, report):
     )
     return _result(
         report["status"], report["exit_code"], run_id=run.name,
-        report_path=str(run / "run-report.json"), **{key: report[key] for key in fields},
+        report_path=str(report_path or run / "run-report.json"),
+        **{key: report[key] for key in fields},
     )
 
 
 def _finalize(run, state, mode, confirm, runtime, vault):
-    report_path = run / "run-report.json"
+    original_report_path = run / "run-report.json"
+    recovery_report_path = run / "recovery-report.json"
+    if recovery_report_path.exists():
+        original = _sealed_read(original_report_path)
+        if (
+            original.get("contract") != CONTRACT
+            or original.get("status") != "MODULE_REVIEW_INCOMPLETE"
+            or original.get("vault_write") is not False
+            or original.get("markdown_path") is not None
+        ):
+            raise StageError("PARTIAL_RECOVERY_BINDING_MISMATCH")
+        report_path = recovery_report_path
+    else:
+        report_path = original_report_path
     if report_path.exists():
         report = _sealed_read(report_path)
-        if report["contract"] != CONTRACT or report["strategy_hash"] != STRATEGY_HASH:
+        expected_source_strategy = state["strategy_hash"]
+        terminal_failure = (
+            report_path == original_report_path
+            and report.get("status") == "MODULE_REVIEW_INCOMPLETE"
+        )
+        expected_strategy = expected_source_strategy if terminal_failure else STRATEGY_HASH
+        if (report["contract"] != CONTRACT or report["strategy_hash"] != expected_strategy
+                or report.get("source_strategy_hash", report["strategy_hash"]) != expected_source_strategy):
             raise StageError("REPORT_BINDING_MISMATCH")
+        if report_path == original_report_path and report.get("status") == "MODULE_REVIEW_INCOMPLETE":
+            if (
+                report.get("markdown_path") is not None
+                or report.get("vault_write") is not False
+                or report.get("story_count", 0) < 1
+            ):
+                return _report_result(run, report, original_report_path)
+            accepted, decisions, frozen, reviewer = _check_review(run, state)
+            if (
+                len(accepted) != report["story_count"]
+                or editorial._canonical(list(accepted))
+                != editorial._canonical(report["reviewed_material"]["stories"])
+            ):
+                raise StageError("PARTIAL_RECOVERY_REVIEW_MISMATCH")
+            return _report(
+                run, state, accepted, decisions, "PUBLISHED_PARTIAL", 0,
+                generator={"session_id": frozen["generator_session_id"]},
+                reviewer=reviewer, report_filename="recovery-report.json",
+                source_strategy_hash=state["strategy_hash"],
+            )
         if report["markdown_path"]:
             accepted, decisions, frozen, reviewer = _check_review(run, state)
             expected = brief.render(
                 date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
                 CoverageLevel(state["evidence_level"]), accepted, _candidates(state),
-                edition=state["edition"],
+                edition=state["edition"], missing_modules=report.get("missing_modules", ()),
             )
             _complete_shadow(run, report, expected)
-        result = _report_result(run, report)
+        result = _report_result(run, report, report_path)
     else:
         accepted, decisions, frozen, reviewer = _check_review(run, state)
         status, code = "PUBLISHED", 0
@@ -660,7 +718,10 @@ def _finalize(run, state, mode, confirm, runtime, vault):
                     feedback_path=str(run / "editorial-feedback.json"),
                     output_path=str(_output_path(run, "generator")),
                 )
-            status, code = "MODULE_REVIEW_INCOMPLETE", 4
+            if accepted:
+                status, code = "PUBLISHED_PARTIAL", 0
+            else:
+                status, code = "MODULE_REVIEW_INCOMPLETE", 4
         result = _report(
             run, state, accepted, decisions, status, code,
             generator={"session_id": frozen["generator_session_id"]}, reviewer=reviewer,
@@ -670,7 +731,7 @@ def _finalize(run, state, mode, confirm, runtime, vault):
 
 
 def _publish_reviewed(run, state, result, runtime, vault):
-    report_path = run / "run-report.json"
+    report_path = Path(result["report_path"])
     report = _sealed_read(report_path)
     if not report["markdown_path"]:
         return result
@@ -685,7 +746,10 @@ def _publish_reviewed(run, state, result, runtime, vault):
         coordination_path=runtime / "ai-daily-production.lock", shadow_runner=lambda _day: shadow,
         edition=state["edition"],
     )
-    return result | published.payload() | {"exit_code": published.exit_code}
+    publication = result | published.payload() | {"exit_code": published.exit_code}
+    if published.status == "PUBLISHED" and result["status"] == "PUBLISHED_PARTIAL":
+        publication["status"] = "PUBLISHED_PARTIAL"
+    return publication
 
 
 def run_luna_stage(
@@ -722,7 +786,9 @@ def run_luna_stage(
             raise StageError("RUN_ID_REQUIRED")
         if stage == "migrate-model":
             return _migrate_model(runtime, run_id, day)
-        run, state = _load(runtime, run_id, day)
+        run, state = _load(
+            runtime, run_id, day, allow_report_recovery=stage == "finalize",
+        )
         if edition is not None and edition != state["edition"]:
             raise StageError("EDITION_MISMATCH")
         if mode == "production" and state["edition"] == "weekly" and day.weekday() != 6:
