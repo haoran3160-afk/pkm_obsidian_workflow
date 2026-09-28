@@ -17,6 +17,7 @@ from uuid import uuid4
 from . import ai_daily_production as publishing
 from . import daily_brief as brief
 from . import daily_content as editorial
+from . import weekly_brief as weekly
 from .cadence import edition_for, sections_for
 from .daily_brief import (
     GENERATOR_PROMPT,
@@ -56,6 +57,9 @@ STRATEGY_HASH = editorial._digest({
     "contract": CONTRACT, "model": MODEL, "reasoning": REASONING,
     "generator_prompt": GENERATOR_PROMPT, "reviewer_prompt": REVIEWER_PROMPT,
     "editorial_guidance": brief.EDITORIAL_GUIDANCE, "weekly_guidance": brief.WEEKLY_GUIDANCE,
+    "weekly_generator_prompt": weekly.GENERATOR_PROMPT,
+    "weekly_reviewer_prompt": weekly.REVIEWER_PROMPT,
+    "weekly_generator_schema": json.loads(weekly.generator_schema()),
     "generator_schema": json.loads(mvp_generator_output_schema()),
     "reviewer_schema": json.loads(mvp_reviewer_output_schema()),
 })
@@ -250,9 +254,10 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
                        "period_end": str(day),
                        "published_days": collected.audit.get("published_days", [])}
     _write(run / "generator-input.json", generator_input)
-    instructions = brief.generator_instructions(requested, edition)
+    instructions = weekly.GENERATOR_PROMPT if edition == "weekly" else brief.generator_instructions(requested, edition)
     publishing._write_new(run / "generator-instructions.txt", instructions.encode("utf-8"))
-    publishing._write_new(run / "generator-schema.json", brief.role_envelope_schema("generator"))
+    generator_schema = weekly.role_envelope_schema() if edition == "weekly" else brief.role_envelope_schema("generator")
+    publishing._write_new(run / "generator-schema.json", generator_schema)
     state = state | {
         "coverage": collected.coverage.value, "evidence_level": collected.evidence_level.value,
         "evidence_healthy_sources": collected.evidence_healthy_sources,
@@ -268,7 +273,7 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
     if collected.evidence_level is CoverageLevel.INSUFFICIENT:
         return _report(run, state, (), {}, "EVIDENCE_INSUFFICIENT", 4)
     missing = set(requested) - {candidate.story_type for candidate in candidates}
-    if missing:
+    if missing and edition == "daily":
         return _report(run, state, (), {}, "MODULE_SOURCES_INCOMPLETE", 4)
     return _generator_ready(run, state)
 
@@ -379,7 +384,7 @@ def _migrate_model(runtime, run_id, day):
     return _generator_ready(run, state)
 
 
-def _role_output(path: Path, role: str, *, expected_model=None):
+def _role_output(path: Path, role: str, *, expected_model=None, edition="daily"):
     envelope = _read(path)
     expected = {"model", "session_id", "draft"} if role == "generator" else {
         "model", "session_id", "review_request_hash", "decisions",
@@ -393,7 +398,9 @@ def _role_output(path: Path, role: str, *, expected_model=None):
     ):
         raise StageError("ROLE_SESSION_ID_REQUIRED", repairable=True)
     structured = envelope["draft"] if role == "generator" else {"decisions": envelope["decisions"]}
-    schema = mvp_generator_output_schema() if role == "generator" else mvp_reviewer_output_schema()
+    schema = (
+        weekly.generator_schema() if edition == "weekly" else mvp_generator_output_schema()
+    ) if role == "generator" else mvp_reviewer_output_schema()
     if _contains_forbidden_output_text(structured):
         raise StageError("FORBIDDEN_OUTPUT_TEXT")
     # Model-independent validation; no provider credentials or transport.
@@ -430,11 +437,17 @@ def _review_file(run, stem, extension=".json"):
 
 def _review(run, state):
     draft_path = _output_path(run, "generator")
-    envelope, draft = _role_output(draft_path, "generator")
+    envelope, draft = _role_output(draft_path, "generator", edition=state["edition"])
     try:
-        stories = brief.validate_draft(
-            draft, _candidates(state), state["context"], requested_sections=state["sections"],
-        )
+        if state["edition"] == "weekly":
+            stories = weekly.validate_draft(
+                draft, _candidates(state), state["context"],
+                date.fromisoformat(state["content_date"]),
+            )
+        else:
+            stories = brief.validate_draft(
+                draft, _candidates(state), state["context"], requested_sections=state["sections"],
+            )
     except ValueError as error:
         raise StageError(
             str(error), repairable=str(error) in {"GENERATOR_TOTAL_CLAIM_LIMIT_EXCEEDED", "REQUESTED_MODULES_REQUIRED"},
@@ -463,7 +476,8 @@ def _review(run, state):
     publishing._write_or_verify(
         review_input, editorial._canonical(review_packet | {"review_request_hash": review_hash}) + b"\n",
     )
-    publishing._write_or_verify(_review_file(run, "reviewer-instructions", ".txt"), REVIEWER_PROMPT.encode("utf-8"))
+    reviewer_prompt = weekly.REVIEWER_PROMPT if state["edition"] == "weekly" else REVIEWER_PROMPT
+    publishing._write_or_verify(_review_file(run, "reviewer-instructions", ".txt"), reviewer_prompt.encode("utf-8"))
     publishing._write_or_verify(_review_file(run, "reviewer-schema"), brief.role_envelope_schema("reviewer"))
     frozen = {
         "draft_file_hash": _file_hash(draft_path), "draft_filename": draft_path.name,
@@ -526,7 +540,11 @@ def _check_review(run, state, *, archived_model=None):
         if row["reason_code"] != reasons[row["decision"]]:
             raise StageError("REVIEW_REASON_MISMATCH", repairable=True)
     stories = tuple(packet["generator_result"]["draft"]["stories"])
-    accepted = brief.accepted_stories(stories, structured, _candidates(state))
+    accepted = (
+        weekly.accepted_signals(stories, structured)
+        if state["edition"] == "weekly"
+        else brief.accepted_stories(stories, structured, _candidates(state))
+    )
     return accepted, structured, frozen, envelope
 
 
@@ -538,23 +556,31 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
                        for eid in claim["evidence_ids"]})
     markdown_path = None
     markdown = None
-    missing_modules = [key for key in state["sections"] if key not in {story["section"] for story in accepted}]
+    missing_modules = (
+        [] if state["edition"] == "weekly"
+        else [key for key in state["sections"] if key not in {story["section"] for story in accepted}]
+    )
     if status in {"PUBLISHED", "PUBLISHED_PARTIAL"} and accepted:
-        markdown = brief.render(
+        render = weekly.render if state["edition"] == "weekly" else brief.render
+        options = {} if state["edition"] == "weekly" else {
+            "edition": state["edition"], "missing_modules": missing_modules,
+        }
+        markdown = render(
             date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
-            CoverageLevel(state["evidence_level"]), accepted, evidence,
-            edition=state["edition"], missing_modules=missing_modules,
+            CoverageLevel(state["evidence_level"]), accepted, evidence, **options,
         )
         markdown_path = run / f"AI-{state['edition'].title()}-{state['content_date']}-shadow.md"
     repair = run / "repair.json"
     raw_draft = _output_path(run, "generator")
     generated_ids = set()
-    if raw_draft.exists():
+    if raw_draft.exists() and state["edition"] == "daily":
         generated_ids = {
             story["evidence_id"] for story in _read(raw_draft)["draft"]["stories"]
         }
     reviewed_ids = {eid for row in decisions.get("decisions", []) for eid in row["evidence_ids"]}
     selected_ids = {eid for story in accepted for claim in story["claims"] for eid in claim["evidence_ids"]}
+    introduced = sorted({evidence[eid].link for eid in selected_ids
+                         if state["edition"] == "weekly" and evidence[eid].content_type != "weekly_excerpt"})
     candidate_audit = []
     for candidate in evidence.values():
         eid = candidate.evidence_id
@@ -594,13 +620,14 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         "reviewer_session_id": reviewer["session_id"] if reviewer else None,
         "model_identity_source": "CODEX_SESSION_DECLARATION",
         "evidence_chars": sum(len(row["summary"]) for row in packet),
-        "underfilled": len(accepted) < len(state["sections"]),
+        "underfilled": bool(missing_modules),
         "missing_modules": [key for key in state["sections"] if key not in (
             {candidate.story_type for candidate in evidence.values()}
             if status == "MODULE_SOURCES_INCOMPLETE" else {story["section"] for story in accepted}
-        )],
+        )] if state["edition"] == "daily" else [],
         "audit": {**state["audit"], "candidate_audit": candidate_audit,
-                  "selected_urls": selected, "review_decisions": decisions.get("decisions", [])},
+                  "selected_urls": selected, "review_decisions": decisions.get("decisions", []),
+                  **({"supplemented_urls": introduced} if state["edition"] == "weekly" else {})},
         "reviewed_material": {
             "stories": list(accepted),
             "candidates": [asdict(evidence[row["evidence_id"]]) | {"summary": row["summary"],
@@ -608,6 +635,12 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
                            for row in packet
                            if row["evidence_id"] in selected_ids],
         },
+        "weekly_candidate_snapshot": [
+            asdict(evidence[row["evidence_id"]]) | {
+                "summary": row["summary"], "observed_author": row.get("observed_author"),
+            }
+            for row in packet
+        ] if state["edition"] == "daily" else None,
     }
     report_path = run / report_filename
     _sealed_write(report_path, report)
@@ -695,20 +728,32 @@ def _finalize(run, state, mode, confirm, runtime, vault):
             )
         if report["markdown_path"]:
             accepted, decisions, frozen, reviewer = _check_review(run, state)
-            expected = brief.render(
+            render = weekly.render if state["edition"] == "weekly" else brief.render
+            options = {} if state["edition"] == "weekly" else {
+                "edition": state["edition"], "missing_modules": report.get("missing_modules", ()),
+            }
+            expected = render(
                 date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
                 CoverageLevel(state["evidence_level"]), accepted, _candidates(state),
-                edition=state["edition"], missing_modules=report.get("missing_modules", ()),
+                **options,
             )
             _complete_shadow(run, report, expected)
         result = _report_result(run, report, report_path)
     else:
         accepted, decisions, frozen, reviewer = _check_review(run, state)
         status, code = "PUBLISHED", 0
-        if len(accepted) != len(state["sections"]):
+        incomplete = (
+            not accepted if state["edition"] == "weekly"
+            else len(accepted) != len(state["sections"])
+        )
+        if incomplete:
             if not (run / "repair.json").exists():
                 _write(run / "editorial-feedback.json", {
-                    "instructions": "修正被拒绝的泛化/归因，或使用同模块已提供备选。不虚构证据，不放宽判断。只写新的generator-repair.json。必须重新独立审核。",
+                    "instructions": (
+                        "重新选择有证据的全周信号；不可拼接无关事件或把单例称为趋势。"
+                        if state["edition"] == "weekly" else
+                        "修正被拒绝的泛化/归因，或使用同模块已提供备选。不虚构证据，不放宽判断。"
+                    ) + "只写新的generator-repair.json。必须重新独立审核。",
                     "draft": _read(_review_file(run, "review-input"))["generator_result"]["draft"],
                     "decisions": decisions["decisions"],
                 })

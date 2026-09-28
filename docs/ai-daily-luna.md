@@ -11,7 +11,7 @@ No DeepSeek/OpenAI API, Codex CLI, provider fallback or automatic recharge.
 | Monday / Thursday | Research + AI practice |
 | Tuesday / Friday | Builder + AI venture/industry |
 | Wednesday / Saturday | Cognition/growth + GitHub |
-| Sunday | Weekly synthesis across all six modules; no additional daily |
+| Sunday | Select cross-domain weekly signals from all six screened interests; no additional daily |
 
 Every daily requests two distinct scheduled modules, one story each.
 Previously published original URLs/projects are excluded from later daily choices.
@@ -125,22 +125,21 @@ Weekly-cadence RSS sources are checked whenever their module is scheduled
 (both paired reading days). There is no cross-day candidate cache; checking only
 the first day would leave the second day's module empty.
 
-Weekly first uses verified daily publications from Monday through the run date,
-including their sealed evidence snapshots. Only missing sections are collected
-from approved sources, with at most two candidates per missing section and one
-selected original per section. Do not recollect sections already covered.
-Each module receives a bounded source-labelled bundle (at most three distinct
-originals, normally two), then all six bundles enter one Generator/Reviewer cycle
-within 24,000 characters. Every source retains its own date and original link.
-Within each source, reuse section-aware excerpt selection rather than taking the
-first characters. Preserve source labels and prioritize mechanisms and limits;
-past editorial judgments help select passages but never become primary facts.
-Prior editorial judgments are marked as interpretations, not new source facts.
-Only one source is enough for a single-case recap, never a claimed cross-day trend.
-Label supplements as 本周新增阅读 and classics as extended reading, retaining the
-original date. Only verified free bodies qualify. New weekly links become reading
-history for later dailies; recap links are not new recommendations.
-If one of the six modules still lacks trustworthy material, do not manufacture a weekly.
+Weekly considers the verified daily publications from Monday through Sunday and
+their already prepared, free-body candidates. New daily reports retain bounded
+candidate excerpts even when an item was not recommended. Older reports without
+that snapshot contribute only published reading. Missing interest lanes may be
+supplemented from approved free sources; a missing lane is recorded internally
+and never forces a reader-facing section or blocks a credible weekly finding.
+Deduplicate original URLs, screen all six interests, and send at most 12
+source-level records within 24,000 evidence characters to one Generator and one
+independent Reviewer. Every claim cites the original evidence IDs. A shared
+pattern requires independent sources or an observed within-week development;
+otherwise describe a bounded case. Do not claim acceleration across weeks.
+Past editorial interpretations are selection cues, never primary facts.
+Keep each original date, author and link. Mark newly recommended weekly reading,
+including prior daily candidates that were not published, for future deduplication.
+If no finding passes review, do not create a weekly note.
 
 New daily reports retain the selected bounded evidence and reviewed content in
 durable reports, so weekly generation does not depend on scratch survival. Older
@@ -155,7 +154,7 @@ conflict after edits/deletion; it never overwrites or recreates that note.
 Only newly introduced weekly URLs join daily deduplication. Weekly reports do
 not become inputs to later weeklies.
 
-Daily normally uses one Generator and one Reviewer; a weekly uses the same pair
-once for all six modules. Platform token usage unavailable means unknown, not free.
+Daily normally uses one Generator and one Reviewer; weekly uses the same pair
+once for the globally selected findings. Platform token usage unavailable means unknown, not free.
 Do not modify code/config during scheduled runs, scan unrelated Vault content,
 change .obsidian, install recommended projects, or publish runtime/private data.

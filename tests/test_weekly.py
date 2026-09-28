@@ -28,9 +28,12 @@ def test_weekly_supplement_uses_only_missing_modules_and_marks_new_reading(tmp_p
     assert result.coverage == CoverageLevel.A
     assert len(result.candidates) == 6
     assert result.audit["supplemented_sections"] == list(calls[0])
-    assert len(result.audit["supplemented_urls"]) == 6
+    assert result.audit["supplemented_urls"] == []
+    assert {candidate.link for candidate in result.candidates} == {
+        f"https://example.com/{section}" for section in calls[0]
+    }
     assert all(candidate.content_type == "evergreen" for candidate in result.candidates)
-    assert all("本周新增阅读" in candidate.source_links[0][0] for candidate in result.candidates)
+    assert all(candidate.source_links[0][1] == candidate.link for candidate in result.candidates)
 
 
 def test_weekly_without_verified_daily_history_cannot_invent_six_modules(tmp_path):
@@ -38,6 +41,50 @@ def test_weekly_without_verified_daily_history_cannot_invent_six_modules(tmp_pat
     assert result.candidates == ()
     assert result.coverage.value == "INSUFFICIENT"
     assert len(result.audit["missing_modules"]) == 6
+
+
+def test_weekly_keeps_verified_supplement_when_other_lanes_are_unavailable(tmp_path):
+    builder = Candidate(
+        evidence_id="builder", source="Approved source", title="One builder case",
+        link="https://example.com/builder-case", published="2026-09-20",
+        summary="The original case describes a documented product decision.",
+        content_type="evergreen", fulltext_enriched=True, story_type="builder",
+    )
+    result = collect_weekly(
+        date(2026, 9, 20), tmp_path, tmp_path,
+        supplement=lambda _sections: CollectionResult(
+            CoverageLevel.INSUFFICIENT, 6, 1, (builder,),
+            evidence_level=CoverageLevel.INSUFFICIENT,
+        ),
+    )
+    assert [candidate.link for candidate in result.candidates] == [builder.link]
+    assert result.coverage is CoverageLevel.B
+    assert "builder" not in result.audit["missing_modules"]
+    assert "research" in result.audit["missing_modules"]
+
+
+def test_weekly_event_filter_keeps_substantive_registration_guide(tmp_path):
+    invitation = Candidate(
+        evidence_id="invite", source="Event Host", title="Register for an agent meetup",
+        link="https://example.com/invite", published="2026-09-20",
+        summary="We are hosting an evening event. Register to attend.",
+        content_type="news", fulltext_enriched=True, story_type="ai_practice",
+        editorial_score=20000,
+    )
+    guide = Candidate(
+        evidence_id="guide", source="Engineer", title="Register tool calls and issue tickets",
+        link="https://example.com/guide", published="2026-09-20",
+        summary="The guide documents how tool registrations and issue tickets are audited.",
+        content_type="technical", fulltext_enriched=True, story_type="ai_practice",
+        editorial_score=5000,
+    )
+    result = collect_weekly(
+        date(2026, 9, 20), tmp_path, tmp_path,
+        supplement=lambda _sections: CollectionResult(
+            CoverageLevel.A, 6, 2, (invitation, guide),
+        ),
+    )
+    assert [candidate.link for candidate in result.candidates] == [guide.link]
 
 
 def test_weekly_uses_nonduplicate_backup_and_rejects_unqualified_supplements(tmp_path):
@@ -57,7 +104,8 @@ def test_weekly_uses_nonduplicate_backup_and_rejects_unqualified_supplements(tmp
     result = collect_weekly(date(2026, 9, 20), tmp_path, tmp_path, supplement=supplement)
     assert {c.link for c in result.candidates} == {"https://example.com/shared/", "https://example.com/backup"}
     assert "research" in result.audit["missing_modules"]
-    assert result.coverage is CoverageLevel.INSUFFICIENT
+    assert result.coverage is CoverageLevel.A
+    assert "research" in result.audit["unavailable_sections"]
 
 
 @pytest.mark.parametrize("long_evidence", [False, True])
@@ -70,14 +118,28 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
                               context_loader=lambda: context, **kwargs)
     def complete(prepared, day):
         packet = json.loads(Path(prepared["generator_input_path"]).read_text(encoding="utf-8"))
-        by_section = {row["story_type"]: row for row in packet["candidates"]}
-        stories = [{"section": section, "evidence_id": by_section[section]["evidence_id"],
-                    "title": f"{section} observation", "body": ["The experiment records tool failures."],
-                    "takeaway": "Recording failures makes the tool boundary testable.",
-                    "connection": "This supports the approved research project.", "context_refs": ["projects[0]"],
-                    "action": None, "priority": "USEFUL"} for section in packet["requested_sections"]]
+        if packet["edition"] == "weekly":
+            eid = packet["candidates"][0]["evidence_id"]
+            def clause(text):
+                return {"text": text, "evidence_ids": [eid]}
+            draft = {"lead": None, "signals": [{
+                "kind": "CASE", "title": clause("A verified agent evaluation case"),
+                "body": [clause("The original records tool failures.")],
+                "takeaway": clause("Failure records offer one bounded evaluation case."),
+                "connection": clause("This is relevant to the approved research project.")
+                | {"context_refs": ["projects[0]"]},
+                "watch": None,
+            }]}
+        else:
+            by_section = {row["story_type"]: row for row in packet["candidates"]}
+            stories = [{"section": section, "evidence_id": by_section[section]["evidence_id"],
+                        "title": f"{section} observation", "body": ["The experiment records tool failures."],
+                        "takeaway": "Recording failures makes the tool boundary testable.",
+                        "connection": "This supports the approved research project.", "context_refs": ["projects[0]"],
+                        "action": None, "priority": "USEFUL"} for section in packet["requested_sections"]]
+            draft = {"stories": stories}
         Path(prepared["draft_path"]).write_text(json.dumps({"model": MODEL,
-            "session_id": "/root/test_generator", "draft": {"stories": stories}}), encoding="utf-8")
+            "session_id": "/root/test_generator", "draft": draft}), encoding="utf-8")
         review = call("review", day, run_id=prepared["run_id"])
         request = json.loads(Path(review["review_input_path"]).read_text(encoding="utf-8"))
         response = {"model": MODEL, "session_id": "/root/test_reviewer",
@@ -116,8 +178,8 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
     with monkeypatch.context() as only_durable:
         only_durable.setattr(luna, "_check_review", forbidden)
         collection = collect_weekly(sunday, tmp_path, vault, supplement=forbidden)
-    assert all(len(candidate.source_links) == 2 for candidate in collection.candidates)
-    assert all("Verified author: Jane Doe" in candidate.summary for candidate in collection.candidates)
+    assert all(len(candidate.source_links) == 1 for candidate in collection.candidates)
+    assert all("author: Jane Doe" in candidate.summary for candidate in collection.candidates)
     if long_evidence:
         assert all("outside the tested environment." in candidate.summary for candidate in collection.candidates)
     packet = json.loads(Path(weekly["generator_input_path"]).read_text(encoding="utf-8"))
@@ -127,7 +189,9 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
     assert result["vault_write"] is True
     assert Path(result["vault_path"]).name == "AI-Weekly-2026-09-13.md"
     note = Path(result["vault_path"]).read_text(encoding="utf-8")
-    assert note.count("\n## ") == 6
+    assert note.count("\n## ") == 1
+    assert "A verified agent evaluation case" in note
+    assert "## 🧪 学术研究" not in note
     assert "type: ai-weekly" in note
     assert not (vault / "AI-Daily-2026-09-13.md").exists()
     assert call("prepare", sunday, mode="production")["status"] == "ALREADY_EXISTS"

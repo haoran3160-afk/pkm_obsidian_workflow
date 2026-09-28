@@ -10,9 +10,9 @@ checkout by absolute path. Both content roles use gpt-6-luna / max.
 ## Required behavior
 
 - Mon/Thu: research + AI practice; Tue/Fri: builders + venture; Wed/Sat:
-  cognition + GitHub. Request two daily modules. Sunday: six-module weekly
-  synthesis from verified daily history, no extra daily. Follow returned edition
-  and requested_sections; never fill unscheduled modules.
+  cognition + GitHub. Request two daily modules. Sunday: select a small number
+  of cross-domain weekly signals from six internally screened interests, with
+  no additional daily. Follow returned edition and packet; no fixed weekly lanes.
 - Review each story independently. If a requested module remains unapproved
   after the editorial correction, publish the approved stories as a partial
   daily and identify omitted modules. If none pass, publish nothing. Never fill
@@ -22,8 +22,8 @@ checkout by absolute path. Both content roles use gpt-6-luna / max.
   scenarios. Personal recommendation stars express reader priority, not quality.
 - Research explains the paper's gap, method, experimental scope, lineage and open
   questions. Never substitute institutional news or invent venue acceptance.
-- Missing module evidence or a rejected mandatory section returns an explicit
-  incomplete status; never fill a section with invented or irrelevant material.
+- A rejected weekly signal is omitted; publish accepted findings only. If none
+  pass, return an explicit incomplete status. Never fill with invented material.
 - Existing source catalog/context remain the source of configuration.
 - No DeepSeek, OpenAI API, Codex CLI, Rust/AppContainer/WFP or activation framework.
 

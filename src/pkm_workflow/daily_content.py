@@ -295,17 +295,17 @@ def _model_candidate_payload(
     context_terms: set[str] | None = None,
 ) -> dict[str, object]:
     payload = candidate.model_payload()
-    if candidate.content_type == "weekly_excerpt":
-        # Preserve per-source dates and interpretation labels; do not re-rank
-        # sentences across different days and accidentally lose their attribution.
-        payload["summary"] = candidate.summary[:max_chars]
-        return payload
     byline = re.search(
         r"\bby\s+([A-Z][A-Za-z'-]+(?:[ \t]+[A-Z][A-Za-z'-]+){1,3})\b",
         candidate.summary[:2000],
     )
     if byline:
         payload["observed_author"] = byline.group(1)
+    if candidate.content_type == "weekly_excerpt" or candidate.source_links:
+        # Preserve per-source dates and interpretation labels; do not re-rank
+        # sentences across different days and accidentally lose their attribution.
+        payload["summary"] = candidate.summary[:max_chars]
+        return payload
     payload["summary"] = _section_aware_excerpt(
         candidate,
         max_chars=max_chars,

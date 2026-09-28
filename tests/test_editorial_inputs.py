@@ -3,6 +3,7 @@ from datetime import date
 from pathlib import Path
 
 from pkm_workflow.ai_daily_luna import run_luna_stage
+from pkm_workflow.daily_content import _model_candidate_payload
 from pkm_workflow.v75_collection import Candidate, CollectionResult, CoverageLevel
 
 
@@ -19,7 +20,8 @@ def test_cognition_day_receives_only_its_editorial_guidance(tmp_path):
     )
     assert result["status"] == "GENERATOR_READY"
     instructions = Path(result["instructions_path"]).read_text(encoding="utf-8")
-    assert "输入什么、得到什么" in instructions
+    assert "任务是什么、输入什么" in instructions
+    assert "能观察什么输出" in instructions
     assert "被挑战的假设" in instructions
     assert "未经查新" not in instructions
     assert "领投" not in instructions
@@ -27,3 +29,16 @@ def test_cognition_day_receives_only_its_editorial_guidance(tmp_path):
     packet = json.loads(Path(result["generator_input_path"]).read_text(encoding="utf-8"))
     assert packet["requested_sections"] == ["cognition", "github"]
     assert sum(len(row["summary"]) for row in packet["candidates"]) <= 12000
+
+
+def test_weekly_supplement_keeps_verified_byline_with_preserved_excerpt():
+    candidate = Candidate(
+        evidence_id="supplement", source="Approved source", title="A builder account",
+        link="https://example.com/builder", published="2026-09-20",
+        summary="by Jane Doe\nThe source describes a concrete product decision.",
+        content_type="evergreen", fulltext_enriched=True, story_type="builder",
+        source_links=(("Approved source · 2026-09-20", "https://example.com/builder"),),
+    )
+    payload = _model_candidate_payload(candidate)
+    assert payload["observed_author"] == "Jane Doe"
+    assert payload["summary"].startswith("by Jane Doe")

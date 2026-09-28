@@ -136,12 +136,23 @@ def test_partial_week_supplements_only_missing_sections_and_remembers_new_links(
     prepared = stage("prepare", mode="production")
     packet = json.loads(Path(prepared["generator_input_path"]).read_text(encoding="utf-8"))
     assert sum(len(row["summary"]) for row in packet["candidates"]) <= 24000
-    stories = []
-    for candidate in packet["candidates"]:
-        story = dict(draft()["draft"]["stories"][0])
-        story.update(section=candidate["story_type"], evidence_id=candidate["evidence_id"])
-        stories.append(story)
-    save(prepared["draft_path"], {"model": MODEL, "session_id": GENERATOR_ID, "draft": {"stories": stories}})
+    builder = next(candidate for candidate in packet["candidates"] if candidate["story_type"] == "builder")
+    evidence_id = builder["evidence_id"]
+    def statement(text):
+        return {"text": text, "evidence_ids": [evidence_id]}
+    signal = {
+        "kind": "CASE",
+        "title": statement("Builder 的新阅读"),
+        "body": [statement("原文介绍了产品方法与限制。")],
+        "takeaway": statement("这是一条值得核验的单个案例。"),
+        "connection": statement("可以用该案例检查 Agent 研究中的产品取舍。")
+        | {"context_refs": ["projects[0]"]},
+        "watch": None,
+    }
+    save(prepared["draft_path"], {
+        "model": MODEL, "session_id": GENERATOR_ID,
+        "draft": {"lead": None, "signals": [signal]},
+    })
     review = stage("review", run_id=prepared["run_id"])
     rubric = json.loads(Path(review["review_input_path"]).read_text(encoding="utf-8"))["rubric"]
     save(review["review_path"], {"model": MODEL, "session_id": REVIEWER_ID,
@@ -153,8 +164,9 @@ def test_partial_week_supplements_only_missing_sections_and_remembers_new_links(
     assert final["vault_write"] is True
     assert "本周新增阅读" in Path(final["vault_path"]).read_text(encoding="utf-8")
     assert stage("prepare", mode="production")["status"] == "ALREADY_EXISTS"
-    assert {f"https://example.com/new/{section}" for section in requested[0]} <= _published_urls(
-        tmp_path, vault, sunday + timedelta(days=1))
+    used = _published_urls(tmp_path, vault, sunday + timedelta(days=1))
+    assert "https://example.com/new/builder" in used
+    assert "https://example.com/new/github" not in used
 
 
 def test_duplicate_prepare_is_busy(workflow):
@@ -266,7 +278,50 @@ def test_archived_review_does_not_weaken_live_model_validation(workflow, tmp_pat
     archive.mkdir()
     report = archive / (prepared["run_id"] + ".json")
     report.write_bytes((root / "run-report.json").read_bytes())
-    assert len(_material(report, tmp_path)["stories"]) == 2
+    material = _material(report, tmp_path)
+    assert len(material["stories"]) == 2
+    assert material["weekly_candidates"] == material["candidates"]
+
+
+def test_legacy_report_without_candidate_snapshot_excludes_unpublished_choices(workflow, tmp_path):
+    from pkm_workflow import ai_daily_luna as engine
+    from pkm_workflow.weekly_collection import _material
+
+    call, vault = workflow
+    candidates = tuple(Candidate(
+        evidence_id=f"evidence-{section}", source="Research Lab",
+        title=f"{section} item", link=f"https://example.com/{section}",
+        published=str(DAY), summary="Verified original source body. " * 20,
+        content_type="research", fulltext_enriched=True, story_type=section,
+        evidence_role="PAPER_PRIMARY" if section == "research" else "PRIMARY_OR_EXPERT",
+    ) for section in DAILY_SECTIONS) + (Candidate(
+        evidence_id="unread", source="Another Lab", title="Unpublished candidate",
+        link="https://example.com/unread", published=str(DAY),
+        summary="Verified original body for another research candidate. " * 20,
+        content_type="research", fulltext_enriched=True, story_type="research",
+        evidence_role="PAPER_PRIMARY",
+    ),)
+    prepared = call("prepare", collect=lambda _day: CollectionResult(
+        CoverageLevel.A, 14, 14, candidates,
+    ))
+    def resumed(stage, **kwargs):
+        if stage == "prepare":
+            kwargs["run_id"] = prepared["run_id"]
+        return call(stage, **kwargs)
+    ready((resumed, vault))
+    root = Path(prepared["draft_path"]).parent
+    engine._sealed_write(root / "run-report.json", {"model": MODEL})
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    report = archive / f"{prepared['run_id']}.json"
+    report.write_bytes((root / "run-report.json").read_bytes())
+    material = _material(report, tmp_path)
+    assert {row["link"] for row in material["weekly_candidates"]} == {
+        f"https://example.com/{section}" for section in DAILY_SECTIONS
+    }
+    assert "https://example.com/unread" not in {
+        row["link"] for row in material["weekly_candidates"]
+    }
 
 
 @pytest.mark.parametrize("save_mode", ["inplace", "replace", "delete"])
@@ -520,9 +575,12 @@ def test_rejected_material_claim_requires_one_revision_then_fresh_review(workflo
     ]
     save(next_review["review_path"], response)
     exhausted = call("finalize", run_id=prepared["run_id"])
-    assert exhausted["status"] == "MODULE_REVIEW_INCOMPLETE"
+    assert exhausted["status"] == "PUBLISHED_PARTIAL"
     assert exhausted["missing_modules"] == ["research"]
-    assert exhausted["markdown_path"] is None
+    markdown = Path(exhausted["markdown_path"]).read_text(encoding="utf-8")
+    assert "未收录模块：学术研究" in markdown
+    assert "浏览器工具开始复用" in markdown
+    assert "## 🧪 学术研究" not in markdown
     assert exhausted["role_execution_count"] == 4
 
 
