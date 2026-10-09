@@ -1,4 +1,5 @@
 """Exercise recovery through real collection, with only network ports replaced."""
+import json
 from datetime import date
 from pathlib import Path
 
@@ -59,13 +60,20 @@ def test_real_collection_transient_failure_can_resume_once(tmp_path, failure, re
     assert len(calls) == 1
     healthy = recover
     second = prepare(run_id=first["run_id"])
-    # Only VC was supplied; missing Builder is a terminal shortage, not a network retry.
+    # Recovery keeps the same run.  With verified VC evidence available, the
+    # next prepare narrows the generator to VC instead of discarding the run.
     assert second["status"] == ("MODULE_SOURCES_INCOMPLETE" if recover else "COLLECTION_RETRY_EXHAUSTED")
     assert second["run_id"] == first["run_id"]
-    assert prepare(run_id=first["run_id"])["status"] == second["status"]
+    resumed = prepare(run_id=first["run_id"])
+    assert resumed["status"] == ("GENERATOR_READY" if recover else second["status"])
+    if recover:
+        assert resumed["requested_sections"] == ["builder", "vc"]
+        prepared_input = json.loads(Path(resumed["generator_input_path"]).read_text(encoding="utf-8"))
+        assert prepared_input["requested_sections"] == ["vc"]
     assert len(calls) == 2
     assert not list(tmp_path.glob("*.md"))
-    assert len(list(tmp_path.glob("scratch/runs/*"))) == 1
+    assert len([path for path in (tmp_path / "scratch" / "runs").iterdir()
+                if "-failed-collection-" not in path.name]) == 1
     assert not (Path(second["report_path"]).parent / "repair.json").exists()
 
 
@@ -98,7 +106,7 @@ def test_nontransient_shortage_does_not_recollect(tmp_path, reason):
 def test_fulltext_adapter_preserves_only_transient_transport_errors(monkeypatch, failure):
     import requests
 
-    import fetcher
+    from pkm_workflow import fetcher
     from pkm_workflow.v75_collection import default_collection_ports
 
     def get(*args, **kwargs):
@@ -149,7 +157,7 @@ def test_paper_transport_failure_remains_distinct_from_missing_html():
 def test_rss_server_failure_is_not_healthy_zero_yield(monkeypatch, status):
     from types import SimpleNamespace
 
-    import fetcher
+    from pkm_workflow import fetcher
 
     monkeypatch.setattr(fetcher.feedparser, "parse", lambda *_: SimpleNamespace(entries=[], bozo=False))
     monkeypatch.setattr(fetcher.HTTP_SESSION, "get", lambda *a, **k: SimpleNamespace(

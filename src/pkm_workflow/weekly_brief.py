@@ -42,6 +42,20 @@ GENERATOR_SCHEMA = daily._closed({
     "missed_but_valuable": {"type": "array", "maxItems": 2, "items": MISSED},
     "watchlist": {"type": "array", "maxItems": 4, "items": WATCH},
 })
+REVIEWER_SCHEMA = daily._closed({
+    "decisions": {
+        "type": "array", "minItems": 1, "maxItems": 96,
+        "items": daily._closed({
+            "claim_id": TEXT, "evidence_ids": {"type": "array", "minItems": 1, "items": TEXT},
+            "review_requirement_hash": TEXT,
+            "decision": {"type": "string", "enum": ["ACCEPT", "REJECT", "ABSTAIN"]},
+            "reason_code": {"type": "string", "enum": [
+                "SUPPORTED_BY_SEALED_EVIDENCE", "CONTRADICTED_BY_SEALED_EVIDENCE",
+                "INSUFFICIENT_EVIDENCE",
+            ]},
+        }),
+    },
+})
 
 GENERATOR_PROMPT = f"""你是个人 AI 周报主编。日报回答“今天看什么”，本周报回答“这一周发生了什么结构性变化，为什么值得在更长时间尺度上理解”。
 六类兴趣只是内部来源标签，绝不是六个必须填满的栏目。先阅读全部封存材料，再进行跨来源筛选；不要按栏目各写一段。
@@ -67,12 +81,21 @@ def generator_schema() -> bytes:
     return json.dumps(GENERATOR_SCHEMA, ensure_ascii=False).encode("utf-8")
 
 
-def role_envelope_schema() -> bytes:
-    return json.dumps(daily._closed({
+def reviewer_schema() -> bytes:
+    return json.dumps(REVIEWER_SCHEMA, ensure_ascii=False).encode("utf-8")
+
+
+def role_envelope_schema(role="generator") -> bytes:
+    properties = {
         "model": {"type": "string", "enum": [daily.MODEL]},
         "session_id": {"type": "string", "pattern": r"^(?:[0-9a-fA-F-]{36}|/root/[a-z0-9_/]+)$"},
-        "draft": GENERATOR_SCHEMA,
-    }), ensure_ascii=False).encode("utf-8")
+    }
+    properties["draft" if role == "generator" else "decisions"] = (
+        GENERATOR_SCHEMA if role == "generator" else REVIEWER_SCHEMA["properties"]["decisions"]
+    )
+    if role == "reviewer":
+        properties["review_request_hash"] = TEXT
+    return json.dumps(daily._closed(properties), ensure_ascii=False).encode("utf-8")
 
 
 def _checked_refs(connection, allowed_refs):
@@ -100,16 +123,6 @@ def validate_draft(draft, evidence: dict[str, Candidate], context, content_date:
                 "evidence_ids": checked_ids(value), "claim_kind": kind,
                 "context_refs": list(refs)}
 
-    def cited(theme):
-        parts = [theme["title"], *theme["observation"], theme["why_now"],
-                 theme["mechanism"], theme["connection"]]
-        parts.extend(value for value in theme["implications"].values() if value is not None)
-        if theme["counter_evidence"] is not None:
-            parts.append(theme["counter_evidence"])
-        if theme["watch_next"] is not None:
-            parts.append(theme["watch_next"])
-        return {eid for part in parts for eid in checked_ids(part)}
-
     def ensure_kind(theme, ids):
         if theme["kind"] == "CASE":
             return
@@ -130,8 +143,8 @@ def validate_draft(draft, evidence: dict[str, Candidate], context, content_date:
         if title in names:
             raise ValueError("WEEKLY_THEME_DUPLICATE")
         names.add(title)
-        ids = cited(theme)
-        ensure_kind(theme, ids)
+        core_parts = [theme["title"], *theme["observation"], theme["why_now"], theme["mechanism"]]
+        ensure_kind(theme, {eid for part in core_parts for eid in checked_ids(part)})
         refs = _checked_refs(theme["connection"], allowed_refs)
         prefix = f"weekly-{index}"
         claims = [claim(f"{prefix}-title", theme["title"], "editorial_inference")]
@@ -184,6 +197,9 @@ def validate_draft(draft, evidence: dict[str, Candidate], context, content_date:
     extras = []
     for index, item in enumerate(draft["missed_but_valuable"], 1):
         prefix = f"weekly-missed-{index}"
+        missed_ids = set(checked_ids(item["title"])) | set(checked_ids(item["why"]))
+        if all(evidence[eid].content_type == "weekly_excerpt" for eid in missed_ids):
+            raise ValueError("WEEKLY_MISSED_ALREADY_READ")
         extras.append({
             "story_id": prefix, "section": "weekly_missed", "kind": "MISSED",
             "title_claim_id": f"{prefix}-title", "event_claim_ids": [],

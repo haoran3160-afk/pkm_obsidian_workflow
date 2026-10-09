@@ -306,7 +306,8 @@ def _recover_failed_collection(run, state, runtime, vault, collect, context_load
     }:
         return _report_result(run, report, report_path)
     if (run / "collection-attempt-2.json").exists():
-        if report.get("status") == "EVIDENCE_INSUFFICIENT" and state["edition"] == "daily":
+        if report.get("status") in {"EVIDENCE_INSUFFICIENT", "MODULE_SOURCES_INCOMPLETE"} \
+                and state["edition"] == "daily":
             candidates = _candidates(state)
             available = tuple(section for section in state["sections"]
                               if any(candidate.story_type == section for candidate in candidates.values()))
@@ -502,7 +503,9 @@ def _role_output(path: Path, role: str, *, expected_model=None, edition="daily",
     structured = envelope["draft"] if role == "generator" else {"decisions": envelope["decisions"]}
     schema = (
         weekly.generator_schema() if edition == "weekly" else mvp_generator_output_schema()
-    ) if role == "generator" else mvp_reviewer_output_schema()
+    ) if role == "generator" else (
+        weekly.reviewer_schema() if edition == "weekly" else mvp_reviewer_output_schema()
+    )
     schema_value = json.loads(schema)
     if role == "generator" and allow_partial:
         schema_value["properties"]["stories"]["minItems"] = 1
@@ -590,7 +593,11 @@ def _review(run, state):
     )
     reviewer_prompt = weekly.REVIEWER_PROMPT if state["edition"] == "weekly" else REVIEWER_PROMPT
     publishing._write_or_verify(_review_file(run, "reviewer-instructions", ".txt"), reviewer_prompt.encode("utf-8"))
-    publishing._write_or_verify(_review_file(run, "reviewer-schema"), brief.role_envelope_schema("reviewer"))
+    reviewer_schema = (
+        weekly.role_envelope_schema("reviewer")
+        if state["edition"] == "weekly" else brief.role_envelope_schema("reviewer")
+    )
+    publishing._write_or_verify(_review_file(run, "reviewer-schema"), reviewer_schema)
     frozen = {
         "draft_file_hash": _file_hash(draft_path), "draft_filename": draft_path.name,
         "generator_session_id": envelope["session_id"],

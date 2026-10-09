@@ -66,8 +66,8 @@ def weekly_draft():
             "watch_next": entry("观察更多 Agent 评测是否把失败轨迹纳入公开指标。", "paper", "tool"),
         }],
         "missed_but_valuable": [{
-            "title": entry("一份未进入日报的评测协议", "paper"),
-            "why": entry("它提供了可复现实验的具体记录方式。", "paper"),
+            "title": entry("一份未进入日报的 Builder 评测实践", "tool"),
+            "why": entry("它提供了可复现实验的具体记录方式。", "tool"),
         }],
         "watchlist": [{
             "subject": entry("Agent failure-trace benchmarks", "paper", "tool"),
@@ -90,6 +90,19 @@ def test_trend_requires_independent_evidence():
     draft["themes"][0]["watch_next"]["evidence_ids"] = ["paper"]
     with pytest.raises(ValueError, match="WEEKLY_TREND_EVIDENCE_INSUFFICIENT"):
         weekly_brief.validate_draft(draft, {"paper": sources()[0]}, CONTEXT, SUNDAY)
+
+
+def test_weekly_reviewer_schema_covers_the_weekly_claim_budget():
+    schema = json.loads(weekly_brief.reviewer_schema())
+    assert schema["properties"]["decisions"]["maxItems"] >= 65
+
+
+def test_missed_reading_rejects_material_already_published_in_daily():
+    draft = weekly_draft()
+    draft["missed_but_valuable"][0]["title"]["evidence_ids"] = ["paper"]
+    draft["missed_but_valuable"][0]["why"]["evidence_ids"] = ["paper"]
+    with pytest.raises(ValueError, match="WEEKLY_MISSED_ALREADY_READ"):
+        weekly_brief.validate_draft(draft, {row.evidence_id: row for row in sources()}, CONTEXT, SUNDAY)
 
 
 def test_single_case_can_survive_without_being_called_a_trend():
