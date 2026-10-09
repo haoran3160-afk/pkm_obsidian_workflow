@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -168,6 +169,10 @@ def _prepare(runtime, vault, day, mode, collect, context_loader, edition):
     state = {
         "run_id": run_id, "content_date": str(day), "mode": mode,
         "edition": edition, "sections": list(requested),
+        # Keep the user's original daily request separate from a bounded,
+        # evidence-backed partial recovery.  Reports and readers must be able
+        # to distinguish "not requested" from "requested but unavailable".
+        "requested_sections": list(requested),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "contract": CONTRACT, "strategy_hash": STRATEGY_HASH,
     }
@@ -211,7 +216,7 @@ def _collection_status(run):
     return _result("COLLECTION_INTERRUPTED", 4, run_id=run.name)
 
 
-def _prepare_collection(run, state, runtime, vault, collect, context_loader):
+def _prepare_collection(run, state, runtime, vault, collect, context_loader, *, recovery_attempt=False):
     # Never recollect evidence after any model handoff, repair or partial input.
     allowed = {"collection-state.json", "collection-error.json", "collection-error-2.json",
                "collection-attempt-1.json", "collection-attempt-2.json"}
@@ -221,11 +226,12 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
     first_error = run / "collection-error.json"
     if first_error.exists() and not _sealed_read(first_error)["retryable"]:
         return _collection_status(run)
-    if attempts == 2:
+    if attempts == 2 and not recovery_attempt:
         return _result("COLLECTION_RETRY_EXHAUSTED", 4, run_id=run.name, retryable=False)
-    attempt = attempts + 1
+    attempt = 2 if recovery_attempt else attempts + 1
     # Create-new before the call: a crash cannot silently replenish attempts.
-    _sealed_write(run / f"collection-attempt-{attempt}.json", {"run_id": run.name, "attempt": attempt})
+    if not recovery_attempt:
+        _sealed_write(run / f"collection-attempt-{attempt}.json", {"run_id": run.name, "attempt": attempt})
     day = date.fromisoformat(state["content_date"])
     edition = state["edition"]
     requested = state["sections"]
@@ -248,8 +254,13 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
     context = editorial._validate_user_context(context_loader())
     candidates = editorial._attach_profile_refs(collected.candidates, context)
     packet = editorial._model_candidate_payloads(candidates, context, total_chars=12000 if edition == "daily" else 24000)
+    available_sections = tuple(section for section in requested
+                               if any(candidate.story_type == section for candidate in candidates))
+    effective_sections = (
+        available_sections if edition == "daily" and available_sections else requested
+    )
     generator_input = {"approved_user_context": context, "candidates": list(packet),
-                       "requested_sections": list(requested), "edition": edition,
+                       "requested_sections": list(effective_sections), "edition": edition,
                        "period_start": str(day - timedelta(days=day.weekday())) if edition == "weekly" else str(day),
                        "period_end": str(day),
                        "published_days": collected.audit.get("published_days", [])}
@@ -259,6 +270,8 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
     generator_schema = weekly.role_envelope_schema() if edition == "weekly" else brief.role_envelope_schema("generator")
     publishing._write_new(run / "generator-schema.json", generator_schema)
     state = state | {
+        "requested_sections": list(requested),
+        "sections": list(effective_sections),
         "coverage": collected.coverage.value, "evidence_level": collected.evidence_level.value,
         "evidence_healthy_sources": collected.evidence_healthy_sources,
         "candidates": [asdict(candidate) for candidate in candidates],
@@ -270,12 +283,99 @@ def _prepare_collection(run, state, runtime, vault, collect, context_loader):
     _sealed_write(run / "state.json", state)
     if collected.coverage is CoverageLevel.INSUFFICIENT:
         return _report(run, state, (), {}, "COVERAGE_INSUFFICIENT", 4)
-    if collected.evidence_level is CoverageLevel.INSUFFICIENT:
+    if collected.evidence_level is CoverageLevel.INSUFFICIENT and not available_sections:
         return _report(run, state, (), {}, "EVIDENCE_INSUFFICIENT", 4)
     missing = set(requested) - {candidate.story_type for candidate in candidates}
     if missing and edition == "daily":
         return _report(run, state, (), {}, "MODULE_SOURCES_INCOMPLETE", 4)
     return _generator_ready(run, state)
+
+
+def _recover_failed_collection(run, state, runtime, vault, collect, context_loader):
+    """Retry one sealed, pre-model evidence failure in the same run."""
+    report_path = run / "run-report.json"
+    if not report_path.exists() or any(
+        (run / name).exists()
+        for name in ("draft.json", "review.json", "review-state.json", "repair.json")
+    ):
+        raise StageError("COLLECTION_PREPARATION_INCOMPLETE")
+    report = _sealed_read(report_path)
+    audit = report.get("audit", {})
+    if report.get("status") not in {
+        "EVIDENCE_INSUFFICIENT", "MODULE_SOURCES_INCOMPLETE", "COVERAGE_INSUFFICIENT",
+    }:
+        return _report_result(run, report, report_path)
+    if (run / "collection-attempt-2.json").exists():
+        if report.get("status") == "EVIDENCE_INSUFFICIENT" and state["edition"] == "daily":
+            candidates = _candidates(state)
+            available = tuple(section for section in state["sections"]
+                              if any(candidate.story_type == section for candidate in candidates.values()))
+            if available:
+                archive = run.parent / f"{run.name}-failed-collection-2"
+                if archive.exists():
+                    raise StageError("COLLECTION_RECOVERY_ARCHIVE_EXISTS")
+                archive.mkdir()
+                for name in ("run-report.json", "state.json", "generator-input.json",
+                             "generator-instructions.txt", "generator-schema.json"):
+                    path = run / name
+                    if path.exists():
+                        shutil.move(str(path), str(archive / name))
+                old_input = _read(archive / "generator-input.json")
+                requested_sections = state.get("requested_sections", state["sections"])
+                input_value = old_input | {
+                    "requested_sections": list(available),
+                    "candidates": [
+                        row for row in old_input["candidates"]
+                        if row["story_type"] in available
+                    ],
+                }
+                _write(run / "generator-input.json", input_value)
+                publishing._write_new(
+                    run / "generator-instructions.txt",
+                    brief.generator_instructions(available, "daily").encode("utf-8"),
+                )
+                publishing._write_new(
+                    run / "generator-schema.json",
+                    brief.role_envelope_schema("generator"),
+                )
+                recovered = state | {
+                    "requested_sections": list(requested_sections),
+                    "sections": list(available),
+                    "generator_input_hash": _file_hash(run / "generator-input.json"),
+                    "instructions_hash": _file_hash(run / "generator-instructions.txt"),
+                    "schema_hash": _file_hash(run / "generator-schema.json"),
+                    "recovered_from": str(archive),
+                }
+                _sealed_write(run / "state.json", recovered)
+                return _generator_ready(run, recovered)
+        # A successful second collection may still end in a terminal shortage
+        # and already has a sealed report.  Return that report verbatim on
+        # subsequent resume attempts; never turn a stable outcome into the
+        # unrelated COLLECTION_INTERRUPTED status.
+        return _report_result(run, report, report_path)
+    retryable = audit.get("retryable_collection_failure") or any(
+        row.get("reason") in {"FULLTEXT_NETWORK_ERROR", "NETWORK_ERROR", "TIMEOUT"}
+        for row in audit.get("exclusions", [])
+    )
+    if not retryable:
+        return _report_result(run, report, report_path)
+    _sealed_write(run / "collection-attempt-2.json", {"run_id": run.name, "attempt": 2})
+    archive = run.parent / f"{run.name}-failed-collection-1"
+    if archive.exists():
+        raise StageError("COLLECTION_RECOVERY_ARCHIVE_EXISTS")
+    archive.mkdir()
+    for name in ("run-report.json", "state.json", "generator-input.json",
+                 "generator-instructions.txt", "generator-schema.json"):
+        path = run / name
+        if path.exists():
+            shutil.move(str(path), str(archive / name))
+    clean_state = {
+        key: state[key] for key in
+        ("run_id", "content_date", "mode", "edition", "sections", "started_at", "contract", "strategy_hash")
+    }
+    return _prepare_collection(
+        run, clean_state, runtime, vault, collect, context_loader, recovery_attempt=True,
+    )
 
 
 def _generator_ready(run, state):
@@ -287,7 +387,8 @@ def _generator_ready(run, state):
         schema_path=str(run / ("generator-schema-sol.json" if state.get("model_migration") else "generator-schema.json")),
         draft_path=str(_output_path(run, "generator")),
         candidate_count=len(state["candidates"]),
-        edition=state["edition"], requested_sections=state["sections"],
+        edition=state["edition"],
+        requested_sections=state.get("requested_sections", state["sections"]),
     )
 
 
@@ -384,7 +485,8 @@ def _migrate_model(runtime, run_id, day):
     return _generator_ready(run, state)
 
 
-def _role_output(path: Path, role: str, *, expected_model=None, edition="daily"):
+def _role_output(path: Path, role: str, *, expected_model=None, edition="daily",
+                 allow_partial=False):
     envelope = _read(path)
     expected = {"model", "session_id", "draft"} if role == "generator" else {
         "model", "session_id", "review_request_hash", "decisions",
@@ -401,11 +503,14 @@ def _role_output(path: Path, role: str, *, expected_model=None, edition="daily")
     schema = (
         weekly.generator_schema() if edition == "weekly" else mvp_generator_output_schema()
     ) if role == "generator" else mvp_reviewer_output_schema()
+    schema_value = json.loads(schema)
+    if role == "generator" and allow_partial:
+        schema_value["properties"]["stories"]["minItems"] = 1
     if _contains_forbidden_output_text(structured):
         raise StageError("FORBIDDEN_OUTPUT_TEXT")
     # Model-independent validation; no provider credentials or transport.
-    if not brief.matches_schema(structured, json.loads(schema)):
-        unknown = brief.contains_unknown_fields(structured, json.loads(schema))
+    if not brief.matches_schema(structured, schema_value):
+        unknown = brief.contains_unknown_fields(structured, schema_value)
         raise StageError("OUTPUT_SCHEMA_INVALID", repairable=not unknown)
     return envelope, structured
 
@@ -437,7 +542,13 @@ def _review_file(run, stem, extension=".json"):
 
 def _review(run, state):
     draft_path = _output_path(run, "generator")
-    envelope, draft = _role_output(draft_path, "generator", edition=state["edition"])
+    allow_partial = (
+        state["edition"] == "daily"
+        and len(state["sections"]) < len(state.get("requested_sections", state["sections"]))
+    )
+    envelope, draft = _role_output(
+        draft_path, "generator", edition=state["edition"], allow_partial=allow_partial,
+    )
     try:
         if state["edition"] == "weekly":
             stories = weekly.validate_draft(
@@ -446,7 +557,8 @@ def _review(run, state):
             )
         else:
             stories = brief.validate_draft(
-                draft, _candidates(state), state["context"], requested_sections=state["sections"],
+                draft, _candidates(state), state["context"],
+                requested_sections=state["sections"], allow_partial=allow_partial,
             )
     except ValueError as error:
         raise StageError(
@@ -558,7 +670,8 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
     markdown = None
     missing_modules = (
         [] if state["edition"] == "weekly"
-        else [key for key in state["sections"] if key not in {story["section"] for story in accepted}]
+        else [key for key in state.get("requested_sections", state["sections"])
+              if key not in {story["section"] for story in accepted}]
     )
     if status in {"PUBLISHED", "PUBLISHED_PARTIAL"} and accepted:
         render = weekly.render if state["edition"] == "weekly" else brief.render
@@ -599,7 +712,8 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         })
     report = {
         "schema": "pkm.ai-daily-luna.run.v3", "contract": CONTRACT,
-        "edition": state["edition"], "requested_sections": state["sections"],
+        "edition": state["edition"],
+        "requested_sections": state.get("requested_sections", state["sections"]),
         "git_head": editorial._git_head(), "strategy_hash": STRATEGY_HASH,
         "source_strategy_hash": source_strategy_hash or state["strategy_hash"],
         "model": MODEL, "reasoning": REASONING, "content_date": state["content_date"],
@@ -621,7 +735,8 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
         "model_identity_source": "CODEX_SESSION_DECLARATION",
         "evidence_chars": sum(len(row["summary"]) for row in packet),
         "underfilled": bool(missing_modules),
-        "missing_modules": [key for key in state["sections"] if key not in (
+        "missing_modules": [key for key in state.get("requested_sections", state["sections"])
+                            if key not in (
             {candidate.story_type for candidate in evidence.values()}
             if status == "MODULE_SOURCES_INCOMPLETE" else {story["section"] for story in accepted}
         )] if state["edition"] == "daily" else [],
@@ -846,6 +961,13 @@ def run_luna_stage(
             return _prepare_collection(run, state, runtime, vault, collect, context_loader)
         if stage == "prepare":
             if (run / "run-report.json").exists():
+                report = _sealed_read(run / "run-report.json")
+                if report.get("status") in {
+                    "EVIDENCE_INSUFFICIENT", "MODULE_SOURCES_INCOMPLETE", "COVERAGE_INSUFFICIENT",
+                }:
+                    return _recover_failed_collection(
+                        run, state, runtime, vault, collect, context_loader,
+                    )
                 return _finalize(run, state, "shadow", False, runtime, vault)
             if _review_file(run, "review-state").exists():
                 return _reviewer_ready(run, state, _sealed_read(_review_file(run, "review-state")))

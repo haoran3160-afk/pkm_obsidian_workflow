@@ -71,13 +71,10 @@ GitHub的connection必须面向个人自用，选1至2个真实适用场景（�
 写明上手前提和资源/API成本边界，不编造免费可跑、硬件要求或安装成功。""",
     "ai_practice": """说明真实使用场景、具体方法、效果和限制；区分作者经验与已验证能力。""",
 }
-WEEKLY_GUIDANCE = """周报按六个模块综合已有材料，并包含仅为缺失方向补取的新阅读；不把日报逐条粘贴，不把旧资讯当新发布。
-周报每模块约200至350中文字，归纳主要观察、证据间的联系/差异、仍需观察的问题；
-只有一条材料就坦诚这是单例，不编造跨日趋势。weekly_excerpt标有原日期，事实来自原始摘录，旧判断仅作线索。
-周报的个人署名逐条以Verified author为准；not recorded时标题和正文只称“原文/该案例”，
-不能从来源名或旧解读补出人名。周报研究栏也遵守精炼的1至3段，不套用日报长篇篇幅。
-weekly_excerpt是本周已读回顾；其他候选是本周新增阅读，不得声称已经在本周日报推荐过。
-新增资料保留原文日期，evergreen按经典延伸阅读介绍，不称本周新发布。"""
+WEEKLY_GUIDANCE = """周报不是六栏回顾。先从本周已验证的日报故事、日报未选候选和按需补齐的材料中寻找共同变化，
+再输出可证伪的主判断、1至4个趋势/早期信号/关键个案、日报未选但值得补读的材料和具体下周观察。
+只有独立来源支持同一机制时才称共同趋势；单例必须标为个案，证据不足时省略主判断。
+weekly_excerpt标有原日期并表示本周已读回顾；其他候选是本周新增阅读，经典内容保留原始日期。"""
 
 
 def generator_instructions(requested_sections, edition):
@@ -211,8 +208,13 @@ def role_envelope_schema(role):
     return json.dumps(_closed(properties), ensure_ascii=False).encode("utf-8")
 
 
-def validate_draft(draft, evidence, context, *, requested_sections=None, **_unused):
-    if not matches_schema(draft, GENERATOR_SCHEMA):
+def validate_draft(draft, evidence, context, *, requested_sections=None,
+                   allow_partial=False, **_unused):
+    schema = GENERATOR_SCHEMA
+    if allow_partial:
+        schema = json.loads(json.dumps(GENERATOR_SCHEMA))
+        schema["properties"]["stories"]["minItems"] = 1
+    if not matches_schema(draft, schema):
         raise ValueError("OUTPUT_SCHEMA_INVALID")
     sections = [item["section"] for item in draft["stories"]]
     required = tuple(requested_sections or SECTIONS)

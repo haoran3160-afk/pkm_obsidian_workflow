@@ -284,7 +284,6 @@ def collect_modules(
             transient_modules.add("research")
     audit["module_candidates"] = {key: len(value) for key, value in buckets.items()}
     audit["missing_modules"] = [key for key, value in buckets.items() if not value]
-    audit["retryable_collection_failure"] = bool(transient_modules.intersection(audit["missing_modules"]))
     evidence_core = len({s.source_id for s in core} & assessment)
     audit["legacy_core_evidence_sources"] = evidence_core
     available_modules = sum(bool(value) for value in buckets.values())
@@ -293,6 +292,13 @@ def collect_modules(
     if not health_sources:
         coverage = CoverageLevel.A if available_modules == len(requested) else CoverageLevel.INSUFFICIENT
     evidence_level = _coverage_level(available_modules, len(requested), a_bps=10000, b_bps=8000)
+    # A transient fulltext failure can leave a metadata candidate in a bucket
+    # while the pair still has insufficient evidence. Permit the single bounded
+    # recovery for any requested module affected by that transport failure.
+    audit["retryable_collection_failure"] = bool(
+        transient_modules.intersection(set(requested))
+        and evidence_level is CoverageLevel.INSUFFICIENT
+    )
     candidates = tuple(candidate for values in buckets.values() for candidate in values)
     return CollectionResult(coverage, len(health_sources), healthy, candidates,
                             evidence_level, len({c.source_id for c in candidates}), audit)

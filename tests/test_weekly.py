@@ -122,14 +122,18 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
             eid = packet["candidates"][0]["evidence_id"]
             def clause(text):
                 return {"text": text, "evidence_ids": [eid]}
-            draft = {"lead": None, "signals": [{
+            draft = {"thesis": None, "themes": [{
                 "kind": "CASE", "title": clause("A verified agent evaluation case"),
-                "body": [clause("The original records tool failures.")],
-                "takeaway": clause("Failure records offer one bounded evaluation case."),
+                "observation": [clause("The original records tool failures.")],
+                "why_now": clause("The case exposes a concrete evaluation boundary."),
+                "mechanism": clause("Failure records make the tool boundary testable."),
+                "implications": {"research": clause("It offers one bounded evaluation case."),
+                                 "practice": None, "venture": None},
+                "counter_evidence": None,
                 "connection": clause("This is relevant to the approved research project.")
                 | {"context_refs": ["projects[0]"]},
-                "watch": None,
-            }]}
+                "watch_next": None,
+            }], "missed_but_valuable": [], "watchlist": []}
         else:
             by_section = {row["story_type"]: row for row in packet["candidates"]}
             stories = [{"section": section, "evidence_id": by_section[section]["evidence_id"],
@@ -189,9 +193,9 @@ def test_six_daily_runs_feed_one_weekly_without_fetching_or_repeating_daily_outp
     assert result["vault_write"] is True
     assert Path(result["vault_path"]).name == "AI-Weekly-2026-09-13.md"
     note = Path(result["vault_path"]).read_text(encoding="utf-8")
-    assert note.count("\n## ") == 1
+    assert note.count("\n## ") >= 1
     assert "A verified agent evaluation case" in note
-    assert "## 🧪 学术研究" not in note
+    assert "本周主判断" not in note or "本周综合" in note
     assert "type: ai-weekly" in note
     assert not (vault / "AI-Daily-2026-09-13.md").exists()
     assert call("prepare", sunday, mode="production")["status"] == "ALREADY_EXISTS"

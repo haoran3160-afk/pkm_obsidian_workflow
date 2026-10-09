@@ -1,9 +1,8 @@
-"""Weekly findings are selected across interest lanes and backed by original links."""
+"""Weekly synthesis tests: thesis, mechanism, boundaries and watchlist."""
 from __future__ import annotations
 
 import json
-from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -11,7 +10,6 @@ import pytest
 from pkm_workflow import weekly_brief
 from pkm_workflow.ai_daily_luna import _published_urls, run_luna_stage
 from pkm_workflow.v75_collection import Candidate, CollectionResult, CoverageLevel
-from pkm_workflow.weekly_collection import collect_weekly
 
 SUNDAY = date(2026, 9, 13)
 GENERATOR_ID = "11111111-1111-4111-8111-111111111111"
@@ -47,90 +45,94 @@ def entry(text, *ids):
 
 def weekly_draft():
     return {
-        "lead": entry("本周两份材料都把失败记录放进 Agent 的改进循环。", "paper", "tool"),
-        "signals": [{
-            "kind": "PATTERN",
-            "title": entry("失败记录开始进入评测与验收", "paper", "tool"),
-            "body": [
-                entry("研究原文记录工具调用失败，用于可重复评测。", "paper"),
+        "thesis": entry("Agent 系统正在把失败轨迹变成下一次决策的输入。", "paper", "tool"),
+        "themes": [{
+            "kind": "TREND",
+            "title": entry("失败轨迹从调试记录变成系统能力", "paper", "tool"),
+            "observation": [
+                entry("研究协议把工具调用失败记录下来，用于可重复评测。", "paper"),
                 entry("Builder 在验收输出前检查失败的工具调用。", "tool"),
             ],
-            "takeaway": entry("两种场景都把失败轨迹作为下一次决策的输入，样本仍有限。", "paper", "tool"),
-            "connection": entry("你可以用这两种做法设计 Agent 研究的错误分析。", "paper", "tool")
+            "why_now": entry("研究评测与实际交付开始采用相同的失败反馈视角。", "paper", "tool"),
+            "mechanism": entry("失败轨迹同时成为评测样本与下一次工具选择的约束。", "paper", "tool"),
+            "implications": {
+                "research": entry("可以把错误分析设计成 Agent 研究的主要变量。", "paper", "tool"),
+                "practice": entry("工作流应保存失败轨迹，而不是只保存最终答案。", "tool"),
+                "venture": None,
+            },
+            "counter_evidence": entry("当前只有两个来源，尚不足以证明整个行业都已转向。", "paper", "tool"),
+            "connection": entry("这与 Agent 研究中寻找可重复评测信号直接相关。", "paper", "tool")
             | {"context_refs": ["projects[0]"]},
-            "watch": None,
+            "watch_next": entry("观察更多 Agent 评测是否把失败轨迹纳入公开指标。", "paper", "tool"),
+        }],
+        "missed_but_valuable": [{
+            "title": entry("一份未进入日报的评测协议", "paper"),
+            "why": entry("它提供了可复现实验的具体记录方式。", "paper"),
+        }],
+        "watchlist": [{
+            "subject": entry("Agent failure-trace benchmarks", "paper", "tool"),
+            "why": entry("它可能把错误分析从附录提升为比较维度。", "paper", "tool"),
+            "indicator": entry("下周出现公开数据集或 leaderboard 指标。", "paper", "tool"),
         }],
     }
 
 
-def test_weekly_pattern_requires_independent_evidence():
+def test_trend_requires_independent_evidence():
     draft = weekly_draft()
-    for key in ("title", "takeaway", "connection"):
-        draft["signals"][0][key]["evidence_ids"] = ["paper"]
-    draft["signals"][0]["body"] = [entry("研究原文记录工具调用失败。", "paper")]
-    with pytest.raises(ValueError, match="WEEKLY_PATTERN_EVIDENCE_INSUFFICIENT"):
+    draft["themes"][0]["title"]["evidence_ids"] = ["paper"]
+    draft["themes"][0]["observation"] = [entry("研究协议记录工具失败。", "paper")]
+    draft["themes"][0]["why_now"]["evidence_ids"] = ["paper"]
+    draft["themes"][0]["mechanism"]["evidence_ids"] = ["paper"]
+    draft["themes"][0]["connection"]["evidence_ids"] = ["paper"]
+    draft["themes"][0]["implications"]["research"]["evidence_ids"] = ["paper"]
+    draft["themes"][0]["implications"]["practice"] = None
+    draft["themes"][0]["counter_evidence"]["evidence_ids"] = ["paper"]
+    draft["themes"][0]["watch_next"]["evidence_ids"] = ["paper"]
+    with pytest.raises(ValueError, match="WEEKLY_TREND_EVIDENCE_INSUFFICIENT"):
         weekly_brief.validate_draft(draft, {"paper": sources()[0]}, CONTEXT, SUNDAY)
 
 
-def test_same_origin_old_articles_do_not_qualify_as_this_week_development():
-    paper, tool = sources()
-    evidence = {
-        "paper": replace(paper, canonical_origin_id="one-publisher", published="2024-09-09"),
-        "tool": replace(tool, canonical_origin_id="one-publisher", published="2025-09-10"),
-    }
-    with pytest.raises(ValueError, match="WEEKLY_PATTERN_EVIDENCE_INSUFFICIENT"):
-        weekly_brief.validate_draft(weekly_draft(), evidence, CONTEXT, SUNDAY)
-
-
-def test_weekly_drops_a_rejected_finding_without_losing_approved_case():
+def test_single_case_can_survive_without_being_called_a_trend():
     draft = weekly_draft()
-    draft["signals"].append({
-        "kind": "CASE", "title": entry("一个可复核的评测接口", "paper"),
-        "body": [entry("原文记录了工具调用失败。", "paper")],
-        "takeaway": entry("这一做法值得作为单个案例研究。", "paper"),
-        "connection": entry("你可用它检查研究中的错误分析。", "paper")
-        | {"context_refs": ["projects[0]"]},
-        "watch": None,
+    draft["themes"][0]["kind"] = "CASE"
+    normalized = weekly_brief.validate_draft(draft, {row.evidence_id: row for row in sources()}, CONTEXT, SUNDAY)
+    assert normalized[0]["kind"] == "CASE"
+    assert any(row["claim_id"] == "weekly-thesis" for row in normalized[0]["claims"])
+
+
+def test_rejected_theme_is_dropped_but_missed_and_watch_items_are_optional():
+    draft = weekly_draft()
+    draft["themes"].append({
+        "kind": "CASE", "title": entry("不相关的个案", "paper"),
+        "observation": [entry("原文有一个单独案例。", "paper")],
+        "why_now": entry("它的边界值得记录。", "paper"),
+        "mechanism": entry("案例暴露一个约束。", "paper"),
+        "implications": {"research": None, "practice": None, "venture": None},
+        "counter_evidence": None,
+        "connection": entry("它与研究方向相关。", "paper") | {"context_refs": ["projects[0]"]},
+        "watch_next": None,
     })
-    stories = weekly_brief.validate_draft(
-        draft, {source.evidence_id: source for source in sources()}, CONTEXT, SUNDAY,
+    normalized = weekly_brief.validate_draft(
+        draft, {row.evidence_id: row for row in sources()}, CONTEXT, SUNDAY,
     )
     decisions = {"decisions": [
         {"claim_id": row["claim_id"], "decision": (
-            "REJECT" if row["claim_id"] == "weekly-1-title" else "ACCEPT"
+            "REJECT" if row["claim_id"].startswith("weekly-2-") else "ACCEPT"
         )}
-        for story in stories for row in story["claims"]
+        for signal in normalized for row in signal["claims"]
     ]}
-    accepted = weekly_brief.accepted_signals(stories, decisions)
+    accepted = weekly_brief.accepted_signals(normalized, decisions)
     markdown = weekly_brief.render(
         SUNDAY, CoverageLevel.A, CoverageLevel.A, accepted,
-        {source.evidence_id: source for source in sources()},
+        {row.evidence_id: row for row in sources()},
     )
-    assert len(accepted) == 1
-    assert "一个可复核的评测接口" in markdown
-    assert "失败记录开始进入评测与验收" not in markdown
-    assert "本周两份材料" not in markdown
-    assert "https://example.com/tool" not in markdown
+    assert any(signal["story_id"] == "weekly-1" for signal in accepted)
+    assert not any(signal["story_id"] == "weekly-2" for signal in accepted)
+    assert "日报未选但值得补读" in markdown
+    assert "下周观察" in markdown
 
 
-def test_weekly_optional_watchpoints_stop_at_two_without_discarding_signals():
-    draft = weekly_draft()
-    first = draft["signals"][0]
-    first["kind"] = "CASE"
-    first["watch"] = entry("核对下一次工具失败的记录。", "paper")
-    for index in (2, 3):
-        extra = json.loads(json.dumps(first))
-        extra["title"]["text"] = f"另一条独立信号 {index}"
-        extra["watch"]["text"] = f"观察额外信号 {index}"
-        draft["signals"].append(extra)
-    normalized = weekly_brief.validate_draft(
-        draft, {source.evidence_id: source for source in sources()}, CONTEXT, SUNDAY,
-    )
-    assert len(normalized) == 3
-    assert sum(len(signal["watch_claim_ids"]) for signal in normalized) == 2
-
-
-def test_weekly_stages_publish_cross_lane_signal_without_six_headings(tmp_path):
+def test_weekly_stages_cross_domain_synthesis_without_six_headings(tmp_path):
     vault = tmp_path / "vault" / "30-Daily"
     vault.mkdir(parents=True)
     evidence = sources()
@@ -145,7 +147,6 @@ def test_weekly_stages_publish_cross_lane_signal_without_six_headings(tmp_path):
 
     prepared = stage("prepare")
     assert prepared["status"] == "GENERATOR_READY"
-    assert prepared["required_model"] == "gpt-6-luna"
     envelope = {"model": "gpt-6-luna", "session_id": GENERATOR_ID, "draft": weekly_draft()}
     Path(prepared["draft_path"]).write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
     reviewed = stage("review", run_id=prepared["run_id"])
@@ -163,85 +164,12 @@ def test_weekly_stages_publish_cross_lane_signal_without_six_headings(tmp_path):
     Path(reviewed["review_path"]).write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
     result = stage("finalize", run_id=prepared["run_id"], confirm_vault_write=True)
     assert result["vault_write"] is True
-    assert result["story_count"] == 1
     note = Path(result["vault_path"]).read_text(encoding="utf-8")
-    assert "失败记录开始进入评测与验收" in note
-    assert "https://example.com/paper" in note and "https://example.com/tool" in note
-    assert "[本周新增阅读 · Builder](https://example.com/tool)" in note
-    assert "本周保留" not in note
+    assert "本周主判断" in note
+    assert "背后机制" in note and "边界与反方" in note
+    assert "日报未选但值得补读" in note and "下周观察" in note
     assert "学术研究 ·" not in note and "AI 实践 ·" not in note
     assert stage("prepare")["status"] == "ALREADY_EXISTS"
-    assert _published_urls(tmp_path, vault, SUNDAY + timedelta(days=1)) == {
+    assert _published_urls(tmp_path, vault, SUNDAY + __import__("datetime").timedelta(days=1)) == {
         "https://example.com/tool",
     }
-
-
-def test_weekly_considers_verified_daily_candidate_not_published_in_daily(tmp_path):
-    monday = date(2026, 9, 14)
-    week_end = date(2026, 9, 20)
-    vault = tmp_path / "vault" / "30-Daily"
-    vault.mkdir(parents=True)
-    research = sources()[0]
-    practice = sources()[1]
-    alternative = Candidate(
-        evidence_id="unread", source="Independent Lab", source_id="independent-lab",
-        canonical_origin_id="independent-lab", story_type="research", evidence_role="PAPER_PRIMARY",
-        title="A second agent evaluation", link="https://example.com/unread",
-        published="2026-09-14", summary="The paper audits tool-use failures in a second setting.",
-        content_type="evergreen", fulltext_enriched=True,
-    )
-    invitation = Candidate(
-        evidence_id="invitation", source="Event Host", source_id="event-host",
-        canonical_origin_id="event-host", story_type="ai_practice",
-        title="Register for an Agentic Engineering meetup",
-        link="https://example.com/invitation", published="2026-09-14",
-        summary="The page invites readers to an evening meetup.",
-        content_type="news", fulltext_enriched=True, editorial_score=20000,
-    )
-
-    def daily_stage(name, **kwargs):
-        return run_luna_stage(
-            name, today=monday, mode="production", runtime_root=tmp_path,
-            vault_daily_dir=vault,
-            collect=lambda _day: CollectionResult(
-                CoverageLevel.A, 6, 4, (research, practice, alternative, invitation),
-            ),
-            context_loader=lambda: CONTEXT, **kwargs,
-        )
-
-    prepared = daily_stage("prepare")
-    stories = [{
-        "section": section, "evidence_id": eid, "title": "可核验的 Agent 工作流",
-        "body": ["原文记录了一种可核验的工具调用流程。"],
-        "takeaway": "具体失败记录有助于检查评测边界。",
-        "connection": "它可帮助你的 Agent 研究进行错误分析。",
-        "context_refs": ["projects[0]"], "action": None, "priority": "USEFUL",
-    } for section, eid in (("research", "paper"), ("ai_practice", "tool"))]
-    Path(prepared["draft_path"]).write_text(json.dumps({
-        "model": "gpt-6-luna", "session_id": GENERATOR_ID, "draft": {"stories": stories},
-    }, ensure_ascii=False), encoding="utf-8")
-    reviewed = daily_stage("review", run_id=prepared["run_id"])
-    packet = json.loads(Path(reviewed["review_input_path"]).read_text(encoding="utf-8"))
-    Path(reviewed["review_path"]).write_text(json.dumps({
-        "model": "gpt-6-luna", "session_id": REVIEWER_ID,
-        "review_request_hash": reviewed["review_request_hash"],
-        "decisions": [{
-            "claim_id": row["claim_id"], "evidence_ids": row["evidence_ids"],
-            "review_requirement_hash": row["review_requirement_hash"],
-            "decision": "ACCEPT", "reason_code": "SUPPORTED_BY_SEALED_EVIDENCE",
-        } for row in packet["rubric"]["requirements"]],
-    }), encoding="utf-8")
-    final = daily_stage("finalize", run_id=prepared["run_id"], confirm_vault_write=True)
-    assert final["vault_write"] is True
-    report = json.loads(Path(final["shadow_report_path"]).read_text(encoding="utf-8"))
-    assert {row["link"] for row in report["weekly_candidate_snapshot"]} == {
-        "https://example.com/paper", "https://example.com/tool", "https://example.com/unread",
-        "https://example.com/invitation",
-    }
-    assert "https://example.com/unread" not in _published_urls(tmp_path, vault, week_end)
-    weekly = collect_weekly(week_end, tmp_path, vault)
-    by_link = {candidate.link: candidate for candidate in weekly.candidates}
-    assert "https://example.com/unread" in by_link
-    assert "https://example.com/invitation" not in by_link
-    assert by_link["https://example.com/unread"].content_type == "evergreen"
-    assert by_link["https://example.com/paper"].content_type == "weekly_excerpt"

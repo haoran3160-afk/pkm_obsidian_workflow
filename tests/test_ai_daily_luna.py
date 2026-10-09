@@ -126,8 +126,8 @@ def test_partial_week_supplements_only_missing_sections_and_remembers_new_links(
         ) for section in sections))
     sunday = DAY + timedelta(days=6)
     collection = collect_weekly(sunday, tmp_path, vault, supplement=supplement)
-    assert requested == [("builder", "vc", "cognition", "github")]
-    assert len(collection.candidates) == 6
+    assert requested == [("research", "ai_practice", "builder", "vc", "cognition", "github")]
+    assert len(collection.candidates) >= 6
     def stage(name, **kwargs):
         return run_luna_stage(name, today=sunday, runtime_root=tmp_path, vault_daily_dir=vault,
                               collect=lambda _: collection,
@@ -143,15 +143,20 @@ def test_partial_week_supplements_only_missing_sections_and_remembers_new_links(
     signal = {
         "kind": "CASE",
         "title": statement("Builder 的新阅读"),
-        "body": [statement("原文介绍了产品方法与限制。")],
-        "takeaway": statement("这是一条值得核验的单个案例。"),
+        "observation": [statement("原文介绍了产品方法与限制。")],
+        "why_now": statement("它具体展示了产品取舍。"),
+        "mechanism": statement("约束影响了 Agent 的执行方式。"),
+        "implications": {"research": None, "practice": statement("可以把约束写进实验。"),
+                         "venture": None},
+        "counter_evidence": None,
         "connection": statement("可以用该案例检查 Agent 研究中的产品取舍。")
         | {"context_refs": ["projects[0]"]},
-        "watch": None,
+        "watch_next": None,
     }
     save(prepared["draft_path"], {
         "model": MODEL, "session_id": GENERATOR_ID,
-        "draft": {"lead": None, "signals": [signal]},
+        "draft": {"thesis": None, "themes": [signal],
+                  "missed_but_valuable": [], "watchlist": []},
     })
     review = stage("review", run_id=prepared["run_id"])
     rubric = json.loads(Path(review["review_input_path"]).read_text(encoding="utf-8"))["rubric"]

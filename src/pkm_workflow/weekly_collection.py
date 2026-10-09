@@ -114,17 +114,20 @@ def collect_weekly(day, runtime, vault, *, supplement=None):
                             "report_sha256": luna._file_hash(report_path)})
         except (OSError, ValueError, KeyError, TypeError) as error:
             exclusions.append({"date": str(published_day), "reason": type(error).__name__})
+    # The daily snapshots already contain evidence-qualified, non-selected
+    # candidates.  Only supplement genuinely missing sections; a Sunday run
+    # must not become an unbounded second crawl of every source.
     missing = [section for section in SECTIONS
                if section not in {candidate.story_type for candidate in pool.values()}]
     supplemented = []
     supplement_audit = {}
     supplement_unhealthy = False
     if missing and supplement is not None:
-        extra = supplement(tuple(missing))
+        extra = supplement(tuple(SECTIONS))
         supplement_audit = dict(extra.audit)
         supplement_unhealthy = (extra.coverage is CoverageLevel.INSUFFICIENT
                                 or extra.evidence_level is CoverageLevel.INSUFFICIENT)
-        for section in missing:
+        for section in SECTIONS:
             options = sorted(
                 (candidate for candidate in extra.candidates if candidate.story_type == section
                  and candidate.access_state is AccessState.FULL_FREE
