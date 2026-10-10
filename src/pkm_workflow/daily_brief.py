@@ -239,6 +239,9 @@ def validate_draft(draft, evidence, context, *, requested_sections=None,
         ]
         if any(path not in paths for path in refs):
             raise ValueError("GENERATOR_CONTEXT_REFS_INVALID")
+        profile_refs = set(evidence[eid].profile_refs)
+        if refs and evidence[eid].pillar_exposure and not profile_refs.intersection(refs):
+            raise ValueError("GENERATOR_CONTEXT_REFS_UNSUPPORTED")
         if item["action"]:
             action_count += 1
             if not any(path.startswith(("projects[", "prior_knowledge[", "knowledge_anchors[")) for path in refs):

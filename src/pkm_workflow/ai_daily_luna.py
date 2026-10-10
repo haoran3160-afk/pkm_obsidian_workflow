@@ -866,7 +866,7 @@ def _finalize(run, state, mode, confirm, runtime, vault):
         status, code = "PUBLISHED", 0
         incomplete = (
             not accepted if state["edition"] == "weekly"
-            else len(accepted) != len(state["sections"])
+            else len(accepted) != len(state.get("requested_sections", state["sections"]))
         )
         if incomplete:
             if not (run / "repair.json").exists():

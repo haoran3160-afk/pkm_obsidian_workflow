@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import asdict, replace
-from datetime import timedelta
+from datetime import date, timedelta
 
 from . import ai_daily_production as publishing
 from .daily_brief import SECTIONS
@@ -114,6 +114,57 @@ def collect_weekly(day, runtime, vault, *, supplement=None):
                             "report_sha256": luna._file_hash(report_path)})
         except (OSError, ValueError, KeyError, TypeError) as error:
             exclusions.append({"date": str(published_day), "reason": type(error).__name__})
+    # Prepared daily runs can contain sealed, evidence-qualified candidates
+    # without a publication receipt. They remain eligible for Sunday reading,
+    # but are marked as new reading rather than as already read.
+    reported_runs = {row["run_id"] for row in reports}
+    runs_root = runtime / "scratch" / "runs"
+    if runs_root.is_dir():
+        for run in runs_root.iterdir():
+            if not run.is_dir() or run.name in reported_runs:
+                continue
+            try:
+                state = luna._sealed_read(run / "state.json")
+                prepared_day = date.fromisoformat(state["content_date"])
+                if (state["edition"] != "daily" or not start <= prepared_day <= day
+                        or luna._file_hash(run / "generator-input.json") != state["generator_input_hash"]):
+                    continue
+                packet = luna._read(run / "generator-input.json")["candidates"]
+                for row in packet:
+                    original = _candidate(row)
+                    if (original.story_type not in SECTIONS
+                            or original.access_state is not AccessState.FULL_FREE
+                            or not original.fulltext_enriched
+                            or _event_notice(original)
+                            or (original.story_type == "research" and original.evidence_role != "PAPER_PRIMARY")):
+                        continue
+                    excerpt = _section_aware_excerpt(
+                        original, max_chars=1900,
+                        context_terms=_semantic_terms(original.title)
+                        | {"limitation", "risk", "boundary", "benchmark", "experiment"},
+                    )
+                    summary = (
+                        f"Prepared daily run: {prepared_day}; original date: {original.published}; "
+                        f"source: {original.source}; author: {row.get('observed_author') or '原文未记录署名'}.\n"
+                        "Reading status: 本周新增阅读候选。\n"
+                        f"Original evidence excerpt:\n{excerpt}"
+                    )
+                    candidate = replace(
+                        original,
+                        evidence_id="week-" + hashlib.sha256(
+                            f"{day}:{_normalize_url(original.link)}".encode()
+                        ).hexdigest()[:24],
+                        summary=summary,
+                        source_links=((
+                            f"{row.get('observed_author') or '原文未记录署名'} · {original.source} · {original.published}",
+                            original.link,
+                        ),),
+                    )
+                    key = _normalize_url(original.link)
+                    if key not in pool:
+                        pool[key] = candidate
+            except (OSError, ValueError, KeyError, TypeError):
+                exclusions.append({"run_id": run.name, "reason": "PREPARED_INPUT_INVALID"})
     # The daily snapshots already contain evidence-qualified, non-selected
     # candidates.  Only supplement genuinely missing sections; a Sunday run
     # must not become an unbounded second crawl of every source.

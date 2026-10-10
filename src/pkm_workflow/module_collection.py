@@ -65,14 +65,19 @@ def github_json(endpoint):
     return value
 
 
-def github_candidates(day, used_urls, get_json=github_json, *, user_context=None):
+def github_candidates(day, used_urls, get_json=github_json, *, user_context=None,
+                      approved_repos=None):
     """Read only public metadata and README; do not clone/install/run projects."""
     found = []
     failures = []
-    repos = GITHUB_REPOS
+    manifest_bound = approved_repos is not None
+    repos = tuple(approved_repos or GITHUB_REPOS)
     used = {u.casefold().rstrip("/") for u in used_urls}
     unread = [repo for repo in repos if f"https://github.com/{repo}".casefold().rstrip("/") not in used]
-    if all(f"https://github.com/{repo}".casefold() in used for repo in repos) or len(unread) < 6:
+    if not manifest_bound and (
+            all(f"https://github.com/{repo}".casefold() in used for repo in repos)
+            or len(unread) < 6
+    ):
         query = urlencode({
             "q": "topic:ai-agents archived:false fork:false stars:>50",
             "sort": "updated", "per_page": 10,
@@ -277,7 +282,19 @@ def collect_modules(
         )
         consume(older, classics=True)
     if "github" in requested:
-        projects, failures = github_candidates(day, used_urls, get_json=get_github, user_context=user_context)
+        approved_repos = tuple(
+            endpoint.removeprefix("https://github.com/").strip("/")
+            for source in catalog.sources
+            if source.adapter_kind == "GITHUB_PUBLIC_SIGNAL"
+            and source.operational_status in {"ACTIVE", "CATALOGED"}
+            for endpoint in source.endpoints
+            if endpoint.startswith("https://github.com/")
+            and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", endpoint.removeprefix("https://github.com/").strip("/"))
+        )
+        projects, failures = github_candidates(
+            day, used_urls, get_json=get_github, user_context=user_context,
+            approved_repos=approved_repos,
+        )
         buckets["github"] = projects
         audit["exclusions"].extend(failures)
         if any(row["reason"] == "GITHUB_NETWORK_ERROR" for row in failures):
