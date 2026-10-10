@@ -1,45 +1,31 @@
 # Security Policy
 
-## Supported Versions
+## Current support status
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.x.x   | ✅ Actively supported |
-| 1.x.x   | ❌ No longer supported |
+The `src/pkm_workflow` package is under active lightweight redevelopment. Production automation is not yet supported; the current CLI is expected to fail closed. Legacy root modules, Local UI/API, historical Agent workflows, migration scripts, and `native/` experiments are not supported execution surfaces.
 
-## Reporting a Vulnerability
+The canonical threat model and controls are documented in [docs/agentic/spec.md](docs/agentic/spec.md) and [docs/agentic/decisions.md](docs/agentic/decisions.md).
 
-We take security seriously. If you discover a security vulnerability, **please do not open a public GitHub issue**.
+## Security scope
 
-Instead, please report it via one of the following:
+This is a single-user local Windows workflow. It calls approved source endpoints and, when qualified, the user's Codex subscription; it does not host a public service.
 
-1. **GitHub Private Vulnerability Reporting** (preferred):  
-   Navigate to the [Security tab](../../security) → *Report a vulnerability*.
+First-release security protects against:
 
-2. **Email**: Contact the maintainer directly via email listed in the repository profile.
+- malicious or malformed feed content, SSRF and redirect abuse;
+- model prompt injection, unsupported claims and evidence mismatch;
+- path traversal, out-of-scope Vault reads, overwrite and accidental deletion;
+- concurrent runs, target conflicts and failure reported as success;
+- authentication, quota, network and process-crash failure modes.
 
-### What to Include
+First release does not claim protection against a malicious local administrator or process that can modify the code/runtime, multi-tenant attacks, compliance-grade non-repudiation, or physical power-loss transaction durability.
 
-Please provide as much detail as possible:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact assessment
-- Suggested fix (if you have one)
+## Reporting a vulnerability
 
-### Response Timeline
+Do not open a public issue for a vulnerability that could expose credentials or user data. Prefer GitHub Private Vulnerability Reporting; otherwise contact the maintainer through the repository profile.
 
-- We will acknowledge your report within **48 hours**.
-- We aim to provide a fix or mitigation within **14 days** for critical issues.
+Include the affected entrypoint, reproduction steps, expected data boundary, observed impact and any evidence of file/network access. Reports involving old files should also show that the code is reachable from the supported wheel, CLI or Task; preserved but fail-closed historical text alone is not an active vulnerability.
 
-## Scope
+## Disclosure
 
-This project runs **entirely locally** on the user's machine. It does not host any public endpoints or process user data in the cloud.
-
-Common areas to consider:
-- **Path Traversal**: The `write_to_obsidian_disk` function constructs file paths from external RSS content.
-- **SSRF**: `fetcher.py` performs HTTP requests to configurable URLs. Malicious URLs in `pkm_config.json` could be used if an attacker has write access to the config file.
-- **Template Injection**: Jinja2 templates are loaded from the local filesystem only; external template injection is not a threat model.
-
-## Disclosure Policy
-
-We follow **Coordinated Vulnerability Disclosure**. We ask that you give us a reasonable amount of time to address the vulnerability before any public disclosure.
+Please allow reasonable time for validation and mitigation before public disclosure. A fix is not production-eligible until the relevant negative test and release-bound verification evidence exist.

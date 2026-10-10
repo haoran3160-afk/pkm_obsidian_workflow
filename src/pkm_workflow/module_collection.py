@@ -1,0 +1,328 @@
+"""Balanced collection for five reading needs and one GitHub recommendation."""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import re
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from datetime import date
+from typing import Any
+from urllib.parse import urlencode
+
+from .daily_brief import SECTIONS
+from .daily_content import _semantic_terms
+from .paper_collection import paper_candidates
+from .source_catalog import SourceCatalog
+from .v75_collection import (
+    Candidate,
+    CollectionPorts,
+    CollectionResult,
+    CoverageLevel,
+    MetadataObservation,
+    _candidate,
+    _coverage_level,
+    _is_due,
+    _is_paid_learning_promotion,
+    _is_public_fulltext,
+    _normalize_url,
+    _policy_mapping,
+    _ranked_metadata,
+)
+
+PILLAR_SECTION = {
+    "AGENTIC_RESEARCH": "research", "AI_MASTERY": "ai_practice",
+    "BUILDERS": "builder", "VC": "vc", "COGNITION": "cognition",
+}
+GITHUB_REPOS = (
+    "SWE-agent/mini-swe-agent", "SWE-agent/SWE-agent", "SWE-bench/SWE-bench",
+    "UKGovernmentBEIS/inspect_ai", "stanfordnlp/dspy", "langchain-ai/langgraph",
+    "All-Hands-AI/OpenHands", "ServiceNow/BrowserGym", "xlang-ai/OSWorld",
+    "METR/RE-Bench",
+)
+
+
+def github_json(endpoint):
+    if not (re.fullmatch(r"repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/readme)?", endpoint)
+            or endpoint.startswith("search/repositories?q=")):
+        raise ValueError("GITHUB_ENDPOINT_INVALID")
+    try:
+        process = subprocess.run(
+            ["gh", "api", endpoint], capture_output=True, text=True, encoding="utf-8",
+            timeout=25, check=False,
+        )
+    except (FileNotFoundError, PermissionError) as error:
+        raise ValueError("GITHUB_CLI_UNAVAILABLE") from error
+    if process.returncode:
+        if re.search(r"HTTP (?:429|5\d\d)|timed? out|connection|no such host|network", process.stderr, re.I):
+            raise OSError("GITHUB_NETWORK_ERROR")
+        raise ValueError("GITHUB_FETCH_FAILED")
+    value = json.loads(process.stdout)
+    if not isinstance(value, dict):
+        raise ValueError("GITHUB_RESPONSE_INVALID")
+    return value
+
+
+def github_candidates(day, used_urls, get_json=github_json, *, user_context=None,
+                      approved_repos=None):
+    """Read only public metadata and README; do not clone/install/run projects."""
+    found = []
+    failures = []
+    manifest_bound = approved_repos is not None
+    repos = tuple(approved_repos or GITHUB_REPOS)
+    used = {u.casefold().rstrip("/") for u in used_urls}
+    unread = [repo for repo in repos if f"https://github.com/{repo}".casefold().rstrip("/") not in used]
+    if not manifest_bound and (
+            all(f"https://github.com/{repo}".casefold() in used for repo in repos)
+            or len(unread) < 6
+    ):
+        query = urlencode({
+            "q": "topic:ai-agents archived:false fork:false stars:>50",
+            "sort": "updated", "per_page": 10,
+        })
+        try:
+            discovered = get_json("search/repositories?" + query).get("items", [])
+            discovered_repos = tuple(row["full_name"] for row in discovered
+                                     if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", row.get("full_name", "")))
+            repos = tuple(dict.fromkeys((*repos, *discovered_repos)))
+        except (OSError, subprocess.TimeoutExpired):
+            return [], [{"source_id": "github_search", "reason": "GITHUB_NETWORK_ERROR"}]
+        except ValueError:
+            return [], [{"source_id": "github_search", "reason": "GITHUB_DISCOVERY_UNAVAILABLE"}]
+    fields = user_context.fields if user_context else {}
+    project_terms = _semantic_terms(json.dumps(fields.get("projects", []), ensure_ascii=False))
+    interest_terms = _semantic_terms(json.dumps(fields.get("pillars", []), ensure_ascii=False))
+    if user_context:
+        project_terms |= _semantic_terms(" ".join(user_context.prior_knowledge))
+    ranked = []
+    unread = [repo for repo in repos if f"https://github.com/{repo}".casefold().rstrip("/") not in used]
+    # A bounded metadata shortlist precedes the expensive README fetches.
+    for repo in unread[:6]:
+        try:
+            metadata = get_json(f"repos/{repo}")
+            canonical = metadata["html_url"]
+            if not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?", canonical):
+                raise ValueError("GITHUB_CANONICAL_INVALID")
+            license_id = (metadata.get("license") or {}).get("spdx_id")
+            if (metadata.get("archived") or metadata.get("private")
+                    or not license_id or license_id == "NOASSERTION"
+                    or canonical.casefold().rstrip("/") in used):
+                continue
+            terms = _semantic_terms(" ".join((
+                metadata["full_name"], metadata.get("description") or "",
+                " ".join(metadata.get("topics", [])),
+            )))
+            score = 3 * len(terms & project_terms) + len(terms & interest_terms)
+            ranked.append((score, repo, metadata))
+        except (OSError, subprocess.TimeoutExpired):
+            failures.append({"source_id": repo, "reason": "GITHUB_NETWORK_ERROR"})
+        except (ValueError, KeyError):
+            failures.append({"source_id": repo, "reason": "GITHUB_FREE_README_UNAVAILABLE"})
+        if len(failures) >= 3:
+            break
+    for score, repo, metadata in sorted(ranked, key=lambda row: (-row[0], row[1])):
+        canonical = metadata["html_url"]
+        license_id = metadata["license"]["spdx_id"]
+        try:
+            readme = get_json(f"repos/{repo}/readme")
+            body = base64.b64decode(readme["content"]).decode("utf-8", errors="replace")
+            if len(body.strip()) < 400:
+                continue
+            pushed = metadata.get("pushed_at", "")[:10]
+            summary = (
+                f"Repository: {metadata['full_name']}\nDescription: {metadata.get('description')}\n"
+                f"License: {license_id}\nArchived: false\nLast push: {pushed}\n"
+                f"Verified on: {day}\nREADME (project author's own documentation):\n{body[:24000]}"
+            )
+            found.append(Candidate(
+                evidence_id="github-" + hashlib.sha256(canonical.encode()).hexdigest()[:24],
+                source=metadata["full_name"], title=metadata["full_name"], link=canonical,
+                published=pushed or str(day), summary=summary, content_type="project",
+                fulltext_enriched=True, source_id="github_" + repo.replace("/", "_"),
+                canonical_origin_id=metadata["full_name"].casefold(),
+                evidence_role="PROJECT_PRIMARY", pillars=("AGENTIC_RESEARCH", "AI_MASTERY"),
+                story_type="github", editorial_score=8000 + min(score, 1000),
+                github_stars=metadata.get("stargazers_count"),
+            ))
+        except (OSError, subprocess.TimeoutExpired):
+            failures.append({"source_id": repo, "reason": "GITHUB_NETWORK_ERROR"})
+        except (ValueError, KeyError):
+            failures.append({"source_id": repo, "reason": "GITHUB_FREE_README_UNAVAILABLE"})
+        if len(found) == 2 or len(failures) >= 3:
+            break
+    return found, failures
+
+
+def _module(source, item, candidate, requested=None):
+    requested_set = set(requested or ())
+    for pillar in source.pillars:
+        section = PILLAR_SECTION.get(pillar)
+        if section in requested_set:
+            return section
+    primary = PILLAR_SECTION[source.pillars[0]]
+    if primary in {"vc", "cognition", "builder"}:
+        return primary
+    # Research is populated exclusively by verified primary-paper collection.
+    return "ai_practice"
+
+
+def _due_for_reading_day(source, day, requested):
+    if source.operational_status != "ACTIVE":
+        return False
+    if source.cadence == "WEEKLY" and len(requested) == 2:
+        # There is no cross-day candidate cache: skipping the second reading day
+        # makes weekly-only modules empty by construction. Fetch on either slot.
+        return _module(source, None, None, requested) in requested
+    return _is_due(source, day)
+
+
+def collect_modules(
+    day: date, *, catalog: SourceCatalog, user_context, used_urls: set[str],
+    ports: CollectionPorts, get_github=github_json, get_papers=paper_candidates, evergreen=True,
+    requested_sections=None,
+) -> CollectionResult:
+    requested = tuple(requested_sections or SECTIONS)
+    used_urls = {_normalize_url(url) for url in used_urls}
+    sources = [s for s in catalog.sources if _due_for_reading_day(s, day, requested) and s.adapter_kind != "ARXIV_QUERY"
+               and _module(s, None, None, requested) in requested]
+    def fetch(source):
+        try:
+            return source.source_id, ports.fetch_metadata(source, day)
+        except OSError:
+            return source.source_id, MetadataObservation(False, False, "NETWORK_ERROR", ())
+        except ValueError:
+            return source.source_id, MetadataObservation(False, False, "FETCH_FAILED", ())
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        observations = dict(pool.map(fetch, sources))
+    core = [s for s in sources if s.coverage_member and s.selection_role == "CORE_DAILY"]
+    transient_sources = {s.source_id for s in sources
+                         if observations[s.source_id].reason_code in {"TIMEOUT", "NETWORK_ERROR"}}
+    transient_modules = {_module(s, None, None, requested) for s in sources if s.source_id in transient_sources}
+    health_sources = core or sources
+    healthy = sum(observations[s.source_id].healthy for s in health_sources)
+    coverage = (_coverage_level(healthy, len(health_sources), a_bps=8500, b_bps=7000)
+                if health_sources else CoverageLevel.A)
+    audit: dict[str, Any] = {
+        "source_observations": [
+            {"source_id": s.source_id, "healthy": observations[s.source_id].healthy,
+             "reason_code": observations[s.source_id].reason_code, "coverage_member": s in core}
+            for s in sources
+        ],
+        "fulltext_attempt_count": 0, "metadata_qualified_count": 0, "exclusions": [],
+        "coverage_scope": "DUE_RSS_FOR_REQUESTED_MODULES",
+        "selection_policy": "ONE_STORY_PER_READER_MODULE",
+    }
+    if coverage is CoverageLevel.INSUFFICIENT:
+        audit["retryable_collection_failure"] = any(s.source_id in transient_sources for s in health_sources)
+        return CollectionResult(coverage, len(health_sources), healthy, (), audit=audit)
+    ranked = _ranked_metadata(
+        observations=observations, sources={s.source_id: s for s in sources},
+        content_date=day, user_context=user_context,
+        source_quality_scores=_policy_mapping(catalog.policies, "source_quality_scores"),
+        quality_threshold=5000, used_urls=used_urls, balanced_modules=True,
+    )
+    buckets: dict[str, list[Candidate]] = {key: [] for key in requested}
+    attempted = set()
+    origins = set()
+    assessment = {s.source_id for s in core if observations[s.source_id].healthy and (
+        observations[s.source_id].zero_yield or any(len(i.summary) >= 200 for i in observations[s.source_id].items)
+    )}
+    def consume(rows, *, classics=False):
+        for row in rows:
+            if audit["fulltext_attempt_count"] >= 14:
+                break
+            preliminary = _candidate(row, row.item.summary, "CANONICAL_EXCERPT")
+            module = _module(row.source, row.item, preliminary, requested)
+            if module not in buckets or len(buckets[module]) >= (1 if classics else 2):
+                continue
+            url = row.item.canonical_url
+            if url in attempted or row.source.canonical_origin_id in origins:
+                continue
+            attempted.add(url)
+            if row.source.access_policy != "FREE_ENTRY_REQUIRED":
+                audit["exclusions"].append({"source_id": row.source.source_id, "reason": "FREE_BODY_NOT_VERIFIED"})
+                continue
+            audit["fulltext_attempt_count"] += 1
+            try:
+                fulltext = ports.fetch_fulltext(url)
+            except OSError:
+                transient_modules.add(module)
+                audit["exclusions"].append({"source_id": row.source.source_id, "reason": "FULLTEXT_NETWORK_ERROR"})
+                fulltext = ""
+            except ValueError:
+                fulltext = ""
+            if not _is_public_fulltext(fulltext) or _is_paid_learning_promotion(fulltext):
+                audit["exclusions"].append({"source_id": row.source.source_id, "reason": "FREE_BODY_UNAVAILABLE"})
+                continue
+            candidate = _candidate(row, fulltext, "CANONICAL_EXCERPT")
+            candidate = replace(candidate, story_type=module,
+                                content_type="evergreen" if classics else candidate.content_type)
+            buckets[module].append(candidate)
+            origins.add(row.source.canonical_origin_id)
+            assessment.add(row.source.source_id)
+    audit["metadata_qualified_count"] = len(ranked)
+    # Visit one item in each module before its backup.
+    ordered = []
+    for turn in range(2):
+        for module in [key for key in requested if key not in {"research", "github"}]:
+            matches = [row for row in ranked if _module(
+                row.source, row.item, _candidate(row, row.item.summary, "CANONICAL_EXCERPT"), requested
+            ) == module]
+            if len(matches) > turn:
+                ordered.append(matches[turn])
+    consume(ordered + list(ranked))
+    if evergreen and any(not buckets[key] for key in requested if key not in {"research", "github"}):
+        older = _ranked_metadata(
+            observations=observations, sources={s.source_id: s for s in sources},
+            content_date=day, user_context=user_context,
+            source_quality_scores=_policy_mapping(catalog.policies, "source_quality_scores"),
+            quality_threshold=5000, used_urls=used_urls, balanced_modules=True, max_age_days=365,
+        )
+        consume(older, classics=True)
+    if "github" in requested:
+        approved_repos = tuple(
+            endpoint.removeprefix("https://github.com/").strip("/")
+            for source in catalog.sources
+            if source.adapter_kind == "GITHUB_PUBLIC_SIGNAL"
+            and source.operational_status in {"ACTIVE", "CATALOGED"}
+            for endpoint in source.endpoints
+            if endpoint.startswith("https://github.com/")
+            and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", endpoint.removeprefix("https://github.com/").strip("/"))
+        )
+        projects, failures = github_candidates(
+            day, used_urls, get_json=get_github, user_context=user_context,
+            approved_repos=approved_repos,
+        )
+        buckets["github"] = projects
+        audit["exclusions"].extend(failures)
+        if any(row["reason"] == "GITHUB_NETWORK_ERROR" for row in failures):
+            transient_modules.add("github")
+    if "research" in requested and any(s.adapter_kind == "ARXIV_QUERY" and s.operational_status == "ACTIVE" for s in catalog.sources):
+        papers, paper_audit = get_papers(day, used_urls)
+        buckets["research"] = papers
+        audit["paper_collection"] = paper_audit
+        audit["fulltext_attempt_count"] += paper_audit["fulltext_attempts"]
+        if paper_audit.get("retryable"):
+            transient_modules.add("research")
+    audit["module_candidates"] = {key: len(value) for key, value in buckets.items()}
+    audit["missing_modules"] = [key for key, value in buckets.items() if not value]
+    evidence_core = len({s.source_id for s in core} & assessment)
+    audit["legacy_core_evidence_sources"] = evidence_core
+    available_modules = sum(bool(value) for value in buckets.values())
+    audit["evidence_availability_scope"] = "SIX_MODULES_WITH_VERIFIED_FREE_BODY"
+    # Some pairs have no CORE_DAILY RSS: availability of their own evidence is the gate.
+    if not health_sources:
+        coverage = CoverageLevel.A if available_modules == len(requested) else CoverageLevel.INSUFFICIENT
+    evidence_level = _coverage_level(available_modules, len(requested), a_bps=10000, b_bps=8000)
+    # A transient fulltext failure can leave a metadata candidate in a bucket
+    # while the pair still has insufficient evidence. Permit the single bounded
+    # recovery for any requested module affected by that transport failure.
+    audit["retryable_collection_failure"] = bool(
+        transient_modules.intersection(set(requested))
+        and evidence_level is CoverageLevel.INSUFFICIENT
+    )
+    candidates = tuple(candidate for values in buckets.values() for candidate in values)
+    return CollectionResult(coverage, len(health_sources), healthy, candidates,
+                            evidence_level, len({c.source_id for c in candidates}), audit)

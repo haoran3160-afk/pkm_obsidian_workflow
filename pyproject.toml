@@ -3,9 +3,9 @@ requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "obsidian-pkm-workflow"
-version = "2.1.0"
-description = "Local-first AI digest workflow that streams RSS feeds, arXiv papers, and YouTube videos into your Obsidian Vault."
+name = "ai-daily-workflow"
+version = "0.2.0"
+description = "Personal AI daily and weekly briefs generated and reviewed in Codex, then written to Obsidian."
 authors = [{ name = "obsidian-pkm contributors" }]
 license = { text = "MIT" }
 readme = "README.md"
@@ -25,72 +25,48 @@ classifiers = [
 dependencies = [
     "requests>=2.32.3",
     "feedparser>=6.0.11",
-    "python-dotenv>=1.0.1",
-    "schedule>=1.2.2",
     "tenacity>=8.5.0",
-    "Jinja2>=3.1.4",
     "pydantic>=2.7.0",
-    "rich>=13.7.0",
-    "structlog>=24.1.0",
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
 ]
 
 [project.scripts]
-pkm = "main:main"
+pkm = "pkm_workflow.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
 Repository = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
 Issues = "https://github.com/haoran3160-afk/pkm_obsidian_workflow/issues"
 
-[tool.setuptools]
-py-modules = [
-    "config_schema",
-    "daily_curation",
-    "digest_copy",
-    "fetcher",
-    "fetcher_registry",
-    "formatter",
-    "knowledge_health_check",
-    "llm_digest",
-    "main",
-    "pkm_bridge",
-    "state_schema",
-    "ui_server",
-    "writer",
-]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q --tb=short"
-pythonpath = ["."]
+pythonpath = [".", "src"]
 
 [tool.coverage.run]
-source = ["."]
+# Use the repository path, not the import name.  A separately installed
+# namespace package named ``pkm_workflow`` would otherwise make coverage.py
+# resolve the wrong package and silently collect zero production data.
+source = ["src/pkm_workflow"]
+branch = true
 omit = [
     "tests/*",
     ".venv/*",
     "setup.py",
-    "dev-artifacts/parse_ruff.py",
-    "fetcher_registry.py",
-    "pkm_bridge.py",
-    "main.py",
-    "knowledge_health_check.py",
 ]
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-fail_under = 70
+fail_under = 90
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
 exclude = [
-    "dev-artifacts/parse_ruff.py",
-    "dev-artifacts/git_log.txt",
 ]
 
 [tool.ruff.lint]
@@ -109,15 +85,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
-    "config_schema",
-    "daily_curation",
-    "digest_copy",
-    "fetcher",
-    "formatter",
-    "llm_digest",
-    "state_schema",
-    "ui_server",
-    "writer",
+    "pkm_workflow",
 ]
 
 [tool.mypy]
