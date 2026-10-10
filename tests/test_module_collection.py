@@ -42,8 +42,9 @@ def test_github_reads_metadata_and_readme_without_executing_projects():
     assert not failures
     assert all(item.story_type == "github" for item in candidates)
     assert all("License: MIT" in item.summary for item in candidates)
-    assert len(calls) == 4
-    assert all(call.startswith("repos/") for call in calls)
+    assert len(calls) == 8
+    assert all(call.startswith("repos/") for call in calls[:6])
+    assert all(call.endswith("/readme") for call in calls[6:])
 
 
 def test_github_stars_are_observed_metadata_not_invented_or_ranked():
