@@ -1,366 +1,83 @@
-# PKM Obsidian Workflow
+# AI Daily Workflow
 
-> [!IMPORTANT]
-> 当前运行指南是 [AI Daily / Weekly](docs/ai-daily-luna.md)。Codex 每日定时触发，Python 抓取与准备证据，GPT-6 Luna / max 生成并独立审核，确定性渲染后 create-new 写入 Obsidian。周一至周六请求两个轮换模块；任一栏未通过时，仍发布已通过审核的内容并注明缺栏。周日从六个兴趣方向筛选少数跨领域信号，不再逐栏汇总。旧原生/模型/activation 框架已退役，见 [精简记录](docs/workflow-simplification.md)。
+基于 Codex、Python 与 Obsidian 的个人 AI 资讯工作流。
 
-> [!CAUTION]
-> 以下保留旧产品说明供历史参考。当前入口仅为 `scripts/run_workflow.py --workflow ai --mode shadow|production --stage prepare|review|finalize`；不要运行旧 `main.py`、REST/UI writer 或旧 Task installer。
+它把批准的信息源整理成可追溯的证据包，由 Codex 定时任务启动两个独立的 GPT-6 Luna 上下文：
 
-> 一个面向 AI 信息获取、策展、沉淀的 Obsidian 本地优先工作流。  
-> 目标不是“抓更多”，而是每天稳定产出一份高信息密度、可执行、可回溯的 `AI Daily`。
+    approved sources
+      → RSS / GitHub / paper collection
+      → free-body evidence and deduplication
+      → Luna Generator
+      → independent Luna Reviewer
+      → deterministic Markdown renderer
+      → create-new Obsidian note
 
-[![CI](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/ci.yml)
-[![Deploy Docs](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/docs.yml/badge.svg)](https://github.com/haoran3160-afk/pkm_obsidian_workflow/actions/workflows/docs.yml)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![License: MIT](LICENSE)](LICENSE)
+日报回答“今天值得看什么”；周报回答“这一周发生了什么结构性变化”。Python 负责来源、证据、schema、审核绑定、渲染和写入，模型不决定最终路径、URL 或 Markdown。
 
----
+## 运行入口
 
-## 为什么做这个项目
+当前唯一运行入口是：
 
-大多数“信息流 -> 笔记”的自动化最后都会坏在三个地方：
+    .\.venv\Scripts\python.exe scripts\run_workflow.py --workflow ai --mode shadow --stage prepare
+    .\.venv\Scripts\python.exe scripts\run_workflow.py --workflow ai --mode production --stage prepare
+    .\.venv\Scripts\python.exe scripts\run_workflow.py --workflow ai --mode production --stage review --run-id RUN_ID
+    .\.venv\Scripts\python.exe scripts\run_workflow.py --workflow ai --mode production --stage finalize --run-id RUN_ID --confirm-vault-write
 
-1. 输入层很热闹，但真正有价值的信号被噪声淹没。
-2. 总结层看起来很满，但没有形成可执行判断。
-3. 沉淀层产出太碎，几天后连自己都不想回看。
+生产任务由 Codex automation 在上海时间 08:00 编排。运行引擎固定使用：
 
-`pkm_obsidian_workflow` 不是一个简单抓取器，而是一套**本地优先、证据优先、策展优先**的 AI 日报系统：
+    D:\Agent_programs\obsidian_workflow_mvp
 
-- 少而精：默认每天只产出一份核心 `AI Daily`
-- 证据优先：先保留 raw，再做策展和摘要
-- 可执行：最终日报必须能转成行动，而不是“知道了”
-- 可治理：去重、来源轮换、健康检查、状态文件都内建在流程里
+已有笔记永不覆盖；失败、证据不足或审核不完整时不生成半成品。
 
----
+## 内容节奏
 
-## 适合谁
-
-- 用 Obsidian 做 PKM，希望把 AI 资讯沉淀进自己的 Vault
-- 已经订阅很多 RSS / YouTube / arXiv，但每天筛选成本太高
-- 想要“稳定日报系统”，而不是一次性新闻摘要
-- 想要先跑本地 deterministic 流程，再按需启用 LLM 精修
-
----
-
-## 核心能力
-
-- RSS / Atom / YouTube RSS 抓取
-- raw 证据流与 curated digest 双阶段输出
-- 历史去重与来源轮换
-- 论文 / 视频候选合并进每日 digest
-- deterministic fallback copy
-- 可选 LLM 文案精修层
-- `disk` / `api` / `both` 三种写入方式
-- 本地 FastAPI + React 控制面板
-- `doctor` / `dry-run` / `health-check`
-
----
-
-## 系统结构
-
-```mermaid
-graph TD
-    A["main.py orchestrator"] --> B["fetcher.py"]
-    A --> C["daily_curation.py"]
-    A --> D["formatter.py / digest_copy.py / llm_digest.py"]
-    A --> E["writer.py"]
-    A --> F["knowledge_health_check.py"]
-    A --> G["ui_server.py"]
-
-    B --> B1["RSS / Atom"]
-    B --> B2["YouTube RSS"]
-    B --> B3["scoring / dedupe / enrichment"]
-
-    C --> C1["section quotas"]
-    C --> C2["source rotation"]
-    C --> C3["history dedupe"]
-
-    D --> D1["Raw Daily Feeds"]
-    D --> D2["AI Daily"]
-    D --> D3["deterministic fallback copy"]
-    D --> D4["optional LLM refinement"]
-
-    G --> G1["run / doctor / logs"]
-    G --> G2["config editing"]
-    G --> G3["local dashboard API"]
-```
-
----
-
-## 目录结构
-
-```text
-obsidian_workflow_open/
-├── .agent/workflows/                  # Agent workflow 模板
-├── docs/                              # 项目文档与样例
-├── templates/                         # Markdown 模板
-├── tests/                             # Python 测试
-├── ui/                                # 本地控制面板（React + Vite）
-├── main.py                            # CLI / orchestrator
-├── fetcher.py                         # 抓取、评分、去重、内容路由
-├── daily_curation.py                  # 最终选题与状态管理
-├── digest_copy.py                     # 稳定 fallback copy
-├── llm_digest.py                      # 可选模型精修层
-├── formatter.py                       # raw / curated Markdown 渲染
-├── writer.py                          # disk / api 写入
-├── ui_server.py                       # 本地 FastAPI 控制面板后端
-├── config_schema.py                   # Pydantic 配置校验
-├── state_schema.py                    # 状态文件 schema
-├── knowledge_health_check.py          # Vault 健康检查
-├── pkm_bridge.py                      # Obsidian REST API bridge
-├── pkm_config.json                    # 主配置
-├── package.json                       # 根级前端脚本
-└── README.md
-```
-
----
-
-## 快速开始
-
-### 路线 A：只用 CLI
-
-```bash
-git clone https://github.com/haoran3160-afk/pkm_obsidian_workflow.git
-cd pkm_obsidian_workflow
-pip install -r requirements.txt
-```
-
-复制环境模板：
-
-- macOS / Linux: `cp .env.example .env`
-- PowerShell: `Copy-Item .env.example .env`
-
-最少只需要设置：
-
-```dotenv
-OBSIDIAN_VAULT_PATH=D:/path/to/your/Obsidian
-```
-
-然后执行：
-
-```bash
-python main.py --doctor --doctor-skip-network
-python main.py --dry-run
-python main.py
-```
-
-### 路线 B：启用本地控制面板
-
-先完成 CLI 依赖安装，再补上前端依赖：
-
-```bash
-pip install -r requirements.txt
-npm install
-npm --prefix ui install
-```
-
-开发模式同时启动 API 和前端：
-
-```bash
-npm run dev:full
-```
-
-默认地址：
-
-- UI: `http://127.0.0.1:5173`
-- API: `http://127.0.0.1:8000`
-
----
-
-## 常用命令
-
-```bash
-# 诊断环境与配置
-python main.py --doctor
-
-# 只看将要写入的结果
-python main.py --dry-run
-
-# 只生成 raw 证据流
-python main.py --raw-only
-
-# 测试模式，不写入 Vault
-python main.py --test
-
-# 生成最终日报
-python main.py
-
-# 生成 Vault 健康报告
-python main.py --health-check
-```
-
-Runtime safety:
-
-- `--dry-run` and `--test` do not persist feed cache, source health, source rotation, or used-article state.
-- If no renderable candidates remain after fetch, dedupe, and curation, the workflow reports a skipped output instead of writing a frontmatter-only digest.
-
-前端 / 本地控制面板：
-
-```bash
-npm run dev:api
-npm run dev:ui
-npm run dev:full
-npm run build
-npm run test:ui
-```
-
----
-
-## 控制面板能力
-
-当前本地 UI MVP 包含 5 个页面：
-
-- Dashboard：运行状态、Quick Run、最近输出、Feed Health、Live Log Stream
-- Sources：RSS / YouTube 源启停与编辑
-- Output：写入模式、Vault 路径、LLM 开关与核心 limits
-- Logs：历史日志与实时事件流
-- Settings：Doctor 触发与运行态检查
-
-控制面板是**本地单用户工具**，默认只监听 `127.0.0.1`，不做公网暴露。
-
----
-
-## HTTP API
-
-本地控制面板后端暴露这些接口：
-
-- `GET /api/status`
-- `POST /api/run`
-- `POST /api/doctor`
-- `GET /api/logs/history`
-- `GET /api/logs/stream`
-- `GET /api/config/sources`
-- `PUT /api/config/sources`
-- `GET /api/config/output`
-- `PUT /api/config/output`
-- `POST /api/validate/vault`
-
-详细说明见 [docs/api.md](docs/api.md)。
-
----
-
-## 输出产物
-
-默认写入：
-
-- `00-Inbox/Raw-Feeds/Raw-Daily-Feeds-YYYY-MM-DD.md`
-- `30-Daily/AI-News/AI-Daily-YYYY-MM-DD.md`
-- `40-MOC/lint-report-YYYY-MM-DD.md`
-
-样例与 walkthrough：
-
-- [AI Daily Sample](docs/sample_outputs/ai-daily-brief-sample.md)
-- [Paper Note Sample](docs/sample_outputs/paper-note-sample.md)
-- [Video Note Sample](docs/sample_outputs/video-note-sample.md)
-- [Workflow Walkthrough](docs/workthrough.md)
-- [Local UI Guide](docs/local-ui.md)
-
----
-
-## 配置重点
-
-`pkm_config.json` 中最重要的参数：
-
-| 参数 | 说明 |
+| 日期 | 日报模块 |
 |---|---|
-| `daily_digest_only_output` | 是否只输出单一核心日报，推荐 `true` |
-| `daily_digest_top_picks` | Top 区核心条目上限 |
-| `daily_digest_max_items_per_source` | 每个来源展示上限 |
-| `daily_digest_action_items` | action queue 条数 |
-| `daily_digest_max_deferred_items` | deferred queue 条数 |
-| `daily_digest_min_top_nonpaper` | Top 区最少非论文条数 |
-| `daily_digest_min_top_content_types` | Top 区最少内容类型覆盖数 |
-| `daily_digest_max_paper_in_top` | Top 区最多论文条数 |
-| `min_ai_interest_score` | AI 内容最低保留分 |
-| `max_ai_items_per_feed` | 单来源保留上限 |
-| `max_paper_notes_per_day` | 每日论文笔记上限 |
-| `max_video_notes_per_day` | 每日视频笔记上限 |
+| 周一 / 周四 | 学术研究 + AI 实践 |
+| 周二 / 周五 | Builder + 创投产业 |
+| 周三 / 周六 | 认知成长 + GitHub 项目 |
+| 周日 | 全周跨领域综合周报 |
 
-`.env` 里最重要的变量：
+六个兴趣方向只用于来源治理和候选筛选，不强制周报逐栏填充。周报优先形成全周主判断，再选择趋势、早期信号、关键个案和下周观察。
 
-| 环境变量 | 说明 |
-|---|---|
-| `OBSIDIAN_VAULT_PATH` | Vault 路径 |
-| `OBSIDIAN_API_BASE` | Obsidian Local REST API 地址 |
-| `OBSIDIAN_API_KEY` | Obsidian Local REST API key |
-| `PKM_ENABLE_LLM_DIGEST_COPY` | 是否启用最终文案精修层 |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `PKM_CURATION_MODEL` | 文案精修模型 |
-| `PKM_CURATION_REASONING_EFFORT` | 文案精修 reasoning 等级 |
+## 可靠性边界
 
----
+- Generator 与 Reviewer 使用独立 Luna 上下文；Reviewer 不能与 Generator 使用相同 session；
+- 每个 claim 必须引用封存 evidence ID；
+- Reviewer 决策、evidence ID、hash 和 reason 必须完整匹配；
+- 只有通过审核的内容进入确定性渲染；
+- 使用运行锁和 create-new，重复运行返回 ALREADY_EXISTS；
+- free-body 不可验证、Coverage 不足、schema 错误或模型角色不可用时停止；
+- 不使用 DeepSeek、OpenAI API、Codex CLI 或 provider fallback；
+- 不修改 .obsidian，不扫描 Vault 其他内容，不安装推荐项目。
 
-## 工程质量门禁
+## 目录
 
-开发依赖安装：
+    src/pkm_workflow/
+      ai_daily_luna.py          三阶段编排、证据绑定与发布
+      ai_daily_production.py   create-new 发布与 receipt
+      module_collection.py      RSS、GitHub、论文候选
+      daily_content.py          evidence packet 与审核要求
+      daily_brief.py            日报 schema、校验、渲染
+      weekly_collection.py      周报材料池
+      weekly_brief.py           周报综合 schema、校验、渲染
+      source_catalog.py         批准来源目录
+      v75_collection.py         Candidate / Coverage / evidence 基础类型
+    scripts/run_workflow.py     CLI 入口
+    tests/                      当前运行链回归测试
+    docs/ai-daily-luna.md       Codex automation 运行手册
 
-```bash
-pip install -r requirements-dev.txt
-```
+旧的 Rust/native、UI/API、旧 Task installer、DeepSeek provider 和历史入口不属于当前运行链；它们不参与安装、调度或生产发布。
 
-推荐门禁顺序：
+## 开发验证
 
-```bash
-python -m pytest -q
-python -m ruff check .
-python -m mypy main.py fetcher.py formatter.py writer.py config_schema.py pkm_bridge.py state_schema.py ui_server.py llm_digest.py daily_curation.py digest_copy.py
-npm run build
-npm run test:ui
-python main.py --doctor --doctor-skip-network
-python main.py --dry-run
-```
+    .\.venv\Scripts\python.exe -m pytest -q
+    .\.venv\Scripts\ruff.exe check src tests
+    .\.venv\Scripts\mypy.exe src
+    git diff --check
 
----
+## 隐私与许可
 
-## 给 Agent 的提示词
+来源配置、用户上下文、运行时 receipt 与 Vault 内容不放入本仓库。仓库只保存可复用的 Python 引擎、schema、测试和运行手册。
 
-把下面这段提示词交给你的 Agent。它的目标不是“抓到什么就拼成日报”，而是尽量贴近这个仓库的本地工作流约束：
-
-```text
-你现在是这个仓库的日报策展 Agent，不是“抓取后顺手总结一下”的摘要器。
-
-你的目标：
-1. 先保留 raw 证据，再做最终策展。
-2. 输出结果要尽量接近 Obsidian 本地工作流，而不是自由发挥。
-3. 日报必须高信息密度、少空话、能转成行动。
-
-强约束：
-1. 每次开始前，先读取 used_articles.json 和 source_rotation.json。
-2. 已被 used_articles.json 记录过的 URL，不得再次入选。
-3. 优先使用最近 4 天未被选中过的来源，避免同源刷屏。
-4. 如果本周还没使用过 3Blue1Brown，则“今日视频”优先给它。
-5. Top 1-3 优先来自 AI 主新闻、工程实践、工作流与评测更新，不要默认塞论文。
-6. 创投洞见、洞见、今日视频、AI 公司洞见都必须按固定栏目输出。
-7. 没有足够证据时可以写“未披露”，但绝不允许编造数字、发布时间、性能结论或商业结构。
-8. 输出必须包含来源、原文链接、核心概念、深度 Takeaways 或简报要点、行动启示。
-
-工作顺序：
-1. 运行 Raw 流，保留当天原始证据。
-2. 读取状态文件，执行历史去重和来源轮换。
-3. 按栏目配额选题，不要只按分数排序。
-4. 先用 deterministic copy 产出稳定日报。
-5. 如果显式开启了 LLM 精修层，再对最终 copy 做语言层润色；不得让模型参与改写选题事实。
-6. 成功写入后，更新 used_articles.json 和 source_rotation.json。
-
-成功标准：
-- 日报结构稳定。
-- 来源分布健康。
-- 每个栏目都能读出“这条信息为什么重要”和“接下来该做什么”。
-- 即使没有外部模型，也能输出完整、可读、可信的日报。
-```
-
----
-
-## 路线图
-
-- 更强的多源去重与主题聚合
-- 更稳的原文抽取与全文增强
-- 周报 / 月报自动汇总
-- 从日报 action items 自动升级长期笔记
-- 更完整的插件生态与第三方数据源接入
-
----
-
-## License
-
-MIT
+MIT License

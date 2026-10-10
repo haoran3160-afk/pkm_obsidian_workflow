@@ -33,9 +33,9 @@ dependencies = [
 pkm = "pkm_workflow.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/haoran3160-afk/AI_Daily_workflow"
-Repository = "https://github.com/haoran3160-afk/AI_Daily_workflow"
-Issues = "https://github.com/haoran3160-afk/AI_Daily_workflow/issues"
+Homepage = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
+Repository = "https://github.com/haoran3160-afk/pkm_obsidian_workflow"
+Issues = "https://github.com/haoran3160-afk/pkm_obsidian_workflow/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -56,11 +56,6 @@ omit = [
     "tests/*",
     ".venv/*",
     "setup.py",
-    "dev-artifacts/parse_ruff.py",
-    "fetcher_registry.py",
-    "pkm_bridge.py",
-    "main.py",
-    "knowledge_health_check.py",
 ]
 
 [tool.coverage.report]
@@ -72,8 +67,6 @@ fail_under = 90
 line-length = 100
 target-version = "py310"
 exclude = [
-    "dev-artifacts/parse_ruff.py",
-    "dev-artifacts/git_log.txt",
 ]
 
 [tool.ruff.lint]
@@ -92,16 +85,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
-    "config_schema",
-    "daily_curation",
-    "digest_copy",
-    "fetcher",
-    "formatter",
-    "llm_digest",
-    "state_schema",
-    "ui_server",
-    "workflow_contracts",
-    "writer",
+    "pkm_workflow",
 ]
 
 [tool.mypy]
