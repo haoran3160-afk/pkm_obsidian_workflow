@@ -115,8 +115,6 @@ def github_candidates(day, used_urls, get_json=github_json, *, user_context=None
             failures.append({"source_id": repo, "reason": "GITHUB_NETWORK_ERROR"})
         except (ValueError, KeyError):
             failures.append({"source_id": repo, "reason": "GITHUB_FREE_README_UNAVAILABLE"})
-        if len(ranked) >= 2:
-            break
         if len(failures) >= 3:
             break
     for score, repo, metadata in sorted(ranked, key=lambda row: (-row[0], row[1])):
