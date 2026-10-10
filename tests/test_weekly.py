@@ -25,7 +25,7 @@ def test_weekly_supplement_uses_only_missing_modules_and_marks_new_reading(tmp_p
     result = collect_weekly(date(2026, 9, 20), tmp_path, tmp_path, supplement=supplement)
     assert len(calls) == 1
     assert set(calls[0]) == {"research", "ai_practice", "builder", "vc", "cognition", "github"}
-    assert result.coverage == CoverageLevel.A
+    assert result.coverage == CoverageLevel.B
     assert len(result.candidates) == 6
     assert result.audit["supplemented_sections"] == list(calls[0])
     assert result.audit["supplemented_urls"] == []
@@ -104,7 +104,7 @@ def test_weekly_uses_nonduplicate_backup_and_rejects_unqualified_supplements(tmp
     result = collect_weekly(date(2026, 9, 20), tmp_path, tmp_path, supplement=supplement)
     assert {c.link for c in result.candidates} == {"https://example.com/shared/", "https://example.com/backup"}
     assert "research" in result.audit["missing_modules"]
-    assert result.coverage is CoverageLevel.A
+    assert result.coverage is CoverageLevel.B
     assert "research" in result.audit["unavailable_sections"]
 
 

@@ -220,12 +220,19 @@ def collect_weekly(day, runtime, vault, *, supplement=None):
     for candidate in ranked:
         add(candidate)
     absent = [section for section in SECTIONS if section not in {item.story_type for item in pool.values()}]
+    expected_daily_days = [start + timedelta(days=offset)
+                           for offset in range((day - start).days)
+                           if (start + timedelta(days=offset)).weekday() < 6]
+    published_day_values = {row["date"] for row in reports}
+    missing_daily_days = [str(value) for value in expected_daily_days
+                          if str(value) not in published_day_values]
     coverage = (CoverageLevel.INSUFFICIENT if not chosen else
-                CoverageLevel.B if exclusions or supplement_unhealthy
+                CoverageLevel.B if exclusions or supplement_unhealthy or missing_daily_days
                 or supplement_audit.get("retryable_collection_failure") else CoverageLevel.A)
     return CollectionResult(coverage, len(SECTIONS), len(chosen), tuple(chosen), coverage,
                             len(chosen), {"period_start": str(start), "period_end": str(day),
-                            "published_days": reports, "missing_modules": absent,
+                            "published_days": reports, "missing_daily_days": missing_daily_days,
+                            "missing_modules": absent,
                             "screened_sections": list(SECTIONS), "unavailable_sections": absent,
                             "weekly_pool_size": len(pool), "exclusions": exclusions,
                             "source_policy": "VERIFIED_WEEK_CANDIDATES_WITH_TARGETED_SUPPLEMENT",

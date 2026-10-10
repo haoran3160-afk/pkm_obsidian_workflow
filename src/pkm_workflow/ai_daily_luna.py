@@ -682,9 +682,10 @@ def _report(run, state, accepted, decisions, status, code, *, generator=None, re
     )
     if status in {"PUBLISHED", "PUBLISHED_PARTIAL"} and accepted:
         render = weekly.render if state["edition"] == "weekly" else brief.render
-        options = {} if state["edition"] == "weekly" else {
-            "edition": state["edition"], "missing_modules": missing_modules,
-        }
+        options = ({"missing_days": state.get("audit", {}).get("missing_daily_days", ())}
+                   if state["edition"] == "weekly" else {
+                       "edition": state["edition"], "missing_modules": missing_modules,
+                   })
         markdown = render(
             date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
             CoverageLevel(state["evidence_level"]), accepted, evidence, **options,
@@ -851,9 +852,10 @@ def _finalize(run, state, mode, confirm, runtime, vault):
         if report["markdown_path"]:
             accepted, decisions, frozen, reviewer = _check_review(run, state)
             render = weekly.render if state["edition"] == "weekly" else brief.render
-            options = {} if state["edition"] == "weekly" else {
-                "edition": state["edition"], "missing_modules": report.get("missing_modules", ()),
-            }
+            options = ({"missing_days": state.get("audit", {}).get("missing_daily_days", ())}
+                       if state["edition"] == "weekly" else {
+                           "edition": state["edition"], "missing_modules": report.get("missing_modules", ()),
+                       })
             expected = render(
                 date.fromisoformat(state["content_date"]), CoverageLevel(state["coverage"]),
                 CoverageLevel(state["evidence_level"]), accepted, _candidates(state),

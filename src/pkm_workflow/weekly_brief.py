@@ -276,7 +276,7 @@ def _links(signal, evidence):
 
 
 def render(day: date, coverage: CoverageLevel, evidence_level: CoverageLevel, signals,
-           evidence: dict[str, Candidate]) -> str:
+           evidence: dict[str, Candidate], *, missing_days=()) -> str:
     lines = ["---", f"date: {day}", "type: ai-weekly-shadow", "production: false",
              f"operational_coverage: {coverage.value}", f"evidence_availability: {evidence_level.value}",
              "---", "", f"# AI Weekly · {day}", "",
@@ -285,6 +285,9 @@ def render(day: date, coverage: CoverageLevel, evidence_level: CoverageLevel, si
                  if claim["claim_id"] == signal.get("lead_claim_id")), None)
     if lead:
         lines += ["", "## 本周主判断", "", lead]
+    if missing_days:
+        lines += ["", "> 本周输入不完整：未找到已发布的日报日期 "
+                  + "、".join(missing_days) + "。以下内容只代表已验证材料，不等同于完整周覆盖。"]
     themes = [signal for signal in signals if signal["kind"] in {"TREND", "EARLY_SIGNAL", "CASE"}]
     for index, signal in enumerate(themes, 1):
         claims = _claims(signal)
