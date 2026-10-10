@@ -16,8 +16,8 @@ def test_approved_manifest_exposes_complete_unique_catalog_and_true_coverage_set
     catalog = load_source_catalog(REAL_MANIFEST)
 
     assert catalog.version == "7.5.0"
-    assert len(catalog.sources) == 100
-    assert len({source.source_id for source in catalog.sources}) == 100
+    assert len(catalog.sources) == 102
+    assert len({source.source_id for source in catalog.sources}) == 102
     assert {source.source_id for source in catalog.operational_coverage_sources} == {
         "rss_latent_space",
         "rss_simon_willison",
