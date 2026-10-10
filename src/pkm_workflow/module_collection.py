@@ -71,15 +71,17 @@ def github_candidates(day, used_urls, get_json=github_json, *, user_context=None
     failures = []
     repos = GITHUB_REPOS
     used = {u.casefold().rstrip("/") for u in used_urls}
-    if all(f"https://github.com/{repo}".casefold() in used for repo in repos):
+    unread = [repo for repo in repos if f"https://github.com/{repo}".casefold().rstrip("/") not in used]
+    if all(f"https://github.com/{repo}".casefold() in used for repo in repos) or len(unread) < 6:
         query = urlencode({
             "q": "topic:ai-agents archived:false fork:false stars:>50",
             "sort": "updated", "per_page": 10,
         })
         try:
             discovered = get_json("search/repositories?" + query).get("items", [])
-            repos = tuple(row["full_name"] for row in discovered
-                          if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", row.get("full_name", "")))
+            discovered_repos = tuple(row["full_name"] for row in discovered
+                                     if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", row.get("full_name", "")))
+            repos = tuple(dict.fromkeys((*repos, *discovered_repos)))
         except (OSError, subprocess.TimeoutExpired):
             return [], [{"source_id": "github_search", "reason": "GITHUB_NETWORK_ERROR"}]
         except ValueError:
@@ -113,6 +115,8 @@ def github_candidates(day, used_urls, get_json=github_json, *, user_context=None
             failures.append({"source_id": repo, "reason": "GITHUB_NETWORK_ERROR"})
         except (ValueError, KeyError):
             failures.append({"source_id": repo, "reason": "GITHUB_FREE_README_UNAVAILABLE"})
+        if len(ranked) >= 2:
+            break
         if len(failures) >= 3:
             break
     for score, repo, metadata in sorted(ranked, key=lambda row: (-row[0], row[1])):
@@ -148,7 +152,12 @@ def github_candidates(day, used_urls, get_json=github_json, *, user_context=None
     return found, failures
 
 
-def _module(source, item, candidate):
+def _module(source, item, candidate, requested=None):
+    requested_set = set(requested or ())
+    for pillar in source.pillars:
+        section = PILLAR_SECTION.get(pillar)
+        if section in requested_set:
+            return section
     primary = PILLAR_SECTION[source.pillars[0]]
     if primary in {"vc", "cognition", "builder"}:
         return primary
@@ -162,7 +171,7 @@ def _due_for_reading_day(source, day, requested):
     if source.cadence == "WEEKLY" and len(requested) == 2:
         # There is no cross-day candidate cache: skipping the second reading day
         # makes weekly-only modules empty by construction. Fetch on either slot.
-        return _module(source, None, None) in requested
+        return _module(source, None, None, requested) in requested
     return _is_due(source, day)
 
 
@@ -174,7 +183,7 @@ def collect_modules(
     requested = tuple(requested_sections or SECTIONS)
     used_urls = {_normalize_url(url) for url in used_urls}
     sources = [s for s in catalog.sources if _due_for_reading_day(s, day, requested) and s.adapter_kind != "ARXIV_QUERY"
-               and _module(s, None, None) in requested]
+               and _module(s, None, None, requested) in requested]
     def fetch(source):
         try:
             return source.source_id, ports.fetch_metadata(source, day)
@@ -187,7 +196,7 @@ def collect_modules(
     core = [s for s in sources if s.coverage_member and s.selection_role == "CORE_DAILY"]
     transient_sources = {s.source_id for s in sources
                          if observations[s.source_id].reason_code in {"TIMEOUT", "NETWORK_ERROR"}}
-    transient_modules = {_module(s, None, None) for s in sources if s.source_id in transient_sources}
+    transient_modules = {_module(s, None, None, requested) for s in sources if s.source_id in transient_sources}
     health_sources = core or sources
     healthy = sum(observations[s.source_id].healthy for s in health_sources)
     coverage = (_coverage_level(healthy, len(health_sources), a_bps=8500, b_bps=7000)
@@ -222,7 +231,7 @@ def collect_modules(
             if audit["fulltext_attempt_count"] >= 14:
                 break
             preliminary = _candidate(row, row.item.summary, "CANONICAL_EXCERPT")
-            module = _module(row.source, row.item, preliminary)
+            module = _module(row.source, row.item, preliminary, requested)
             if module not in buckets or len(buckets[module]) >= (1 if classics else 2):
                 continue
             url = row.item.canonical_url
@@ -256,7 +265,7 @@ def collect_modules(
     for turn in range(2):
         for module in [key for key in requested if key not in {"research", "github"}]:
             matches = [row for row in ranked if _module(
-                row.source, row.item, _candidate(row, row.item.summary, "CANONICAL_EXCERPT")
+                row.source, row.item, _candidate(row, row.item.summary, "CANONICAL_EXCERPT"), requested
             ) == module]
             if len(matches) > turn:
                 ordered.append(matches[turn])

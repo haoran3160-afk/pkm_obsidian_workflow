@@ -49,6 +49,27 @@ def test_weekly_sources_are_available_on_both_module_reading_days():
     assert not _due_for_reading_day(source, date(2026, 9, 8), ("builder", "vc"))
 
 
+def test_secondary_pillar_can_fill_the_requested_reader_module():
+    source = SourceDefinition("ethan", "Ethan", "ethan", "RSS_ATOM", ("https://example.com/rss",),
+                              "ACTIVE", "CORE_DAILY", True, "DAILY", ("AI_MASTERY", "COGNITION"),
+                              "EXPERT", "FREE_ENTRY_REQUIRED", (), (), "ethan", "KEEP", "APPROVED")
+    catalog = SourceCatalog("test", (source,), {"source_quality_scores": {"EXPERT": 2000}}, {"ethan": source})
+    context = UserContextBundle("hash", {}, (Pillar("AI_MASTERY", 1000), Pillar("COGNITION", 1000)), (), ())
+    def metadata(item, content_date):
+        return MetadataObservation(True, False, "OK", (MetadataItem(
+            "essay", "Interfaces and mental models", "https://example.com/essay", str(content_date),
+            "A documented decision framework and its limits. " * 30, "essay"),))
+    result = collect_modules(
+        date(2026, 10, 10), catalog=catalog, user_context=context, used_urls=set(),
+        ports=CollectionPorts(metadata, lambda _: "Full public essay with assumptions and limitations. " * 30),
+        requested_sections=("cognition", "github"),
+        get_github=lambda _: {"full_name": "example/project", "html_url": "https://github.com/example/project",
+                              "private": False, "archived": False, "license": {"spdx_id": "MIT"},
+                              "pushed_at": "2026-10-10", "content": base64.b64encode(b"README " * 100).decode()},
+    )
+    assert any(candidate.story_type == "cognition" for candidate in result.candidates)
+
+
 @pytest.mark.parametrize("day,pillar,section,pair", [
     (date(2026, 9, 11), "VC", "vc", ("builder", "vc")),
     (date(2026, 9, 12), "COGNITION", "cognition", ("cognition", "github")),
